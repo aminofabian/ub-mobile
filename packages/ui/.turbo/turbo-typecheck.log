@@ -1,0 +1,4 @@
+
+> @kiosk/ui@0.0.1 typecheck /Users/mac/02-DEVELOPMENT/01-REPOS/github.com/aminofabian/palmart/mobile/packages/ui
+> tsc --noEmit
+

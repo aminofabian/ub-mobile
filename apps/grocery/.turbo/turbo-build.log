@@ -1,0 +1,87 @@
+
+> @kiosk/grocery@0.0.1 build /Users/mac/02-DEVELOPMENT/01-REPOS/github.com/aminofabian/palmart/mobile/apps/grocery
+> expo export --platform all
+
+Starting Metro Bundler
+| (node:10605) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+| (node:10607) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+iOS apps/grocery/index.ts ▓░░░░░░░░░░░░░░░  9.0% (3/9)
+Android apps/grocery/index.ts ░░░░░░░░░░░░░░░░  1.0% (1/3)
+| (node:10606) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+| (node:10611) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+| (node:10609) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+| (node:10610) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+| (node:10608) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+iOS apps/grocery/index.ts ▓▓▓▓▓░░░░░░░░░░░ 31.6% (117/276)
+Android apps/grocery/index.ts ▓▓░░░░░░░░░░░░░░ 13.7% ( 93/257)
+iOS apps/grocery/index.ts ▓▓▓▓▓░░░░░░░░░░░ 32.6% (261/457)
+Android apps/grocery/index.ts ▓▓▓░░░░░░░░░░░░░ 22.0% (142/303)
+iOS apps/grocery/index.ts ▓▓▓▓▓░░░░░░░░░░░ 33.7% (272/471)
+Android apps/grocery/index.ts ▓▓▓▓▓░░░░░░░░░░░ 35.2% (257/434)
+iOS apps/grocery/index.ts ▓▓▓▓▓▓▓░░░░░░░░░ 44.2% (341/515)
+Android apps/grocery/index.ts ▓▓▓▓▓░░░░░░░░░░░ 36.6% (290/480)
+iOS apps/grocery/index.ts ▓▓▓▓▓▓▓░░░░░░░░░ 44.2% (409/627)
+Android apps/grocery/index.ts ▓▓▓▓▓░░░░░░░░░░░ 36.8% (304/501)
+iOS apps/grocery/index.ts ▓▓▓▓▓▓▓▓░░░░░░░░ 51.1% (476/666)
+Android apps/grocery/index.ts ▓▓▓▓▓▓░░░░░░░░░░ 38.1% (310/502)
+iOS apps/grocery/index.ts ▓▓▓▓▓▓▓▓░░░░░░░░ 51.7% (479/666)
+Android apps/grocery/index.ts ▓▓▓▓▓▓▓░░░░░░░░░ 47.6% (382/597)
+iOS apps/grocery/index.ts ▓▓▓▓▓▓▓▓░░░░░░░░ 51.7% (479/666)
+Android apps/grocery/index.ts ▓▓▓▓▓▓▓▓░░░░░░░░ 50.0% (466/659)
+iOS apps/grocery/index.ts ▓▓▓▓▓▓▓▓▓░░░░░░░ 61.2% (558/713)
+Android apps/grocery/index.ts ▓▓▓▓▓▓▓▓░░░░░░░░ 52.7% (482/664)
+iOS apps/grocery/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓░░░░ 75.7% (635/730)
+Android apps/grocery/index.ts ▓▓▓▓▓▓▓▓░░░░░░░░ 55.5% (500/671)
+iOS apps/grocery/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓░░░░ 79.9% (664/743)
+Android apps/grocery/index.ts ▓▓▓▓▓▓▓▓▓░░░░░░░ 62.3% (536/679)
+iOS apps/grocery/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓░░░░ 79.9% (664/743)
+Android apps/grocery/index.ts ▓▓▓▓▓▓▓▓▓▓▓░░░░░ 70.1% (589/706)
+iOS apps/grocery/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓░░░░ 79.9% (664/743)
+Android apps/grocery/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓░░░░ 76.0% (640/734)
+iOS apps/grocery/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓░░░ 86.0% (692/746)
+Android apps/grocery/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓░░░░ 79.8% (662/741)
+iOS apps/grocery/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░ 92.2% (728/758)
+Android apps/grocery/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓░░░░ 80.4% (669/746)
+iOS apps/grocery/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░ 92.8% (743/778)
+Android apps/grocery/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░ 92.2% (720/750)
+iOS apps/grocery/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 94.7% (768/789)
+Android apps/grocery/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░ 92.5% (745/781)
+iOS apps/grocery/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 97.3% (788/799)
+Android apps/grocery/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 96.5% (778/792)
+iOS apps/grocery/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.5% (832/848)
+Android apps/grocery/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (799/799)
+iOS apps/grocery/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (863/863)
+Android apps/grocery/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (829/846)
+iOS apps/grocery/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (863/863)
+Android apps/grocery/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (853/858)
+iOS apps/grocery/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (863/863)
+Android apps/grocery/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (861/861)
+iOS Bundled 93947ms apps/grocery/index.ts (863 modules)
+iOS apps/grocery/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (863/863)
+Android apps/grocery/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (861/861)
+Android Bundled 95415ms apps/grocery/index.ts (861 modules)
+
+› Assets (24):
+../../node_modules/@react-navigation/elements/lib/module/assets/back-icon-mask.png (653 B)
+../../node_modules/@react-navigation/elements/lib/module/assets/back-icon.png (8 variations | 359 B)
+../../node_modules/@react-navigation/elements/lib/module/assets/clear-icon.png (4 variations | 425 B)
+../../node_modules/@react-navigation/elements/lib/module/assets/close-icon.png (4 variations | 235 B)
+../../node_modules/@react-navigation/elements/lib/module/assets/search-icon.png (7 variations | 592 B)
+
+› ios bundles (1):
+_expo/static/js/ios/index-8c351b795833ddf592c4e71bc2b05841.hbc (2.27 MB)
+
+› android bundles (1):
+_expo/static/js/android/index-74b5655f3d76196ce2faf46fb0cbf21b.hbc (2.28 MB)
+
+› Files (1):
+metadata.json (2.64 kB)
+
+Exported: dist

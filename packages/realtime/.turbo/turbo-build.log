@@ -1,0 +1,18 @@
+
+> @kiosk/realtime@0.0.1 build /Users/mac/02-DEVELOPMENT/01-REPOS/github.com/aminofabian/palmart/mobile/packages/realtime
+> tsup src/index.ts --format cjs,esm --dts
+
+CLI Building entry: src/index.ts
+CLI Using tsconfig: tsconfig.json
+CLI tsup v8.5.1
+CLI Target: es2022
+CJS Build start
+ESM Build start
+ESM dist/index.mjs 2.70 KB
+ESM ⚡️ Build success in 127ms
+CJS dist/index.js 3.72 KB
+CJS ⚡️ Build success in 127ms
+DTS Build start
+DTS ⚡️ Build success in 1463ms
+DTS dist/index.d.ts  594.00 B
+DTS dist/index.d.mts 594.00 B

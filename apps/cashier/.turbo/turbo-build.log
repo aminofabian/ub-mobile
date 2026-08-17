@@ -1,0 +1,93 @@
+
+> @kiosk/cashier@0.0.1 build /Users/mac/02-DEVELOPMENT/01-REPOS/github.com/aminofabian/palmart/mobile/apps/cashier
+> expo export --platform all
+
+Starting Metro Bundler
+iOS apps/cashier/index.ts ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Android apps/cashier/index.ts ░░░░░░░░░░░░░░░░  0.0% (0/1)
+| (node:10651) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+| (node:10652) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+| (node:10653) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+iOS apps/cashier/index.ts ▓░░░░░░░░░░░░░░░  9.0% ( 13/139)
+Android apps/cashier/index.ts ▓░░░░░░░░░░░░░░░  9.0% ( 3/20)
+| (node:10656) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+| (node:10658) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+| (node:10655) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+| (node:10654) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+iOS apps/cashier/index.ts ▓░░░░░░░░░░░░░░░  9.0% ( 50/185)
+Android apps/cashier/index.ts ▓░░░░░░░░░░░░░░░  9.0% ( 11/135)
+iOS apps/cashier/index.ts ▓░░░░░░░░░░░░░░░ 12.0% ( 74/214)
+Android apps/cashier/index.ts ▓░░░░░░░░░░░░░░░  9.0% ( 20/151)
+iOS apps/cashier/index.ts ▓▓▓░░░░░░░░░░░░░ 19.0% (119/273)
+Android apps/cashier/index.ts ▓░░░░░░░░░░░░░░░  9.0% ( 20/151)
+iOS apps/cashier/index.ts ▓▓▓▓░░░░░░░░░░░░ 30.0% (180/344)
+Android apps/cashier/index.ts ▓░░░░░░░░░░░░░░░ 10.5% ( 56/173)
+iOS apps/cashier/index.ts ▓▓▓▓░░░░░░░░░░░░ 30.0% (180/344)
+Android apps/cashier/index.ts ▓▓░░░░░░░░░░░░░░ 17.6% ( 97/231)
+iOS apps/cashier/index.ts ▓▓▓▓▓░░░░░░░░░░░ 34.1% (220/377)
+Android apps/cashier/index.ts ▓▓▓▓░░░░░░░░░░░░ 25.9% (151/315)
+iOS apps/cashier/index.ts ▓▓▓▓▓▓▓░░░░░░░░░ 44.4% (319/479)
+Android apps/cashier/index.ts ▓▓▓▓░░░░░░░░░░░░ 25.9% (156/325)
+iOS apps/cashier/index.ts ▓▓▓▓▓▓▓░░░░░░░░░ 49.5% (346/521)
+Android apps/cashier/index.ts ▓▓▓▓▓░░░░░░░░░░░ 32.1% (229/418)
+iOS apps/cashier/index.ts ▓▓▓▓▓▓▓░░░░░░░░░ 49.5% (360/533)
+Android apps/cashier/index.ts ▓▓▓▓▓▓░░░░░░░░░░ 38.5% (314/506)
+iOS apps/cashier/index.ts ▓▓▓▓▓▓▓▓▓░░░░░░░ 58.5% (423/553)
+Android apps/cashier/index.ts ▓▓▓▓▓▓░░░░░░░░░░ 38.5% (315/514)
+iOS apps/cashier/index.ts ▓▓▓▓▓▓▓▓▓▓░░░░░░ 65.6% (473/584)
+Android apps/cashier/index.ts ▓▓▓▓▓▓░░░░░░░░░░ 38.8% (322/517)
+iOS apps/cashier/index.ts ▓▓▓▓▓▓▓▓▓▓▓░░░░░ 74.1% (520/618)
+Android apps/cashier/index.ts ▓▓▓▓▓▓░░░░░░░░░░ 42.2% (341/525)
+iOS apps/cashier/index.ts ▓▓▓▓▓▓▓▓▓▓▓░░░░░ 74.1% (529/692)
+Android apps/cashier/index.ts ▓▓▓▓▓▓▓▓░░░░░░░░ 54.1% (398/541)
+iOS apps/cashier/index.ts ▓▓▓▓▓▓▓▓▓▓▓░░░░░ 74.1% (531/698)
+Android apps/cashier/index.ts ▓▓▓▓▓▓▓▓▓▓░░░░░░ 68.6% (478/577)
+iOS apps/cashier/index.ts ▓▓▓▓▓▓▓▓▓▓▓░░░░░ 74.1% (565/706)
+Android apps/cashier/index.ts ▓▓▓▓▓▓▓▓▓▓▓░░░░░ 68.8% (514/666)
+iOS apps/cashier/index.ts ▓▓▓▓▓▓▓▓▓▓▓░░░░░ 74.1% (613/727)
+Android apps/cashier/index.ts ▓▓▓▓▓▓▓▓▓▓▓░░░░░ 68.8% (519/687)
+iOS apps/cashier/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓░░░░ 79.5% (682/765)
+Android apps/cashier/index.ts ▓▓▓▓▓▓▓▓▓▓▓░░░░░ 68.8% (519/687)
+iOS apps/cashier/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓░░░ 81.7% (694/768)
+Android apps/cashier/index.ts ▓▓▓▓▓▓▓▓▓▓▓░░░░░ 68.8% (550/695)
+iOS apps/cashier/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓░░░ 81.7% (697/772)
+Android apps/cashier/index.ts ▓▓▓▓▓▓▓▓▓▓▓░░░░░ 70.0% (595/711)
+iOS apps/cashier/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓░░░ 81.7% (700/777)
+Android apps/cashier/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓░░░░ 79.0% (668/755)
+iOS apps/cashier/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░ 92.1% (765/797)
+Android apps/cashier/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓░░░░ 80.8% (686/763)
+iOS apps/cashier/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 97.3% (799/810)
+Android apps/cashier/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░ 91.4% (761/796)
+iOS apps/cashier/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.3% (824/842)
+Android apps/cashier/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 98.0% (830/854)
+iOS apps/cashier/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (875/875)
+Android apps/cashier/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (873/873)
+Android Bundled 93325ms apps/cashier/index.ts (873 modules)
+iOS apps/cashier/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (875/875)
+Android apps/cashier/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (873/873)
+iOS Bundled 94542ms apps/cashier/index.ts (875 modules)
+
+› Assets (24):
+../../node_modules/@react-navigation/elements/lib/module/assets/back-icon-mask.png (653 B)
+../../node_modules/@react-navigation/elements/lib/module/assets/back-icon.png (8 variations | 359 B)
+../../node_modules/@react-navigation/elements/lib/module/assets/clear-icon.png (4 variations | 425 B)
+../../node_modules/@react-navigation/elements/lib/module/assets/close-icon.png (4 variations | 235 B)
+../../node_modules/@react-navigation/elements/lib/module/assets/search-icon.png (7 variations | 592 B)
+
+› android bundles (1):
+_expo/static/js/android/index-321a5624e7471592e132b4dd1951fdc9.hbc (2.33 MB)
+
+› ios bundles (1):
+_expo/static/js/ios/index-bd963e353712de3524d3bf1a0c63c624.hbc (2.33 MB)
+
+› Files (1):
+metadata.json (2.64 kB)
+
+Exported: dist

@@ -1,0 +1,24 @@
+{
+  "name": "@kiosk/offline",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Offline queue, sync engine, and SQLite cache for Kiosk Ke mobile apps",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts --external @react-native-async-storage/async-storage",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@kiosk/core": "workspace:*",
+    "@react-native-async-storage/async-storage": "2.2.0"
+  },
+  "devDependencies": {
+    "@kiosk/config": "workspace:*",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2"
+  }
+}

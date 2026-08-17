@@ -1,0 +1,5 @@
+google-service-account.json
+*.jks
+*.p8
+*.p12
+*.mobileprovision

@@ -1,0 +1,93 @@
+
+> @kiosk/shopper@0.0.1 build /Users/mac/02-DEVELOPMENT/01-REPOS/github.com/aminofabian/palmart/mobile/apps/shopper
+> expo export --platform all
+
+Starting Metro Bundler
+iOS apps/shopper/index.ts ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Android apps/shopper/index.ts ░░░░░░░░░░░░░░░░  0.0% (0/1)
+| (node:10644) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+| (node:10647) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+| (node:10646) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+| (node:10645) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+| (node:10649) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+| (node:10650) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+| (node:10648) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+iOS apps/shopper/index.ts ▓░░░░░░░░░░░░░░░  9.0% (3/9)
+Android apps/shopper/index.ts ▓▓▓▓░░░░░░░░░░░░ 25.0% (12/32)
+iOS apps/shopper/index.ts ▓▓▓▓░░░░░░░░░░░░ 25.0% ( 44/195)
+Android apps/shopper/index.ts ▓▓▓▓░░░░░░░░░░░░ 25.0% ( 75/234)
+iOS apps/shopper/index.ts ▓▓▓▓░░░░░░░░░░░░ 25.0% ( 44/195)
+Android apps/shopper/index.ts ▓▓▓▓░░░░░░░░░░░░ 25.0% (115/271)
+iOS apps/shopper/index.ts ▓▓▓▓░░░░░░░░░░░░ 25.0% ( 44/195)
+Android apps/shopper/index.ts ▓▓▓▓░░░░░░░░░░░░ 27.5% (180/355)
+iOS apps/shopper/index.ts ▓▓▓▓░░░░░░░░░░░░ 25.0% ( 78/241)
+Android apps/shopper/index.ts ▓▓▓▓░░░░░░░░░░░░ 27.5% (200/387)
+iOS apps/shopper/index.ts ▓▓▓▓░░░░░░░░░░░░ 25.0% (139/302)
+Android apps/shopper/index.ts ▓▓▓▓░░░░░░░░░░░░ 29.9% (223/408)
+iOS apps/shopper/index.ts ▓▓▓▓░░░░░░░░░░░░ 26.4% (195/397)
+Android apps/shopper/index.ts ▓▓▓▓▓░░░░░░░░░░░ 36.6% (256/423)
+iOS apps/shopper/index.ts ▓▓▓▓░░░░░░░░░░░░ 26.4% (195/397)
+Android apps/shopper/index.ts ▓▓▓▓▓▓▓░░░░░░░░░ 44.0% (359/576)
+iOS apps/shopper/index.ts ▓▓▓▓▓░░░░░░░░░░░ 32.7% (262/458)
+Android apps/shopper/index.ts ▓▓▓▓▓▓▓░░░░░░░░░ 44.0% (392/604)
+iOS apps/shopper/index.ts ▓▓▓▓▓░░░░░░░░░░░ 37.4% (318/520)
+Android apps/shopper/index.ts ▓▓▓▓▓▓▓░░░░░░░░░ 45.3% (408/606)
+iOS apps/shopper/index.ts ▓▓▓▓▓▓░░░░░░░░░░ 42.4% (392/602)
+Android apps/shopper/index.ts ▓▓▓▓▓▓▓░░░░░░░░░ 46.1% (413/609)
+iOS apps/shopper/index.ts ▓▓▓▓▓▓░░░░░░░░░░ 43.1% (396/603)
+Android apps/shopper/index.ts ▓▓▓▓▓▓▓▓░░░░░░░░ 51.4% (441/615)
+iOS apps/shopper/index.ts ▓▓▓▓▓▓░░░░░░░░░░ 43.1% (396/603)
+Android apps/shopper/index.ts ▓▓▓▓▓▓▓▓▓░░░░░░░ 61.6% (510/650)
+iOS apps/shopper/index.ts ▓▓▓▓▓▓░░░░░░░░░░ 43.3% (397/603)
+Android apps/shopper/index.ts ▓▓▓▓▓▓▓▓▓▓░░░░░░ 68.3% (582/747)
+iOS apps/shopper/index.ts ▓▓▓▓▓▓▓▓░░░░░░░░ 51.7% (440/612)
+Android apps/shopper/index.ts ▓▓▓▓▓▓▓▓▓▓░░░░░░ 68.3% (604/772)
+iOS apps/shopper/index.ts ▓▓▓▓▓▓▓▓▓▓░░░░░░ 63.3% (513/645)
+Android apps/shopper/index.ts ▓▓▓▓▓▓▓▓▓▓░░░░░░ 68.3% (604/772)
+iOS apps/shopper/index.ts ▓▓▓▓▓▓▓▓▓▓░░░░░░ 68.2% (595/751)
+Android apps/shopper/index.ts ▓▓▓▓▓▓▓▓▓▓░░░░░░ 68.3% (608/775)
+iOS apps/shopper/index.ts ▓▓▓▓▓▓▓▓▓▓░░░░░░ 68.2% (602/770)
+Android apps/shopper/index.ts ▓▓▓▓▓▓▓▓▓▓░░░░░░ 68.3% (647/789)
+iOS apps/shopper/index.ts ▓▓▓▓▓▓▓▓▓▓░░░░░░ 68.2% (602/770)
+Android apps/shopper/index.ts ▓▓▓▓▓▓▓▓▓▓▓░░░░░ 73.7% (710/834)
+iOS apps/shopper/index.ts ▓▓▓▓▓▓▓▓▓▓░░░░░░ 68.2% (616/776)
+Android apps/shopper/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓░░░ 82.5% (772/850)
+iOS apps/shopper/index.ts ▓▓▓▓▓▓▓▓▓▓░░░░░░ 68.2% (655/793)
+Android apps/shopper/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓░░░ 82.5% (772/850)
+iOS apps/shopper/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓░░░░ 75.3% (722/832)
+Android apps/shopper/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓░░░ 82.9% (775/852)
+iOS apps/shopper/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓░░░ 82.4% (769/847)
+Android apps/shopper/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓░░░ 85.2% (805/872)
+iOS apps/shopper/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓░░░ 86.1% (813/876)
+Android apps/shopper/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░ 93.3% (852/883)
+iOS apps/shopper/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 98.4% (886/893)
+Android apps/shopper/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 98.2% (882/890)
+iOS apps/shopper/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (956/956)
+Android apps/shopper/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (954/954)
+Android Bundled 93872ms apps/shopper/index.ts (954 modules)
+iOS Bundled 95149ms apps/shopper/index.ts (956 modules)
+
+› Assets (24):
+../../node_modules/@react-navigation/elements/lib/module/assets/back-icon-mask.png (653 B)
+../../node_modules/@react-navigation/elements/lib/module/assets/back-icon.png (8 variations | 359 B)
+../../node_modules/@react-navigation/elements/lib/module/assets/clear-icon.png (4 variations | 425 B)
+../../node_modules/@react-navigation/elements/lib/module/assets/close-icon.png (4 variations | 235 B)
+../../node_modules/@react-navigation/elements/lib/module/assets/search-icon.png (7 variations | 592 B)
+
+› android bundles (1):
+_expo/static/js/android/index-4751c00a35306d728d1684897e79dd2c.hbc (2.62 MB)
+
+› ios bundles (1):
+_expo/static/js/ios/index-816a4a636220821c41b86e2074270d68.hbc (2.61 MB)
+
+› Files (1):
+metadata.json (2.64 kB)
+
+Exported: dist

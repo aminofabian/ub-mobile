@@ -1,0 +1,23 @@
+{
+  "name": "@kiosk/types",
+  "version": "0.0.1",
+  "private": true,
+  "type": "commonjs",
+  "description": "Shared TypeScript types generated from Kiosk Ke backend OpenAPI specs",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "generate": "node scripts/generate.js"
+  },
+  "devDependencies": {
+    "@kiosk/config": "workspace:*",
+    "openapi-typescript": "^7.4.4",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2"
+  }
+}

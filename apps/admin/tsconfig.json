@@ -1,0 +1,8 @@
+{
+  "extends": "@kiosk/config/typescript/react-native.json",
+  "compilerOptions": {
+    "strict": true
+  },
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": ["node_modules", "build", "dist", ".expo"]
+}

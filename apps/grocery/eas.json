@@ -1,0 +1,80 @@
+{
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "base": {
+      "node": "22.11.0",
+      "pnpm": "9.15.0"
+    },
+    "production": {
+      "extends": "base",
+      "channel": "production",
+      "env": {
+        "NODE_ENV": "production"
+      },
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "ios": {
+        "resourceClass": "m-medium"
+      }
+    },
+    "preview": {
+      "extends": "base",
+      "distribution": "internal",
+      "channel": "preview",
+      "android": {
+        "buildType": "apk"
+      },
+      "ios": {
+        "simulator": true
+      }
+    },
+    "palmart": {
+      "extends": "production",
+      "channel": "palmart-production",
+      "env": {
+        "KIOSK_TENANT": "palmart",
+        "TENANT_ID": "palmart",
+        "NODE_ENV": "production"
+      }
+    },
+    "palmart-preview": {
+      "extends": "preview",
+      "channel": "palmart-preview",
+      "env": {
+        "KIOSK_TENANT": "palmart",
+        "TENANT_ID": "palmart",
+        "NODE_ENV": "production"
+      }
+    },
+    "tenant-production": {
+      "extends": "production",
+      "channel": "tenant-production",
+      "env": {
+        "NODE_ENV": "production"
+      }
+    },
+    "tenant-preview": {
+      "extends": "preview",
+      "channel": "tenant-preview",
+      "env": {
+        "NODE_ENV": "production"
+      }
+    }
+  },
+  "submit": {
+    "palmart": {
+      "ios": {
+        "appleTeamId": "APPLE_TEAM_ID",
+        "ascAppId": "APP_STORE_CONNECT_APP_ID"
+      },
+      "android": {
+        "serviceAccountKeyPath": "../../google-service-account.json",
+        "track": "internal"
+      }
+    }
+  }
+}

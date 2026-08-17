@@ -1,0 +1,46 @@
+{
+  "id": "palmart",
+  "slug": "palmart",
+  "displayName": "Palmart",
+  "tenantHostSuffix": "palmart.co.ke",
+  "apiBaseUrl": "https://api.kiosk.ke",
+  "splashBg": "#28a745",
+  "scheme": "palmart",
+  "theme": {
+    "primary": "#28a745",
+    "secondary": "#1e7e34"
+  },
+  "apps": {
+    "cashier": {
+      "name": "Palmart Cashier",
+      "expoSlug": "palmart-cashier",
+      "iosBundleId": "com.palmart.cashier",
+      "androidPackage": "com.palmart.cashier",
+      "easProjectId": "1d30a368-f615-4e55-94cd-e7d1f29df942"
+    },
+    "shopper": {
+      "name": "Palmart",
+      "expoSlug": "palmart-shopper",
+      "iosBundleId": "com.palmart.shopper",
+      "androidPackage": "com.palmart.shopper"
+    },
+    "grocery": {
+      "name": "Palmart Grocery",
+      "expoSlug": "palmart-grocery",
+      "iosBundleId": "com.palmart.grocery",
+      "androidPackage": "com.palmart.grocery"
+    },
+    "admin": {
+      "name": "Palmart Admin",
+      "expoSlug": "palmart-admin",
+      "iosBundleId": "com.palmart.admin",
+      "androidPackage": "com.palmart.admin"
+    },
+    "stock": {
+      "name": "Palmart Stock",
+      "expoSlug": "palmart-stock",
+      "iosBundleId": "com.palmart.stock",
+      "androidPackage": "com.palmart.stock"
+    }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "name": "@kiosk/ui",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Shared React Native UI components for Kiosk Ke mobile apps",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts --external react --external react-native",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "react": "^19.1.0",
+    "react-native": "~0.81.5"
+  },
+  "devDependencies": {
+    "@kiosk/config": "workspace:*",
+    "@types/react": "^19.1.10",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2"
+  }
+}

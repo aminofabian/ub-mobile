@@ -1,0 +1,24 @@
+{
+  "name": "@kiosk/realtime",
+  "version": "0.0.1",
+  "private": true,
+  "description": "WebSocket realtime client for Kiosk Ke mobile apps",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "react-native": "./src/index.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@kiosk/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@kiosk/config": "workspace:*",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2"
+  }
+}

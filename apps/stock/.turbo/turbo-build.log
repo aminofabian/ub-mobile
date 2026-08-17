@@ -1,0 +1,93 @@
+
+> @kiosk/stock@0.0.1 build /Users/mac/02-DEVELOPMENT/01-REPOS/github.com/aminofabian/palmart/mobile/apps/stock
+> expo export --platform all
+
+Starting Metro Bundler
+iOS apps/stock/index.ts ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Android apps/stock/index.ts ░░░░░░░░░░░░░░░░  0.0% (0/1)
+| (node:10657) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+| (node:10659) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+| (node:10660) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+iOS apps/stock/index.ts ▓░░░░░░░░░░░░░░░  6.3% ( 3/12)
+Android apps/stock/index.ts ▓░░░░░░░░░░░░░░░ 12.2% (11/52)
+| (node:10662) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+iOS apps/stock/index.ts ▓▓░░░░░░░░░░░░░░ 14.1% ( 16/138)
+Android apps/stock/index.ts ▓░░░░░░░░░░░░░░░ 12.2% ( 45/178)
+| (node:10661) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+| (node:10664) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+| (node:10663) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+iOS apps/stock/index.ts ▓▓░░░░░░░░░░░░░░ 14.1% ( 24/168)
+Android apps/stock/index.ts ▓░░░░░░░░░░░░░░░ 12.2% ( 64/207)
+iOS apps/stock/index.ts ▓▓░░░░░░░░░░░░░░ 14.1% ( 26/171)
+Android apps/stock/index.ts ▓▓░░░░░░░░░░░░░░ 17.5% (105/251)
+iOS apps/stock/index.ts ▓▓░░░░░░░░░░░░░░ 14.1% ( 51/207)
+Android apps/stock/index.ts ▓▓▓░░░░░░░░░░░░░ 23.9% (134/274)
+iOS apps/stock/index.ts ▓▓▓░░░░░░░░░░░░░ 23.4% (135/286)
+Android apps/stock/index.ts ▓▓▓░░░░░░░░░░░░░ 24.3% (141/286)
+iOS apps/stock/index.ts ▓▓▓▓░░░░░░░░░░░░ 30.0% (168/333)
+Android apps/stock/index.ts ▓▓▓▓░░░░░░░░░░░░ 27.9% (211/401)
+iOS apps/stock/index.ts ▓▓▓▓░░░░░░░░░░░░ 30.0% (205/402)
+Android apps/stock/index.ts ▓▓▓▓▓░░░░░░░░░░░ 34.6% (281/478)
+iOS apps/stock/index.ts ▓▓▓▓▓░░░░░░░░░░░ 33.0% (286/498)
+Android apps/stock/index.ts ▓▓▓▓▓░░░░░░░░░░░ 36.9% (305/502)
+iOS apps/stock/index.ts ▓▓▓▓▓▓░░░░░░░░░░ 37.8% (308/501)
+Android apps/stock/index.ts ▓▓▓▓▓▓░░░░░░░░░░ 39.4% (365/620)
+iOS apps/stock/index.ts ▓▓▓▓▓▓░░░░░░░░░░ 40.3% (340/609)
+Android apps/stock/index.ts ▓▓▓▓▓▓░░░░░░░░░░ 40.9% (403/630)
+iOS apps/stock/index.ts ▓▓▓▓▓▓░░░░░░░░░░ 40.3% (357/617)
+Android apps/stock/index.ts ▓▓▓▓▓▓▓░░░░░░░░░ 49.4% (457/653)
+iOS apps/stock/index.ts ▓▓▓▓▓▓░░░░░░░░░░ 40.3% (389/628)
+Android apps/stock/index.ts ▓▓▓▓▓▓▓▓░░░░░░░░ 53.5% (490/670)
+iOS apps/stock/index.ts ▓▓▓▓▓▓▓▓░░░░░░░░ 50.7% (467/656)
+Android apps/stock/index.ts ▓▓▓▓▓▓▓▓░░░░░░░░ 54.4% (494/670)
+iOS apps/stock/index.ts ▓▓▓▓▓▓▓▓░░░░░░░░ 54.9% (498/673)
+Android apps/stock/index.ts ▓▓▓▓▓▓▓▓▓░░░░░░░ 62.2% (537/684)
+iOS apps/stock/index.ts ▓▓▓▓▓▓▓▓▓░░░░░░░ 57.9% (518/681)
+Android apps/stock/index.ts ▓▓▓▓▓▓▓▓▓▓▓░░░░░ 71.6% (615/727)
+iOS apps/stock/index.ts ▓▓▓▓▓▓▓▓▓▓▓░░░░░ 69.4% (605/726)
+Android apps/stock/index.ts ▓▓▓▓▓▓▓▓▓▓▓░░░░░ 73.4% (627/732)
+iOS apps/stock/index.ts ▓▓▓▓▓▓▓▓▓▓▓░░░░░ 74.4% (633/734)
+Android apps/stock/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓░░░░ 80.4% (668/745)
+iOS apps/stock/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓░░░░ 80.2% (670/748)
+Android apps/stock/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓░░░░ 80.7% (671/747)
+iOS apps/stock/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓░░░░ 80.5% (671/748)
+Android apps/stock/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░ 91.7% (723/756)
+iOS apps/stock/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░ 92.2% (723/753)
+Android apps/stock/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░ 92.5% (729/758)
+iOS apps/stock/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░ 92.3% (746/783)
+Android apps/stock/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░ 92.5% (751/786)
+iOS apps/stock/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 96.3% (780/795)
+Android apps/stock/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 97.5% (787/797)
+iOS apps/stock/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.0% (828/849)
+Android apps/stock/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.5% (832/854)
+iOS apps/stock/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (863/863)
+Android apps/stock/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (861/861)
+Android Bundled 93120ms apps/stock/index.ts (861 modules)
+iOS apps/stock/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (863/863)
+Android apps/stock/index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (861/861)
+iOS Bundled 94359ms apps/stock/index.ts (863 modules)
+
+› Assets (24):
+../../node_modules/@react-navigation/elements/lib/module/assets/back-icon-mask.png (653 B)
+../../node_modules/@react-navigation/elements/lib/module/assets/back-icon.png (8 variations | 359 B)
+../../node_modules/@react-navigation/elements/lib/module/assets/clear-icon.png (4 variations | 425 B)
+../../node_modules/@react-navigation/elements/lib/module/assets/close-icon.png (4 variations | 235 B)
+../../node_modules/@react-navigation/elements/lib/module/assets/search-icon.png (7 variations | 592 B)
+
+› android bundles (1):
+_expo/static/js/android/index-28db45b06a10112f75a1ee3dafaa96c2.hbc (2.28 MB)
+
+› ios bundles (1):
+_expo/static/js/ios/index-8a00064b8e3dd7b031d304c3080f69b5.hbc (2.28 MB)
+
+› Files (1):
+metadata.json (2.64 kB)
+
+Exported: dist

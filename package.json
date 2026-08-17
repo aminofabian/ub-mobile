@@ -1,0 +1,43 @@
+{
+  "name": "kiosk-mobile",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Kiosk Ke mobile apps monorepo",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20.19.0",
+    "pnpm": ">=9.0.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "shopper": "pnpm --filter @kiosk/shopper",
+    "cashier": "pnpm --filter @kiosk/cashier",
+    "grocery": "pnpm --filter @kiosk/grocery",
+    "admin": "pnpm --filter @kiosk/admin",
+    "stock": "pnpm --filter @kiosk/stock",
+    "start:shopper": "pnpm --filter @kiosk/shopper start",
+    "start:cashier": "pnpm --filter @kiosk/cashier start",
+    "start:grocery": "pnpm --filter @kiosk/grocery start",
+    "start:admin": "pnpm --filter @kiosk/admin start",
+    "start:stock": "pnpm --filter @kiosk/stock start",
+    "start:tenant": "node scripts/run-tenant-app.js",
+    "assets:tenant": "node scripts/generate-tenant-assets.js",
+    "assets:default": "node scripts/sync-default-app-assets.js",
+    "eas:sync": "node scripts/sync-eas-config.js",
+    "eas:init": "node scripts/eas-tenant-init.js",
+    "eas:build:tenant": "node scripts/eas-tenant-build.js",
+    "eas:submit": "node scripts/eas-tenant-submit.js",
+    "publish:tenant": "node scripts/publish-tenant-shopper.js"
+  },
+  "devDependencies": {
+    "eas-cli": "^16.32.0",
+    "sharp": "^0.35.2",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2"
+  }
+}

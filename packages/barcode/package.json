@@ -1,0 +1,25 @@
+{
+  "name": "@kiosk/barcode",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Barcode scanner wrapper for Kiosk Ke mobile apps",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup src/index.tsx --format cjs,esm --dts --external react --external react-native --external expo-camera",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "react": "^19.1.0",
+    "react-native": "~0.81.5"
+  },
+  "devDependencies": {
+    "@kiosk/config": "workspace:*",
+    "@types/react": "^19.1.10",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2"
+  }
+}

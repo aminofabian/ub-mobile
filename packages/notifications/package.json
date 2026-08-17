@@ -1,0 +1,23 @@
+{
+  "name": "@kiosk/notifications",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Push notification registration and handling for Kiosk Ke mobile apps",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts --external expo-notifications --external expo-constants",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@kiosk/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@kiosk/config": "workspace:*",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2"
+  }
+}
