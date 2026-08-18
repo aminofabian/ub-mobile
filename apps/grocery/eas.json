@@ -1,24 +1,28 @@
 {
   "cli": {
-    "version": ">= 16.0.0",
+    "version": ">= 16.32.0",
     "appVersionSource": "remote"
   },
   "build": {
     "base": {
       "node": "22.11.0",
-      "pnpm": "9.15.0"
+      "pnpm": "9.15.0",
+      "cache": {
+        "disabled": false,
+        "key": "palmart-mobile-free"
+      },
+      "android": {
+        "resourceClass": "medium"
+      },
+      "ios": {
+        "resourceClass": "medium"
+      }
     },
     "production": {
       "extends": "base",
       "channel": "production",
-      "env": {
-        "NODE_ENV": "production"
-      },
       "android": {
         "buildType": "app-bundle"
-      },
-      "ios": {
-        "resourceClass": "m-medium"
       }
     },
     "preview": {
@@ -37,8 +41,7 @@
       "channel": "palmart-production",
       "env": {
         "KIOSK_TENANT": "palmart",
-        "TENANT_ID": "palmart",
-        "NODE_ENV": "production"
+        "TENANT_ID": "palmart"
       }
     },
     "palmart-preview": {
@@ -46,23 +49,16 @@
       "channel": "palmart-preview",
       "env": {
         "KIOSK_TENANT": "palmart",
-        "TENANT_ID": "palmart",
-        "NODE_ENV": "production"
+        "TENANT_ID": "palmart"
       }
     },
     "tenant-production": {
       "extends": "production",
-      "channel": "tenant-production",
-      "env": {
-        "NODE_ENV": "production"
-      }
+      "channel": "tenant-production"
     },
     "tenant-preview": {
       "extends": "preview",
-      "channel": "tenant-preview",
-      "env": {
-        "NODE_ENV": "production"
-      }
+      "channel": "tenant-preview"
     }
   },
   "submit": {

@@ -10,7 +10,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { easBin, mobileRoot } = require('./eas-cli');
+const { easBin, easEnv, mobileRoot } = require('./eas-cli');
 
 const tenant = process.argv[2]?.trim();
 const app = process.argv[3]?.trim();
@@ -42,13 +42,12 @@ const before = JSON.parse(fs.readFileSync(appJsonPath, 'utf8'));
 const beforeProjectId = before.expo?.extra?.eas?.projectId ?? null;
 
 console.log(`Linking ${tenant}/${app} with EAS (slug from tenants/${tenant})…`);
-const result = spawnSync(easBin(), ['init'], {
+const result = spawnSync(easBin(), ['init', '--non-interactive', '--force'], {
   cwd: appDir,
-  env: {
-    ...process.env,
+  env: easEnv({
     KIOSK_TENANT: tenant,
     TENANT_ID: tenant,
-  },
+  }),
   stdio: 'inherit',
   shell: false,
 });

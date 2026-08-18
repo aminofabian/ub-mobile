@@ -5,7 +5,7 @@
  */
 const { spawnSync } = require('child_process');
 const path = require('path');
-const { easBin } = require('./eas-cli');
+const { easBin, easEnv } = require('./eas-cli');
 
 const app = process.argv[2]?.trim();
 const profile = process.argv[3]?.trim() || 'palmart';
@@ -28,6 +28,7 @@ const result = spawnSync(
   ['submit', '--profile', profile, '--latest', '--non-interactive'],
   {
     cwd: appDir,
+    env: easEnv(),
     stdio: 'inherit',
     shell: false,
   }

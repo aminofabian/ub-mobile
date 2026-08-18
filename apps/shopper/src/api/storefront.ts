@@ -88,12 +88,54 @@ export async function fetchCategories(slug: string): Promise<CategoryListRespons
   );
 }
 
+export type CatalogType = {
+  id: string;
+  label: string;
+  icon?: string | null;
+  itemCount?: number;
+};
+
+export type AirtimeConfig = {
+  available: boolean;
+  minAmount?: number;
+  maxAmount?: number;
+  currency?: string;
+  quickAmounts?: number[];
+};
+
+export async function fetchCatalogTypes(slug: string): Promise<{ types: CatalogType[] }> {
+  return publicApiRequest<{ types: CatalogType[] }>(
+    API_BASE_URL,
+    'GET',
+    `/api/v1/public/businesses/${slug}/catalog/types`
+  );
+}
+
+export async function fetchAirtimeConfig(slug: string): Promise<AirtimeConfig | null> {
+  try {
+    return await publicApiRequest<AirtimeConfig>(
+      API_BASE_URL,
+      'GET',
+      `/api/v1/public/businesses/${slug}/airtime`
+    );
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchItems(
   slug: string,
-  options: { categoryId?: string; cursor?: string; limit?: number; search?: string } = {}
-): Promise<CatalogListResponse> {
+  options: {
+    categoryId?: string;
+    typeId?: string;
+    cursor?: string;
+    limit?: number;
+    search?: string;
+  } = {}
+): Promise<CatalogListResponse & { totalCount?: number | null }> {
   const params: string[] = [];
   if (options.categoryId) params.push(`categoryId=${encodeURIComponent(options.categoryId)}`);
+  if (options.typeId) params.push(`typeId=${encodeURIComponent(options.typeId)}`);
   if (options.cursor) params.push(`cursor=${encodeURIComponent(options.cursor)}`);
   if (options.limit) params.push(`limit=${encodeURIComponent(String(options.limit))}`);
   if (options.search) params.push(`q=${encodeURIComponent(options.search)}`);

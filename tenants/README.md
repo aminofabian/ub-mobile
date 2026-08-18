@@ -45,13 +45,14 @@ pnpm start:tenant palmart cashier
 | `pnpm start:tenant palmart cashier` | Run a white-label app locally |
 | `pnpm eas:init palmart cashier` | Create/link the Expo EAS project for that tenant app |
 | `pnpm eas:sync` | Copy `eas.json` into each app directory |
-| `node scripts/eas-tenant-build.js palmart cashier all` | EAS cloud build (`TENANT_ID` is set for you) |
-| `node scripts/eas-tenant-submit.js cashier palmart` | Submit latest build to stores |
+| `pnpm eas:build:tenant palmart cashier android palmart-preview` | EAS Android APK (Free plan; `TENANT_ID` is set) |
+| `pnpm eas:update:tenant palmart cashier palmart-preview "message"` | OTA JS update (does not use build quota) |
+| `pnpm eas:submit cashier palmart` | Submit latest production build to stores |
 
-Build without a helper script:
+Build without a helper script (Android only on Free):
 
 ```bash
-TENANT_ID=palmart eas build --platform all --profile tenant-production
+TENANT_ID=palmart eas build --platform android --profile palmart-preview --no-wait
 ```
 
 ## Adding a new business

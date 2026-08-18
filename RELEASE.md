@@ -1,14 +1,25 @@
-# Palmart mobile release (EAS)
+# Palmart mobile release (EAS Free plan)
 
-One-time setup, then build and submit white-label Palmart apps to the stores.
+Expo Free includes **15 Android + 15 iOS builds per month**, **1 concurrent job**, a **45-minute timeout**, medium workers only, and OTA updates for **1,000 MAUs**. Native cloud builds are scarce; JS-only fixes should go out as OTA updates.
+
+## Stay on Free
+
+| Do | Don't |
+|----|--------|
+| One app at a time (Cashier first) | Init/build all 5 apps |
+| `android` only until Play works | `--platform all` (counts as 2 builds) |
+| `palmart-preview` APK for testers | Production AAB until you submit |
+| `pnpm eas:update:tenant` for JS/UI | Rebuild native for copy/color/bugfix |
+| `pnpm start:tenant palmart cashier` locally | Burn quota iterating on EAS |
+
+`pnpm eas:build:tenant` defaults to **android**, **does not wait** (check the Expo URL), and refuses `all` unless you set `EAS_ALLOW_ALL_PLATFORMS=1`.
 
 ## Prerequisites
 
-- [Expo account](https://expo.dev/signup) and `npm i -g eas-cli`
-- Apple Developer Program membership (iOS)
+- [Expo account](https://expo.dev/signup) — `cd mobile && pnpm exec eas login`
+- Apple Developer Program membership only when you actually build iOS
 - Google Play Console account (Android)
-- Register bundle IDs in Apple / package names in Google:
-  - `com.palmart.cashier`, `com.palmart.shopper`, `com.palmart.grocery`, `com.palmart.admin`, `com.palmart.stock`
+- Register `com.palmart.cashier` in Play (add other package names when those apps ship)
 
 ## 1. Generate branding assets
 
@@ -20,50 +31,62 @@ pnpm assets:default             # copies into apps/*/assets for generic dev
 
 Replace `tenants/palmart/assets/source/icon-source.png` with your official logo and re-run `pnpm assets:tenant palmart`.
 
-## 2. Link each app to EAS (once per app)
-
-From `mobile/` (requires `eas login` first):
+## 2. Link Cashier to EAS (once)
 
 ```bash
+cd mobile
 pnpm eas:init palmart cashier
 ```
 
-Repeat for `shopper`, `grocery`, `admin`, `stock`. Each white-label app is a separate EAS project (separate store listing). The Expo project id is stored on `tenants/palmart/config.json`, not generic `app.json`.
+Do **not** init shopper/grocery/admin/stock until you are ready to spend a native build on each. The Expo project id is stored on `tenants/palmart/config.json`.
 
-## 3. Configure store credentials
+## 3. Configure store credentials (when submitting)
 
 Edit `mobile/eas.json` submit section:
 
-- **iOS:** set `appleTeamId` and `ascAppId` (App Store Connect app ID) under `submit.palmart.ios`
+- **iOS:** set `appleTeamId` and `ascAppId` under `submit.palmart.ios`
 - **Android:** place a Play Console service account JSON at `mobile/google-service-account.json` (gitignored)
 
 ```bash
 pnpm eas:sync   # copies eas.json into each apps/*/ folder
 ```
 
-## 4. Cloud build
+## 4. Native cloud build (quota)
 
 ```bash
 cd mobile
-pnpm eas:sync
-node scripts/eas-tenant-build.js palmart cashier all
-node scripts/eas-tenant-build.js palmart shopper android
+pnpm eas:build:tenant palmart cashier android palmart-preview
 ```
+
+Watch the Expo URL; the CLI returns as soon as the job is queued. Wait with `EAS_WAIT=1` only if you need the APK in this terminal.
 
 Profiles:
 
 | Profile | Use |
 |---------|-----|
-| `palmart` | Production store build (AAB / IPA) |
-| `palmart-preview` | Internal APK / iOS simulator |
+| `palmart-preview` | Internal APK (Free-plan default) |
+| `palmart` | Play Store AAB / App Store IPA |
 | `production` | Generic Kiosk Ke (no baked-in tenant) |
 
-## 5. Submit to stores
+## 5. JS updates (no build quota)
 
-After a successful build:
+After a preview/production binary is installed, push JS-only changes:
 
 ```bash
-node scripts/eas-tenant-submit.js cashier palmart
+cd mobile
+pnpm eas:update:tenant palmart cashier palmart-preview "Fix PIN login"
+```
+
+Production channel is `palmart-production`. Rebuild native only when you change native modules, app version, or credentials.
+
+Free OTA cap is 1,000 monthly active users.
+
+## 6. Submit to stores
+
+After a successful **production** (`palmart`) build:
+
+```bash
+pnpm eas:submit cashier palmart
 ```
 
 ## Local testing (no EAS)
@@ -73,12 +96,3 @@ pnpm start:tenant palmart cashier
 ```
 
 The app opens as **Palmart Cashier**, auto-connects to tenant `palmart`, and uses branded icon/splash from `tenants/palmart/assets/`.
-
-## OTA updates (EAS Update)
-
-Production Palmart builds use channel `palmart-production`. Push JS-only fixes without a store review:
-
-```bash
-cd mobile/apps/cashier
-KIOSK_TENANT=palmart eas update --channel palmart-production --message "Fix checkout"
-```

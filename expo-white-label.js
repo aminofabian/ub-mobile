@@ -41,6 +41,16 @@ function applyWhiteLabel(expo, appKey) {
     throw new Error(`Tenant "${tenantId}" is missing "slug".`);
   }
 
+  const tenantHostSuffix = profile.tenantHostSuffix ?? expo.extra?.tenantHostSuffix;
+  const configuredHost =
+    typeof profile.tenantHost === 'string' ? profile.tenantHost.trim().toLowerCase() : '';
+  const tenantHost =
+    configuredHost ||
+    (typeof tenantHostSuffix === 'string' &&
+    (tenantHostSuffix === slug || tenantHostSuffix.startsWith(`${slug}.`))
+      ? tenantHostSuffix
+      : undefined);
+
   const splashColor =
     appProfile.splashBackgroundColor ??
     profile.splashBg ??
@@ -87,6 +97,15 @@ function applyWhiteLabel(expo, appKey) {
     slug: appProfile.expoSlug ?? `${tenantId}-${appKey}`,
     scheme: schemes.length === 1 ? schemes[0] : schemes,
     icon,
+    runtimeVersion: expo.runtimeVersion ?? { policy: 'appVersion' },
+    ...(easProjectId
+      ? {
+          updates: {
+            ...(expo.updates ?? {}),
+            url: `https://u.expo.dev/${easProjectId}`,
+          },
+        }
+      : {}),
     splash: {
       ...expo.splash,
       backgroundColor: splashColor,
@@ -117,7 +136,8 @@ function applyWhiteLabel(expo, appKey) {
       embeddedTenantSlug: slug,
       isWhiteLabel: true,
       tenantDisplayName: profile.displayName ?? slug,
-      tenantHostSuffix: profile.tenantHostSuffix ?? expo.extra?.tenantHostSuffix,
+      tenantHostSuffix: tenantHostSuffix ?? expo.extra?.tenantHostSuffix,
+      ...(tenantHost ? { tenantHost } : {}),
       apiBaseUrl,
       apiBaseURL: apiBaseUrl,
       primaryColor,

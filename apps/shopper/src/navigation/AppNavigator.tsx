@@ -9,17 +9,9 @@ import { CheckoutScreen } from '../screens/CheckoutScreen';
 import { PaymentScreen } from '../screens/PaymentScreen';
 import { OrderConfirmationScreen } from '../screens/OrderConfirmationScreen';
 import { OrderDetailScreen } from '../screens/OrderDetailScreen';
+import type { RootStackParamList } from './types';
 
-export type RootStackParamList = {
-  MainTabs: undefined;
-  ProductDetail: { itemId: string };
-  Category: { categoryId: string; categoryName: string };
-  Search: undefined;
-  Checkout: undefined;
-  Payment: { orderId: string; grandTotal: number; currency: string; customerPhone: string };
-  OrderConfirmation: { orderId: string };
-  OrderDetail: { orderId: string };
-};
+export type { RootStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 

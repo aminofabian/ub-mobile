@@ -41,6 +41,14 @@ export function tenantHostSuffix(): string {
   return (Constants.expoConfig?.extra?.tenantHostSuffix as string | undefined) ?? 'localhost';
 }
 
+/** Full hostname for a white-label tenant (e.g. palmart.co.ke), if baked in. */
+export function tenantHost(): string | null {
+  const host = Constants.expoConfig?.extra?.tenantHost;
+  if (typeof host !== 'string') return null;
+  const trimmed = host.trim().toLowerCase().replace(/^https?:\/\//, '').split('/')[0] ?? '';
+  return trimmed || null;
+}
+
 export type WhiteLabelThemeColors = {
   primary?: string;
   secondary?: string;

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Linking } from 'react-native';
 import { QueryClientProvider } from '@tanstack/react-query';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import {
   bootstrapTenant,
   getEmbeddedTenantSlug,
@@ -128,13 +129,15 @@ export function App() {
   }
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <TenantProvider tenant={boot.tenant}>
-        <RealtimeBridge />
-        <AppNavigator />
-        <StatusBar style="auto" />
-      </TenantProvider>
-    </QueryClientProvider>
+    <SafeAreaProvider>
+      <QueryClientProvider client={queryClient}>
+        <TenantProvider tenant={boot.tenant}>
+          <RealtimeBridge />
+          <AppNavigator />
+          <StatusBar style="dark" />
+        </TenantProvider>
+      </QueryClientProvider>
+    </SafeAreaProvider>
   );
 }
 

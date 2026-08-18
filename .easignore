@@ -1,0 +1,35 @@
+# Used when EAS_PROJECT_ROOT points at mobile/ (no git, or script override).
+# Paths are relative to this directory.
+
+.env
+.env.*
+!.env.example
+!.env.*.example
+.envrc
+.direnv/
+
+node_modules/
+**/.expo/
+**/.turbo/
+**/.gradle/
+apps/*/android/
+apps/*/ios/
+apps/*/dist/
+apps/*/build/
+artifacts/
+tenants/*/assets/source/
+
+*.jks
+*.p8
+*.p12
+*.mobileprovision
+google-service-account.json
+*.dmg
+*.exe
+*.apk
+*.aab
+*.ipa
+
+.DS_Store
+*.log
+coverage/

@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "Kiosk Ke Shopper",
+    "slug": "kiosk-shopper",
+    "version": "0.0.1",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#28a745"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.kioskke.shopper"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#28a745"
+      },
+      "package": "com.kioskke.shopper"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Palmart to use your camera to scan product barcodes."
+        }
+      ]
+    ],
+    "extra": {
+      "apiBaseURL": "https://api.kiosk.ke"
+    }
+  }
+}

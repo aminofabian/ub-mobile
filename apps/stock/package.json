@@ -12,7 +12,8 @@
     "build": "expo export --platform all",
     "clean": "rm -rf dist build .expo",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint . --ext .ts,.tsx"
+    "lint": "eslint . --ext .ts,.tsx",
+    "eas-build-post-install": "node ../../scripts/eas-post-install.js"
   },
   "dependencies": {
     "@kiosk/barcode": "workspace:*",

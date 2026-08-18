@@ -14,6 +14,7 @@ import { useTenant } from '../lib/TenantContext';
 import { useItems } from '../hooks/useItems';
 import { ProductCard } from '../components/ProductCard';
 import { RootStackParamList } from '../navigation/AppNavigator';
+import { martFromTenant } from '../theme/mart';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Category'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -31,6 +32,7 @@ export function CategoryScreen() {
   });
 
   const items = data?.items ?? [];
+  const accent = martFromTenant(tenant).primary;
 
   const handleItemPress = useCallback(
     (item: Item) => {
@@ -77,6 +79,7 @@ export function CategoryScreen() {
           <ProductCard
             item={item}
             currency={data?.currency}
+            accent={accent}
             onPress={handleItemPress}
           />
         </View>

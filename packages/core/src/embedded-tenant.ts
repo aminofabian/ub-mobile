@@ -1,7 +1,7 @@
 import Constants from 'expo-constants';
 
 import { clearTenant, loadTenant, resolveTenant, type TenantContext } from './tenant';
-import { tenantHostSuffix } from './mobile-config';
+import { tenantHost, tenantHostSuffix } from './mobile-config';
 
 export function getEmbeddedTenantSlug(): string | null {
   const slug = Constants.expoConfig?.extra?.embeddedTenantSlug;
@@ -27,21 +27,28 @@ export function getTenantDisplayName(): string | null {
  */
 export async function bootstrapTenant(baseURL: string): Promise<TenantContext | null> {
   const embeddedSlug = getEmbeddedTenantSlug();
+  const bakedHost = tenantHost();
   const stored = await loadTenant();
 
   if (stored) {
-    if (embeddedSlug && stored.slug !== embeddedSlug) {
+    const slugMismatch = Boolean(embeddedSlug && stored.slug !== embeddedSlug);
+    const hostMismatch = Boolean(bakedHost && stored.host !== bakedHost);
+    if (slugMismatch || hostMismatch) {
       await clearTenant();
     } else {
       return stored;
     }
   }
 
-  if (!embeddedSlug) {
+  if (!embeddedSlug && !bakedHost) {
     return null;
   }
 
-  return resolveTenant(embeddedSlug, baseURL, {
+  if (bakedHost) {
+    return resolveTenant(bakedHost, baseURL);
+  }
+
+  return resolveTenant(embeddedSlug as string, baseURL, {
     hostSuffixes: [tenantHostSuffix()],
   });
 }

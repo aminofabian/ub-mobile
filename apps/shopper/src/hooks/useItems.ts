@@ -3,7 +3,13 @@ import { fetchItems } from '../api/storefront';
 
 export function useItems(
   slug: string | undefined,
-  options: { categoryId?: string; cursor?: string; limit?: number; search?: string } = {}
+  options: {
+    categoryId?: string;
+    typeId?: string;
+    cursor?: string;
+    limit?: number;
+    search?: string;
+  } = {}
 ) {
   return useQuery({
     queryKey: ['items', slug, options],

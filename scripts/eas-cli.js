@@ -13,4 +13,14 @@ function easBin() {
   return 'eas';
 }
 
-module.exports = { mobileRoot, easBin };
+/** Limit the EAS upload to the Expo workspace, not backend/frontend/desktop. */
+function easEnv(extra = {}) {
+  return {
+    ...process.env,
+    EAS_NO_VCS: '1',
+    EAS_PROJECT_ROOT: mobileRoot(),
+    ...extra,
+  };
+}
+
+module.exports = { mobileRoot, easBin, easEnv };

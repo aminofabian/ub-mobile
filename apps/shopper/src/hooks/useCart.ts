@@ -23,7 +23,7 @@ export function useCart(slug: string | undefined) {
     enabled: !!slug && !!cartIdQuery.data,
   });
 
-  const addToCart = useMutation({
+  const setLineQty = useMutation({
     mutationFn: async ({ itemId, quantity }: { itemId: string; quantity: number }) => {
       if (!slug) throw new Error('No tenant');
 
@@ -38,19 +38,40 @@ export function useCart(slug: string | undefined) {
 
       if (!cartId) throw new Error('Failed to create cart');
 
-      const updatedCart = await addCartLine(slug, cartId, { itemId, quantity });
-      return updatedCart;
+      return addCartLine(slug, cartId, { itemId, quantity: Math.max(0, quantity) });
     },
-    onSuccess: () => {
+    onSuccess: (updatedCart) => {
+      if (updatedCart.id) {
+        queryClient.setQueryData(['cartId', slug], updatedCart.id);
+        queryClient.setQueryData(['cart', slug, updatedCart.id], updatedCart);
+      }
       queryClient.invalidateQueries({ queryKey: ['cart', slug] });
       queryClient.invalidateQueries({ queryKey: ['cartId', slug] });
     },
   });
+
+  const addToCart = useMutation({
+    mutationFn: async ({ itemId, quantity }: { itemId: string; quantity: number }) => {
+      const current =
+        cartQuery.data?.lines?.find((line) => line.itemId === itemId)?.quantity ?? 0;
+      return setLineQty.mutateAsync({ itemId, quantity: current + quantity });
+    },
+  });
+
+  const lines = cartQuery.data?.lines ?? [];
+  const itemCount = lines.reduce((sum, line) => sum + (line.quantity ?? 0), 0);
+
+  function quantityFor(itemId: string): number {
+    return lines.find((line) => line.itemId === itemId)?.quantity ?? 0;
+  }
 
   return {
     cart: cartQuery.data,
     cartId: cartIdQuery.data,
     isLoading: cartQuery.isLoading || cartIdQuery.isLoading,
     addToCart,
+    setLineQty,
+    itemCount,
+    quantityFor,
   };
 }

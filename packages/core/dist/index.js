@@ -73,6 +73,7 @@ __export(index_exports, {
   resolveTenantByEmail: () => resolveTenantByEmail,
   resolveTenantFromDeepLink: () => resolveTenantFromDeepLink,
   storeTokens: () => storeTokens,
+  tenantHost: () => tenantHost,
   tenantHostSuffix: () => tenantHostSuffix,
   useTenantDeepLink: () => useTenantDeepLink
 });
@@ -85,6 +86,16 @@ var DEFAULT_HOST_SUFFIXES = ["localhost", "palmart.co.ke", "kiosk.ke"];
 function normalizeSlug(input) {
   return input.trim().toLowerCase().replace(/^https?:\/\//, "").split("/")[0]?.split(".")[0] ?? "";
 }
+function hostFromSlugAndSuffix(slug, suffix) {
+  const clean = suffix.trim().toLowerCase().replace(/^\./, "");
+  if (!clean) {
+    return slug;
+  }
+  if (clean === slug || clean.startsWith(`${slug}.`)) {
+    return clean;
+  }
+  return `${slug}.${clean}`;
+}
 function hostCandidates(input, extraSuffixes = []) {
   const trimmed = input.trim().toLowerCase();
   if (trimmed.includes(".")) {
@@ -92,7 +103,7 @@ function hostCandidates(input, extraSuffixes = []) {
   }
   const slug = normalizeSlug(trimmed);
   const suffixes = [.../* @__PURE__ */ new Set([...extraSuffixes, ...DEFAULT_HOST_SUFFIXES])];
-  return suffixes.map((suffix) => `${slug}.${suffix}`);
+  return [...new Set(suffixes.map((suffix) => hostFromSlugAndSuffix(slug, suffix)))];
 }
 function mapHostResolve(host, body) {
   return {
@@ -812,6 +823,12 @@ function resolveMobileApiBaseUrl() {
 function tenantHostSuffix() {
   return import_expo_constants.default.expoConfig?.extra?.tenantHostSuffix ?? "localhost";
 }
+function tenantHost() {
+  const host = import_expo_constants.default.expoConfig?.extra?.tenantHost;
+  if (typeof host !== "string") return null;
+  const trimmed = host.trim().toLowerCase().replace(/^https?:\/\//, "").split("/")[0] ?? "";
+  return trimmed || null;
+}
 function getWhiteLabelExtra() {
   const extra = import_expo_constants.default.expoConfig?.extra ?? {};
   return {
@@ -840,16 +857,22 @@ function getTenantDisplayName() {
 }
 async function bootstrapTenant(baseURL) {
   const embeddedSlug = getEmbeddedTenantSlug();
+  const bakedHost = tenantHost();
   const stored = await loadTenant();
   if (stored) {
-    if (embeddedSlug && stored.slug !== embeddedSlug) {
+    const slugMismatch = Boolean(embeddedSlug && stored.slug !== embeddedSlug);
+    const hostMismatch = Boolean(bakedHost && stored.host !== bakedHost);
+    if (slugMismatch || hostMismatch) {
       await clearTenant();
     } else {
       return stored;
     }
   }
-  if (!embeddedSlug) {
+  if (!embeddedSlug && !bakedHost) {
     return null;
+  }
+  if (bakedHost) {
+    return resolveTenant(bakedHost, baseURL);
   }
   return resolveTenant(embeddedSlug, baseURL, {
     hostSuffixes: [tenantHostSuffix()]
@@ -909,6 +932,7 @@ async function fetchPublicMobileConfig(baseURL, slug) {
   resolveTenantByEmail,
   resolveTenantFromDeepLink,
   storeTokens,
+  tenantHost,
   tenantHostSuffix,
   useTenantDeepLink
 });

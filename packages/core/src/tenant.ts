@@ -31,6 +31,18 @@ function normalizeSlug(input: string): string {
   return input.trim().toLowerCase().replace(/^https?:\/\//, '').split('/')[0]?.split('.')[0] ?? '';
 }
 
+function hostFromSlugAndSuffix(slug: string, suffix: string): string {
+  const clean = suffix.trim().toLowerCase().replace(/^\./, '');
+  if (!clean) {
+    return slug;
+  }
+  // Apex / already-qualified hosts: "palmart" + "palmart.co.ke" → palmart.co.ke
+  if (clean === slug || clean.startsWith(`${slug}.`)) {
+    return clean;
+  }
+  return `${slug}.${clean}`;
+}
+
 function hostCandidates(input: string, extraSuffixes: string[] = []): string[] {
   const trimmed = input.trim().toLowerCase();
   if (trimmed.includes('.')) {
@@ -38,7 +50,7 @@ function hostCandidates(input: string, extraSuffixes: string[] = []): string[] {
   }
   const slug = normalizeSlug(trimmed);
   const suffixes = [...new Set([...extraSuffixes, ...DEFAULT_HOST_SUFFIXES])];
-  return suffixes.map((suffix) => `${slug}.${suffix}`);
+  return [...new Set(suffixes.map((suffix) => hostFromSlugAndSuffix(slug, suffix)))];
 }
 
 function mapHostResolve(host: string, body: PublicHostResolveResponse): TenantContext {

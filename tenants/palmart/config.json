@@ -2,6 +2,7 @@
   "id": "palmart",
   "slug": "palmart",
   "displayName": "Palmart",
+  "tenantHost": "palmart.co.ke",
   "tenantHostSuffix": "palmart.co.ke",
   "apiBaseUrl": "https://api.kiosk.ke",
   "splashBg": "#28a745",
@@ -22,7 +23,8 @@
       "name": "Palmart",
       "expoSlug": "palmart-shopper",
       "iosBundleId": "com.palmart.shopper",
-      "androidPackage": "com.palmart.shopper"
+      "androidPackage": "com.palmart.shopper",
+      "easProjectId": "adbc177e-a021-48cc-89ab-2475dd0595f9"
     },
     "grocery": {
       "name": "Palmart Grocery",
