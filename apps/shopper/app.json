@@ -8,8 +8,8 @@
     "userInterfaceStyle": "light",
     "splash": {
       "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#28a745"
+      "resizeMode": "cover",
+      "backgroundColor": "#164715"
     },
     "assetBundlePatterns": ["**/*"],
     "ios": {
@@ -19,7 +19,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#28a745"
+        "backgroundColor": "#164715"
       },
       "package": "com.kioskke.shopper"
     },
@@ -33,10 +33,19 @@
         {
           "cameraPermission": "Allow Palmart to use your camera to scan product barcodes."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#164715"
+        }
       ]
     ],
     "extra": {
-      "apiBaseURL": "https://api.kiosk.ke"
+      "apiBaseURL": "https://api.kiosk.ke",
+      "eas": {
+        "projectId": "adbc177e-a021-48cc-89ab-2475dd0595f9"
+      }
     }
   }
 }

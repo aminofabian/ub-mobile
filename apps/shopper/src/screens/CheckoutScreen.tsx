@@ -1,14 +1,37 @@
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import React from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, TextInput, View } from 'react-native';
-import { useForm, Controller } from 'react-hook-form';
-import { Button, Text } from '@kiosk/ui';
+import React, { useEffect, useState } from 'react';
+import {
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useForm, Controller, type Control, type FieldErrors } from 'react-hook-form';
 import { useTenant } from '../lib/TenantContext';
 import { addOrder } from '../lib/orderHistory';
 import { useCart } from '../hooks/useCart';
 import { useCheckout } from '../hooks/useCheckout';
+import { CartLinesSkeleton } from '../components/Skeleton';
+import { looksLikeKenyanMobile } from '../lib/phone';
+import { loadShopperProfile } from '../lib/shopper-profile';
+import { formatMoney } from '../lib/media';
 import { RootStackParamList } from '../navigation/AppNavigator';
+import {
+  ELEVATION,
+  GUTTER,
+  MART,
+  martFromTenant,
+  ON_BRAND,
+  RADIUS,
+  SPACE,
+  TYPE,
+} from '../theme/mart';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -19,15 +42,90 @@ interface CheckoutForm {
   notes: string;
 }
 
+function Field({
+  control,
+  errors,
+  name,
+  label,
+  hint,
+  placeholder,
+  optional,
+  multiline,
+  keyboardType,
+  autoCapitalize,
+  rules,
+}: {
+  control: Control<CheckoutForm>;
+  errors: FieldErrors<CheckoutForm>;
+  name: keyof CheckoutForm;
+  label: string;
+  hint?: string;
+  placeholder: string;
+  optional?: boolean;
+  multiline?: boolean;
+  keyboardType?: React.ComponentProps<typeof TextInput>['keyboardType'];
+  autoCapitalize?: React.ComponentProps<typeof TextInput>['autoCapitalize'];
+  rules?: React.ComponentProps<typeof Controller<CheckoutForm>>['rules'];
+}) {
+  const [focused, setFocused] = useState(false);
+  const message = errors[name]?.message;
+
+  return (
+    <View style={styles.field}>
+      <View style={styles.fieldHead}>
+        <Text style={styles.fieldLabel}>{label}</Text>
+        {optional ? <Text style={styles.fieldOptional}>Optional</Text> : null}
+      </View>
+      {hint ? <Text style={styles.fieldHint}>{hint}</Text> : null}
+      <Controller
+        control={control}
+        name={name}
+        rules={rules}
+        render={({ field: { onChange, onBlur, value } }) => (
+          <TextInput
+            style={[
+              styles.input,
+              multiline && styles.textArea,
+              focused && styles.inputFocused,
+              Boolean(message) && styles.inputError,
+            ]}
+            placeholder={placeholder}
+            placeholderTextColor={MART.inkQuiet}
+            value={value}
+            onChangeText={onChange}
+            onFocus={() => setFocused(true)}
+            onBlur={() => {
+              setFocused(false);
+              onBlur();
+            }}
+            multiline={multiline}
+            keyboardType={keyboardType}
+            autoCapitalize={autoCapitalize}
+            accessibilityLabel={label}
+          />
+        )}
+      />
+      {message ? (
+        <Text accessibilityLiveRegion="polite" style={styles.fieldError}>
+          {message}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 export function CheckoutScreen() {
   const tenant = useTenant();
   const navigation = useNavigation<NavigationProp>();
+  const insets = useSafeAreaInsets();
+  const mart = martFromTenant(tenant);
   const { cart, cartId } = useCart(tenant.slug);
   const checkout = useCheckout(tenant.slug, cartId ?? undefined);
 
   const {
     control,
     handleSubmit,
+    reset,
     formState: { errors },
   } = useForm<CheckoutForm>({
     defaultValues: {
@@ -37,6 +135,18 @@ export function CheckoutScreen() {
       notes: '',
     },
   });
+
+  useEffect(() => {
+    void loadShopperProfile().then((profile) => {
+      if (!profile) return;
+      reset({
+        customerName: profile.name,
+        customerPhone: profile.phone,
+        customerEmail: profile.email,
+        notes: profile.shipping,
+      });
+    });
+  }, [reset]);
 
   async function onSubmit(data: CheckoutForm) {
     try {
@@ -62,160 +172,215 @@ export function CheckoutScreen() {
         currency: response.currency,
         customerPhone: data.customerPhone,
       });
-    } catch (err) {
-      // error handled by checkout.error
+    } catch {
+      // Surfaced through checkout.error below.
     }
   }
 
   if (!cart) {
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#28a745" />
+      <View style={styles.shell}>
+        <CartLinesSkeleton />
       </View>
     );
   }
 
+  const currency = cart.currency ?? 'KES';
+  const lineCount = cart.lines?.length ?? 0;
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text variant="h1">Checkout</Text>
+    <KeyboardAvoidingView
+      style={styles.shell}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: SPACE.xxl + insets.bottom }]}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.summary}>
+          <Text style={styles.summaryLabel}>
+            {lineCount} {lineCount === 1 ? 'line' : 'lines'} from {mart.displayName}
+          </Text>
+          <Text style={styles.summaryTotal}>{formatMoney(currency, cart.subtotal ?? 0)}</Text>
+        </View>
 
-      <View style={styles.summary}>
-        <Text variant="h2">Order Summary</Text>
-        <Text variant="body">
-          {cart.lines?.length ?? 0} items · {cart.currency} {cart.subtotal?.toFixed(2)}
-        </Text>
-      </View>
+        <Text style={styles.sectionTitle}>Who is collecting?</Text>
 
-      <View style={styles.form}>
-        <Text variant="h2">Customer Details</Text>
-
-        <Controller
+        <Field
           control={control}
+          errors={errors}
           name="customerName"
-          rules={{ required: 'Name is required', minLength: { value: 2, message: 'Name too short' } }}
-          render={({ field: { onChange, onBlur, value } }) => (
-            <TextInput
-              style={styles.input}
-              placeholder="Full name"
-              value={value}
-              onChangeText={onChange}
-              onBlur={onBlur}
-              accessibilityLabel="Full name"
-            />
-          )}
+          label="Full name"
+          placeholder="e.g. Amina Wanjiru"
+          rules={{
+            required: 'Add a name so the counter knows who to call.',
+            minLength: { value: 2, message: 'That name looks too short.' },
+          }}
         />
-        {errors.customerName && <Text style={styles.error}>{errors.customerName.message}</Text>}
 
-        <Controller
+        <Field
           control={control}
+          errors={errors}
           name="customerPhone"
-          rules={{ required: 'Phone number is required' }}
-          render={({ field: { onChange, onBlur, value } }) => (
-            <TextInput
-              style={styles.input}
-              placeholder="Phone number"
-              value={value}
-              onChangeText={onChange}
-              onBlur={onBlur}
-              keyboardType="phone-pad"
-              accessibilityLabel="Phone number"
-            />
-          )}
+          label="Phone number"
+          hint="We send the M-Pesa prompt and pickup updates here."
+          placeholder="0712 345 678"
+          keyboardType="phone-pad"
+          rules={{
+            required: 'We need a phone number to reach you.',
+            validate: (value: string) =>
+              looksLikeKenyanMobile(value) || 'Enter a Kenyan mobile, e.g. 0712 345 678.',
+          }}
         />
-        {errors.customerPhone && <Text style={styles.error}>{errors.customerPhone.message}</Text>}
 
-        <Controller
+        <Field
           control={control}
+          errors={errors}
           name="customerEmail"
-          render={({ field: { onChange, onBlur, value } }) => (
-            <TextInput
-              style={styles.input}
-              placeholder="Email (optional)"
-              value={value}
-              onChangeText={onChange}
-              onBlur={onBlur}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              accessibilityLabel="Email"
-            />
-          )}
+          label="Email"
+          placeholder="you@example.com"
+          optional
+          keyboardType="email-address"
+          autoCapitalize="none"
         />
 
-        <Controller
+        <Field
           control={control}
+          errors={errors}
           name="notes"
-          render={({ field: { onChange, onBlur, value } }) => (
-            <TextInput
-              style={[styles.input, styles.textArea]}
-              placeholder="Delivery notes (optional)"
-              value={value}
-              onChangeText={onChange}
-              onBlur={onBlur}
-              multiline
-              numberOfLines={4}
-              accessibilityLabel="Delivery notes"
-            />
-          )}
+          label="Estate / notes"
+          hint="Saved from your store card. Change it if this order goes elsewhere."
+          placeholder="Estate, street, anything the rider should know"
+          optional
+          multiline
         />
-      </View>
 
-      {checkout.error && (
-        <Text style={styles.error}>
-          {checkout.error instanceof Error ? checkout.error.message : 'Checkout failed'}
-        </Text>
-      )}
+        {checkout.error ? (
+          <Text accessibilityLiveRegion="polite" style={styles.submitError}>
+            {checkout.error instanceof Error
+              ? checkout.error.message
+              : 'We could not place the order. Try again in a moment.'}
+          </Text>
+        ) : null}
 
-      <Button
-        title={checkout.isPending ? 'Placing Order...' : 'Place Order'}
-        onPress={handleSubmit(onSubmit)}
-        disabled={checkout.isPending}
-        style={styles.button}
-      />
-    </ScrollView>
+        <Pressable
+          onPress={handleSubmit(onSubmit)}
+          disabled={checkout.isPending}
+          accessibilityRole="button"
+          style={({ pressed }) => [
+            styles.cta,
+            { backgroundColor: mart.primary },
+            checkout.isPending && styles.ctaBusy,
+            pressed && styles.ctaPressed,
+          ]}
+        >
+          <Text style={styles.ctaLabel}>
+            {checkout.isPending ? 'Placing order…' : 'Place order'}
+          </Text>
+        </Pressable>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  shell: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: MART.paper,
   },
   content: {
-    padding: 16,
-    paddingBottom: 32,
-  },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    paddingHorizontal: GUTTER,
+    paddingTop: SPACE.md,
   },
   summary: {
-    backgroundColor: '#f8f9fa',
-    borderRadius: 12,
-    padding: 16,
-    marginVertical: 16,
+    padding: SPACE.lg,
+    borderRadius: RADIUS.md,
+    ...ELEVATION.ruled,
   },
-  form: {
-    marginVertical: 8,
+  summaryLabel: {
+    ...TYPE.meta,
+    color: MART.inkMuted,
+  },
+  summaryTotal: {
+    ...TYPE.title,
+    marginTop: SPACE.xxs,
+    color: MART.ink,
+  },
+  sectionTitle: {
+    ...TYPE.heading,
+    marginTop: SPACE.xxl,
+    color: MART.ink,
+  },
+  field: {
+    marginTop: SPACE.xl,
+  },
+  fieldHead: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: SPACE.sm,
+  },
+  fieldLabel: {
+    ...TYPE.label,
+    fontWeight: '700',
+    color: MART.ink,
+  },
+  fieldOptional: {
+    ...TYPE.meta,
+    color: MART.inkQuiet,
+  },
+  fieldHint: {
+    ...TYPE.meta,
+    marginTop: SPACE.xxs,
+    color: MART.inkQuiet,
   },
   input: {
+    ...TYPE.body,
+    marginTop: SPACE.sm,
+    minHeight: 50,
+    paddingHorizontal: SPACE.md,
     borderWidth: 1,
-    borderColor: '#dee2e6',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    marginTop: 12,
-    minHeight: 48,
+    borderColor: MART.border,
+    borderRadius: RADIUS.md,
+    backgroundColor: MART.paperElevated,
+    color: MART.ink,
+  },
+  inputFocused: {
+    borderColor: MART.borderStrong,
+  },
+  inputError: {
+    borderColor: MART.danger,
   },
   textArea: {
-    minHeight: 100,
+    minHeight: 96,
+    paddingTop: SPACE.md,
     textAlignVertical: 'top',
   },
-  error: {
-    color: '#dc3545',
-    marginTop: 8,
+  fieldError: {
+    ...TYPE.meta,
+    marginTop: SPACE.xs,
+    color: MART.danger,
   },
-  button: {
-    marginTop: 24,
+  submitError: {
+    ...TYPE.body,
+    marginTop: SPACE.xl,
+    color: MART.danger,
+  },
+  cta: {
+    marginTop: SPACE.xxl,
+    minHeight: 52,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ctaBusy: {
+    opacity: 0.7,
+  },
+  ctaPressed: {
+    opacity: 0.9,
+  },
+  ctaLabel: {
+    ...TYPE.heading,
+    color: ON_BRAND.primary,
   },
 });

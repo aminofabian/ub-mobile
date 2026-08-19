@@ -70,9 +70,9 @@ async function main() {
   const iconBuffer = await sharp(iconSource).png().toBuffer();
   const splashBuffer = await sharp(splashSource).png().toBuffer();
 
-  await writePng(iconBuffer, path.join(assetsDir, 'icon.png'), 1024, 1024, bg, 'contain');
-  await writePng(iconBuffer, path.join(assetsDir, 'adaptive-icon.png'), 1024, 1024, bg, 'contain');
-  await writePng(iconBuffer, path.join(assetsDir, 'favicon.png'), 48, 48, bg, 'contain');
+  await writePng(iconBuffer, path.join(assetsDir, 'icon.png'), 1024, 1024, bg, 'cover');
+  await writePng(iconBuffer, path.join(assetsDir, 'adaptive-icon.png'), 1024, 1024, bg, 'cover');
+  await writePng(iconBuffer, path.join(assetsDir, 'favicon.png'), 48, 48, bg, 'cover');
   await writePng(splashBuffer, path.join(assetsDir, 'splash.png'), 1284, 2778, bg, 'cover');
 
   console.log(`Assets ready in ${path.relative(mobileRoot, assetsDir)}`);

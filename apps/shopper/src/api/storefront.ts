@@ -4,7 +4,15 @@ import { API_BASE_URL } from '../lib/config';
 
 // Generated types
 type StorefrontResponse =
-  phase_15_storefront_public.components['schemas']['PublicStorefrontResponse'];
+  phase_15_storefront_public.components['schemas']['PublicStorefrontResponse'] & {
+    deliveryAreas?: PublicDeliveryArea[];
+  };
+
+export type PublicDeliveryArea = {
+  id: string;
+  name: string;
+  active: boolean;
+};
 type CategoryListResponse =
   phase_15_storefront_public.components['schemas']['PublicCategoryListResponse'];
 type CatalogListResponse =
@@ -101,6 +109,7 @@ export type AirtimeConfig = {
   maxAmount?: number;
   currency?: string;
   quickAmounts?: number[];
+  reason?: string | null;
 };
 
 export async function fetchCatalogTypes(slug: string): Promise<{ types: CatalogType[] }> {

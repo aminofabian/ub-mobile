@@ -1,45 +1,65 @@
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import React, { useState } from 'react';
-import {
-  ActivityIndicator,
-  Image,
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import { Button, Text } from '@kiosk/ui';
+import { Ionicons } from '@expo/vector-icons';
+import React, { useEffect, useState } from 'react';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { useTenant } from '../lib/TenantContext';
 import { useProduct } from '../hooks/useProduct';
 import { useCart } from '../hooks/useCart';
+import { ProductDetailSkeleton } from '../components/Skeleton';
+import { formatMoney } from '../lib/media';
+import {
+  ELEVATION,
+  GUTTER,
+  MART,
+  martFromTenant,
+  ON_BRAND,
+  RADIUS,
+  SPACE,
+  TYPE,
+} from '../theme/mart';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ProductDetail'>;
 
 export function ProductDetailScreen({ route }: Props) {
   const { itemId } = route.params;
   const tenant = useTenant();
-  const { data: product, isLoading, error } = useProduct(tenant.slug, itemId);
+  const insets = useSafeAreaInsets();
+  const mart = martFromTenant(tenant);
+  const { data: product, isLoading, error, refetch } = useProduct(tenant.slug, itemId);
   const { addToCart } = useCart(tenant.slug);
   const [quantity, setQuantity] = useState(1);
   const [selectedVariantId, setSelectedVariantId] = useState<string | undefined>();
+  const [added, setAdded] = useState(false);
 
-  const effectiveItemId = selectedVariantId ?? itemId;
+  useEffect(() => {
+    if (!added) return;
+    const timer = setTimeout(() => setAdded(false), 1800);
+    return () => clearTimeout(timer);
+  }, [added]);
 
   if (isLoading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#28a745" />
-      </View>
-    );
+    return <ProductDetailSkeleton />;
   }
 
   if (error || !product) {
     return (
       <View style={styles.centered}>
-        <Text variant="body" style={styles.error}>
-          Failed to load product details.
-        </Text>
+        <Text style={styles.errorTitle}>We could not open this product</Text>
+        <Text style={styles.errorBody}>It may have sold out or moved off the shelf.</Text>
+        <Pressable
+          onPress={() => void refetch()}
+          accessibilityRole="button"
+          style={({ pressed }) => [
+            styles.primary,
+            styles.retry,
+            { backgroundColor: mart.primary },
+            pressed && styles.primaryPressed,
+          ]}
+        >
+          <Text style={styles.primaryLabel}>Try again</Text>
+        </Pressable>
       </View>
     );
   }
@@ -47,212 +67,304 @@ export function ProductDetailScreen({ route }: Props) {
   const price = product.price ?? 0;
   const total = price * quantity;
   const currency = product.currency ?? 'KES';
+  const name = product.name ?? 'Product';
+  const image = product.images?.[0]?.url;
+  const variants = product.variants ?? [];
+  const effectiveItemId = selectedVariantId ?? itemId;
 
-  function increment() {
-    setQuantity((q) => q + 1);
-  }
-
-  function decrement() {
-    setQuantity((q) => (q > 1 ? q - 1 : 1));
-  }
-
-  async function handleAddToCart() {
-    addToCart.mutate({ itemId: effectiveItemId, quantity });
+  function handleAddToCart() {
+    addToCart.mutate(
+      { itemId: effectiveItemId, quantity },
+      { onSuccess: () => setAdded(true) }
+    );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={styles.shell}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <Image
-          source={{ uri: product.images?.[0]?.url }}
-          style={styles.image}
-          resizeMode="cover"
-          accessibilityLabel={product.name ?? 'Product image'}
-        />
+        <View style={styles.imageWell}>
+          {image ? (
+            <Image
+              source={{ uri: image }}
+              style={styles.image}
+              resizeMode="contain"
+              accessibilityLabel={name}
+            />
+          ) : (
+            <Text style={styles.imageLetter}>{name.slice(0, 1).toUpperCase()}</Text>
+          )}
+        </View>
 
         <View style={styles.content}>
-          <Text variant="h1">{product.name}</Text>
+          <Text style={styles.name}>{name}</Text>
           {product.variantName ? (
-            <Text variant="muted">{product.variantName}</Text>
+            <Text style={styles.variantName}>{product.variantName}</Text>
           ) : null}
+          <Text style={styles.price}>{formatMoney(currency, price)}</Text>
 
-          <Text style={styles.price}>
-            {currency} {price.toFixed(2)}
-          </Text>
-
-          {product.variants && product.variants.length > 0 && (
+          {variants.length > 0 ? (
             <View style={styles.section}>
-              <Text variant="h2">Variants</Text>
+              <Text style={styles.sectionTitle}>Choose an option</Text>
               <View style={styles.variants}>
-                {product.variants.map((variant) => (
-                  <TouchableOpacity
-                    key={variant.id}
-                    style={[
-                      styles.variantChip,
-                      selectedVariantId === variant.id && styles.variantChipSelected,
-                    ]}
-                    onPress={() => setSelectedVariantId(variant.id)}
-                    accessibilityRole="button"
-                    accessibilityLabel={variant.name ?? 'Variant'}
-                  >
-                    <Text
-                      style={
-                        selectedVariantId === variant.id ? styles.variantTextSelected : undefined
-                      }
+                {variants.map((variant) => {
+                  const selected = selectedVariantId === variant.id;
+                  return (
+                    <Pressable
+                      key={variant.id}
+                      onPress={() => setSelectedVariantId(variant.id)}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
+                      accessibilityLabel={variant.name ?? 'Option'}
+                      style={[
+                        styles.variantChip,
+                        selected && { backgroundColor: mart.primary, borderColor: mart.primary },
+                      ]}
                     >
-                      {variant.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                      <Text style={[styles.variantChipText, selected && styles.variantChipTextOn]}>
+                        {variant.name}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
               </View>
             </View>
-          )}
+          ) : null}
 
           <View style={styles.section}>
-            <Text variant="h2">Quantity</Text>
-            <View style={styles.quantityRow}>
-              <TouchableOpacity style={styles.quantityButton} onPress={decrement}>
-                <Text style={styles.quantityButtonText}>−</Text>
-              </TouchableOpacity>
-              <Text style={styles.quantityValue}>{quantity}</Text>
-              <TouchableOpacity style={styles.quantityButton} onPress={increment}>
-                <Text style={styles.quantityButtonText}>+</Text>
-              </TouchableOpacity>
+            <Text style={styles.sectionTitle}>How many?</Text>
+            <View style={styles.stepper}>
+              <Pressable
+                onPress={() => setQuantity((q) => Math.max(1, q - 1))}
+                disabled={quantity <= 1}
+                accessibilityRole="button"
+                accessibilityLabel="One fewer"
+                style={({ pressed }) => [
+                  styles.stepBtn,
+                  quantity <= 1 && styles.stepBtnDisabled,
+                  pressed && styles.stepBtnPressed,
+                ]}
+              >
+                <Ionicons name="remove" size={20} color={MART.ink} />
+              </Pressable>
+              <Text style={styles.stepValue} accessibilityLiveRegion="polite">
+                {quantity}
+              </Text>
+              <Pressable
+                onPress={() => setQuantity((q) => q + 1)}
+                accessibilityRole="button"
+                accessibilityLabel="One more"
+                style={({ pressed }) => [styles.stepBtn, pressed && styles.stepBtnPressed]}
+              >
+                <Ionicons name="add" size={20} color={MART.ink} />
+              </Pressable>
             </View>
           </View>
 
           {product.description ? (
             <View style={styles.section}>
-              <Text variant="h2">Description</Text>
-              <Text variant="body">{product.description}</Text>
+              <Text style={styles.sectionTitle}>About this product</Text>
+              <Text style={styles.description}>{product.description}</Text>
             </View>
+          ) : null}
+
+          {addToCart.isError ? (
+            <Text accessibilityLiveRegion="polite" style={styles.addError}>
+              That did not reach the basket. Check your connection and try again.
+            </Text>
           ) : null}
         </View>
       </ScrollView>
 
-      <View style={styles.footer}>
-        <View style={styles.footerTotal}>
-          <Text variant="muted">Total</Text>
-          <Text style={styles.totalPrice}>
-            {currency} {total.toFixed(2)}
-          </Text>
+      <View style={[styles.footer, { paddingBottom: SPACE.lg + insets.bottom }]}>
+        <View style={styles.totalBlock}>
+          <Text style={styles.totalLabel}>Total</Text>
+          <Text style={styles.totalValue}>{formatMoney(currency, total)}</Text>
         </View>
-        <Button
-          title={addToCart.isPending ? 'Adding...' : 'Add to Cart'}
+        <Pressable
           onPress={handleAddToCart}
           disabled={addToCart.isPending}
-          style={styles.addButton}
-        />
+          accessibilityRole="button"
+          style={({ pressed }) => [
+            styles.primary,
+            { backgroundColor: added ? MART.success : mart.primary },
+            addToCart.isPending && styles.primaryBusy,
+            pressed && styles.primaryPressed,
+          ]}
+        >
+          {added ? <Ionicons name="checkmark" size={18} color={ON_BRAND.primary} /> : null}
+          <Text style={styles.primaryLabel}>
+            {addToCart.isPending ? 'Adding…' : added ? 'In your basket' : 'Add to basket'}
+          </Text>
+        </Pressable>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  shell: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: MART.paper,
   },
   scrollContent: {
-    paddingBottom: 120,
+    paddingBottom: SPACE.xxl,
   },
   centered: {
     flex: 1,
     justifyContent: 'center',
-    alignItems: 'center',
+    paddingHorizontal: SPACE.xl,
+    backgroundColor: MART.paper,
   },
-  image: {
+  errorTitle: {
+    ...TYPE.title,
+    color: MART.ink,
+  },
+  errorBody: {
+    ...TYPE.body,
+    marginTop: SPACE.sm,
+    color: MART.inkMuted,
+  },
+  retry: {
+    alignSelf: 'flex-start',
+    marginTop: SPACE.xl,
+  },
+  imageWell: {
     width: '100%',
     aspectRatio: 1,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: MART.paperElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  image: {
+    width: '82%',
+    height: '82%',
+  },
+  imageLetter: {
+    ...TYPE.display,
+    fontSize: 64,
+    lineHeight: 72,
+    color: MART.inkQuiet,
   },
   content: {
-    padding: 16,
+    paddingHorizontal: GUTTER,
+    paddingTop: SPACE.xl,
+  },
+  name: {
+    ...TYPE.display,
+    color: MART.ink,
+  },
+  variantName: {
+    ...TYPE.body,
+    marginTop: SPACE.xs,
+    color: MART.inkMuted,
   },
   price: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#28a745',
-    marginTop: 8,
+    ...TYPE.title,
+    marginTop: SPACE.md,
+    color: MART.ink,
   },
   section: {
-    marginTop: 24,
+    marginTop: SPACE.xxl,
+  },
+  sectionTitle: {
+    ...TYPE.heading,
+    marginBottom: SPACE.md,
+    color: MART.ink,
   },
   variants: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginTop: 8,
+    gap: SPACE.sm,
   },
   variantChip: {
-    borderWidth: 1,
-    borderColor: '#dee2e6',
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginRight: 8,
-    marginBottom: 8,
-    minHeight: 40,
+    minHeight: 44,
+    paddingHorizontal: SPACE.lg,
     justifyContent: 'center',
+    borderRadius: RADIUS.md,
+    ...ELEVATION.ruled,
   },
-  variantChipSelected: {
-    backgroundColor: '#28a745',
-    borderColor: '#28a745',
+  variantChipText: {
+    ...TYPE.label,
+    color: MART.ink,
   },
-  variantTextSelected: {
-    color: '#fff',
-    fontWeight: '600',
+  variantChipTextOn: {
+    color: ON_BRAND.primary,
   },
-  quantityRow: {
+  stepper: {
+    alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 8,
+    borderRadius: RADIUS.md,
+    ...ELEVATION.ruled,
   },
-  quantityButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 8,
-    backgroundColor: '#f8f9fa',
-    borderWidth: 1,
-    borderColor: '#dee2e6',
-    justifyContent: 'center',
+  stepBtn: {
+    width: 52,
+    height: 48,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  quantityButtonText: {
-    fontSize: 20,
-    fontWeight: '600',
+  stepBtnDisabled: {
+    opacity: 0.3,
   },
-  quantityValue: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginHorizontal: 16,
-    minWidth: 32,
+  stepBtnPressed: {
+    backgroundColor: MART.paperSunken,
+  },
+  stepValue: {
+    ...TYPE.heading,
+    minWidth: 44,
     textAlign: 'center',
+    color: MART.ink,
+    fontVariant: ['tabular-nums'],
+  },
+  description: {
+    ...TYPE.body,
+    color: MART.inkMuted,
+  },
+  addError: {
+    ...TYPE.meta,
+    marginTop: SPACE.xl,
+    color: MART.danger,
   },
   footer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#dee2e6',
-    padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: SPACE.lg,
+    paddingHorizontal: GUTTER,
+    paddingTop: SPACE.lg,
+    borderTopWidth: 1,
+    borderTopColor: MART.border,
+    backgroundColor: MART.paperElevated,
   },
-  footerTotal: {
-    flex: 1,
+  totalBlock: {
+    minWidth: 0,
   },
-  totalPrice: {
-    fontSize: 18,
-    fontWeight: '700',
+  totalLabel: {
+    ...TYPE.meta,
+    color: MART.inkMuted,
   },
-  addButton: {
-    marginLeft: 16,
-    minWidth: 160,
+  totalValue: {
+    ...TYPE.title,
+    marginTop: SPACE.xxs,
+    color: MART.ink,
   },
-  error: {
-    color: '#dc3545',
+  primary: {
+    minHeight: 50,
+    paddingHorizontal: SPACE.xl,
+    borderRadius: RADIUS.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACE.sm,
+  },
+  primaryBusy: {
+    opacity: 0.7,
+  },
+  primaryPressed: {
+    opacity: 0.9,
+  },
+  primaryLabel: {
+    ...TYPE.heading,
+    color: ON_BRAND.primary,
   },
 });

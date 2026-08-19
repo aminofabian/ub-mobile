@@ -1,6 +1,7 @@
+import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
-import { Text } from '@kiosk/ui';
+import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { GUTTER, MART, RADIUS, SPACE, TYPE } from '../theme/mart';
 
 interface SearchBarProps {
   value: string;
@@ -8,6 +9,7 @@ interface SearchBarProps {
   onBarcodePress?: () => void;
   placeholder?: string;
   autoFocus?: boolean;
+  accent?: string;
 }
 
 export function SearchBar({
@@ -16,60 +18,86 @@ export function SearchBar({
   onBarcodePress,
   placeholder = 'Search products...',
   autoFocus = false,
+  accent = MART.fallbackPrimary,
 }: SearchBarProps) {
   return (
-    <View style={styles.container}>
-      <TextInput
-        style={styles.input}
-        placeholder={placeholder}
-        value={value}
-        onChangeText={onChangeText}
-        autoFocus={autoFocus}
-        accessibilityLabel="Search products"
-      />
-      {onBarcodePress && (
-        <TouchableOpacity
-          style={styles.barcodeButton}
+    <View style={styles.row}>
+      <View style={styles.field}>
+        <Ionicons name="search" size={18} color={MART.inkQuiet} />
+        <TextInput
+          style={styles.input}
+          placeholder={placeholder}
+          placeholderTextColor={MART.inkQuiet}
+          value={value}
+          onChangeText={onChangeText}
+          autoFocus={autoFocus}
+          returnKeyType="search"
+          accessibilityLabel="Search products"
+        />
+        {value.length > 0 ? (
+          <Pressable
+            onPress={() => onChangeText('')}
+            accessibilityRole="button"
+            accessibilityLabel="Clear search"
+            hitSlop={8}
+            style={styles.clear}
+          >
+            <Ionicons name="close-circle" size={18} color={MART.inkQuiet} />
+          </Pressable>
+        ) : null}
+      </View>
+      {onBarcodePress ? (
+        <Pressable
           onPress={onBarcodePress}
           accessibilityRole="button"
           accessibilityLabel="Scan barcode"
+          style={[styles.scan, { backgroundColor: accent }]}
         >
-          <Text style={styles.barcodeText}>▯</Text>
-        </TouchableOpacity>
-      )}
+          <Ionicons name="barcode-outline" size={22} color="#fff" />
+        </Pressable>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginHorizontal: 16,
-    marginBottom: 8,
+    gap: SPACE.sm,
+    marginHorizontal: GUTTER,
+    marginBottom: SPACE.md,
+  },
+  field: {
+    flex: 1,
+    minHeight: 48,
+    paddingHorizontal: SPACE.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACE.sm,
+    borderWidth: 1,
+    borderColor: MART.border,
+    borderRadius: RADIUS.md,
+    backgroundColor: MART.paperElevated,
   },
   input: {
+    ...TYPE.body,
     flex: 1,
-    borderWidth: 1,
-    borderColor: '#dee2e6',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    backgroundColor: '#f8f9fa',
     minHeight: 48,
+    fontSize: 16,
+    color: MART.ink,
   },
-  barcodeButton: {
-    marginLeft: 8,
+  clear: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scan: {
     width: 48,
     height: 48,
-    borderRadius: 8,
-    backgroundColor: '#28a745',
-    justifyContent: 'center',
+    borderRadius: RADIUS.md,
     alignItems: 'center',
-  },
-  barcodeText: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: '700',
+    justifyContent: 'center',
   },
 });

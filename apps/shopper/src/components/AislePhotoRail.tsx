@@ -2,7 +2,7 @@ import React from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { phase_15_storefront_public } from '@kiosk/types';
 import { categoryIconImageUrl, itemCountLabel } from '../lib/media';
-import { MART } from '../theme/mart';
+import { GUTTER, MART, RADIUS, SPACE, TYPE, tint } from '../theme/mart';
 
 type Category = phase_15_storefront_public.components['schemas']['PublicCategoryResponse'] & {
   itemCount?: number;
@@ -36,7 +36,7 @@ export function AislePhotoRail({
       contentContainerStyle={styles.row}
     >
       {aisles.map((aisle, index) => {
-        const tint = index % 2 === 0 ? primary : accent;
+        const shade = index % 2 === 0 ? primary : accent;
         const image = categoryIconImageUrl(aisle.icon);
         const name = aisle.name ?? 'Aisle';
         return (
@@ -45,9 +45,9 @@ export function AislePhotoRail({
             onPress={() => onSelect(aisle)}
             accessibilityRole="button"
             accessibilityLabel={`${name}${aisle.itemCount != null ? `, ${itemCountLabel(aisle.itemCount)}` : ''}`}
-            style={styles.tile}
+            style={({ pressed }) => [styles.tile, pressed && styles.pressed]}
           >
-            <View style={[styles.fill, { backgroundColor: `${tint}99` }]}>
+            <View style={[styles.fill, { backgroundColor: tint(shade, 0.85) }]}>
               {image ? (
                 <Image source={{ uri: image }} style={styles.photo} resizeMode="cover" />
               ) : null}
@@ -70,16 +70,19 @@ export function AislePhotoRail({
 
 const styles = StyleSheet.create({
   row: {
-    paddingHorizontal: 12,
-    gap: 6,
+    paddingHorizontal: GUTTER,
+    gap: SPACE.sm,
   },
   tile: {
-    width: 108,
-    height: 108,
-    borderRadius: MART.radius,
+    width: 116,
+    height: 116,
+    borderRadius: RADIUS.md,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: MART.border,
+  },
+  pressed: {
+    opacity: 0.86,
   },
   fill: {
     flex: 1,
@@ -92,27 +95,24 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    height: 58,
-    backgroundColor: 'rgba(0,0,0,0.58)',
+    height: 62,
+    backgroundColor: 'rgba(9,14,11,0.68)',
   },
   caption: {
     position: 'absolute',
-    left: 6,
-    right: 6,
-    bottom: 6,
+    left: SPACE.sm,
+    right: SPACE.sm,
+    bottom: SPACE.sm,
   },
   name: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.4,
-    textShadowColor: 'rgba(0,0,0,0.45)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
+    ...TYPE.shelf,
+    color: '#ffffff',
   },
   count: {
-    marginTop: 1,
-    color: 'rgba(255,255,255,0.8)',
-    fontSize: 9,
+    ...TYPE.shelf,
+    marginTop: SPACE.xxs,
+    fontWeight: '500',
+    letterSpacing: 0.2,
+    color: 'rgba(255,255,255,0.82)',
   },
 });

@@ -56,7 +56,7 @@ function applyWhiteLabel(expo, appKey) {
     profile.splashBg ??
     profile.splashBackgroundColor ??
     expo.splash?.backgroundColor ??
-    '#28a745';
+    '#164715';
 
   const theme = profile.theme ?? {};
   const primaryColor = theme.primary ?? profile.primaryColor ?? splashColor;
@@ -121,7 +121,7 @@ function applyWhiteLabel(expo, appKey) {
       package: androidPackage,
       adaptiveIcon: {
         ...expo.android?.adaptiveIcon,
-        backgroundColor: splashColor,
+        backgroundColor: profile.iconBackground ?? splashColor,
         ...(adaptiveIcon ? { foregroundImage: adaptiveIcon } : {}),
       },
       ...(androidGoogle ? { googleServicesFile: relativeFromCwd(androidGoogle) } : {}),
@@ -143,7 +143,9 @@ function applyWhiteLabel(expo, appKey) {
       primaryColor,
       themeColors: {
         primary: primaryColor,
-        secondary: theme.secondary ?? undefined,
+        accent: theme.accent ?? theme.secondary ?? undefined,
+        gold: theme.gold ?? undefined,
+        secondary: theme.secondary ?? theme.accent ?? undefined,
         logoUrl: theme.logoUrl ?? undefined,
       },
       ...(easProjectId

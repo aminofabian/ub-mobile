@@ -1,9 +1,21 @@
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
+import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
-import { Button, Text } from '@kiosk/ui';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTenant } from '../lib/TenantContext';
 import { RootStackParamList } from '../navigation/AppNavigator';
+import {
+  ELEVATION,
+  GUTTER,
+  MART,
+  martFromTenant,
+  ON_BRAND,
+  RADIUS,
+  SPACE,
+  TYPE,
+} from '../theme/mart';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'OrderConfirmation'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -11,63 +23,107 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 export function OrderConfirmationScreen() {
   const route = useRoute<Props['route']>();
   const navigation = useNavigation<NavigationProp>();
+  const insets = useSafeAreaInsets();
+  const tenant = useTenant();
+  const mart = martFromTenant(tenant);
   const { orderId } = route.params;
 
   return (
-    <View style={styles.container}>
-      <View style={styles.content}>
-        <Text variant="h1" style={styles.title}>
-          Order Confirmed
+    <View style={[styles.shell, { paddingBottom: SPACE.xl + insets.bottom }]}>
+      <View style={styles.body}>
+        <View style={styles.tick}>
+          <Ionicons name="checkmark" size={28} color={MART.success} />
+        </View>
+        <Text style={styles.title}>Order placed</Text>
+        <Text style={styles.message}>
+          {mart.displayName} has your order. They will call the number you gave when it is ready to
+          collect.
         </Text>
-        <Text variant="body" style={styles.message}>
-          Thank you for your order!
-        </Text>
-        <View style={styles.orderBox}>
-          <Text variant="muted">Order Number</Text>
-          <Text variant="h2" style={styles.orderId}>
+
+        <View style={styles.receipt}>
+          <Text style={styles.receiptLabel}>Order number</Text>
+          <Text selectable style={styles.receiptValue}>
             {orderId}
           </Text>
+          <Text style={styles.receiptHint}>Show this at the counter.</Text>
         </View>
       </View>
 
-      <View style={styles.footer}>
-        <Button title="Continue Shopping" onPress={() => navigation.navigate('MainTabs')} />
-      </View>
+      <Pressable
+        onPress={() => navigation.navigate('MainTabs')}
+        accessibilityRole="button"
+        style={({ pressed }) => [
+          styles.cta,
+          { backgroundColor: mart.primary },
+          pressed && styles.ctaPressed,
+        ]}
+      >
+        <Text style={styles.ctaLabel}>Keep shopping</Text>
+      </Pressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  shell: {
     flex: 1,
-    backgroundColor: '#fff',
-    padding: 24,
+    paddingHorizontal: GUTTER,
+    backgroundColor: MART.paper,
   },
-  content: {
+  body: {
     flex: 1,
     justifyContent: 'center',
+  },
+  tick: {
+    width: 52,
+    height: 52,
+    borderRadius: RADIUS.md,
+    backgroundColor: MART.successSurface,
     alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACE.lg,
   },
   title: {
-    color: '#28a745',
-    textAlign: 'center',
+    ...TYPE.display,
+    color: MART.ink,
   },
   message: {
-    textAlign: 'center',
-    marginTop: 8,
+    ...TYPE.body,
+    marginTop: SPACE.sm,
+    color: MART.inkMuted,
   },
-  orderBox: {
-    marginTop: 32,
+  receipt: {
+    marginTop: SPACE.xxl,
+    padding: SPACE.lg,
+    borderRadius: RADIUS.md,
+    ...ELEVATION.ruled,
+  },
+  receiptLabel: {
+    ...TYPE.meta,
+    color: MART.inkQuiet,
+  },
+  receiptValue: {
+    ...TYPE.heading,
+    marginTop: SPACE.xs,
+    color: MART.ink,
+    fontVariant: ['tabular-nums'],
+  },
+  receiptHint: {
+    ...TYPE.meta,
+    marginTop: SPACE.sm,
+    color: MART.inkQuiet,
+  },
+  cta: {
+    minHeight: 52,
+    borderRadius: RADIUS.md,
     alignItems: 'center',
-    backgroundColor: '#f8f9fa',
-    borderRadius: 12,
-    padding: 24,
-    width: '100%',
+    justifyContent: 'center',
   },
-  orderId: {
-    marginTop: 8,
+  ctaPressed: {
+    opacity: 0.9,
   },
-  footer: {
-    marginTop: 'auto',
+  ctaLabel: {
+    ...TYPE.heading,
+    color: ON_BRAND.primary,
   },
 });

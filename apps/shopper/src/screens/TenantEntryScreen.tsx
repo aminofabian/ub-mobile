@@ -1,95 +1,196 @@
 import React, { useState } from 'react';
-import { StyleSheet, TextInput, View, ActivityIndicator } from 'react-native';
-import { Text, Button } from '@kiosk/ui';
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { resolveShopperStore, type TenantContext } from '@kiosk/core';
 import { API_BASE_URL, TENANT_HOST_SUFFIX } from '../lib/config';
+import { MART, ON_BRAND, RADIUS, SPACE, TYPE } from '../theme/mart';
 
 interface TenantEntryScreenProps {
   onTenantResolved: (tenant: TenantContext) => void;
 }
 
 export function TenantEntryScreen({ onTenantResolved }: TenantEntryScreenProps) {
+  const insets = useSafeAreaInsets();
   const [slug, setSlug] = useState('');
+  const [focused, setFocused] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const trimmed = slug.trim();
 
   async function handleContinue() {
-    if (!slug.trim()) return;
+    if (!trimmed) return;
     setLoading(true);
     setError(null);
     try {
-      const tenant = await resolveShopperStore(slug.trim(), API_BASE_URL, {
+      const tenant = await resolveShopperStore(trimmed, API_BASE_URL, {
         hostSuffixes: [TENANT_HOST_SUFFIX],
       });
       onTenantResolved(tenant);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to resolve store');
+    } catch {
+      setError(`No store answers at ${trimmed}.${TENANT_HOST_SUFFIX}. Check the spelling with the till.`);
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <View style={styles.container}>
-      <Text variant="h1">Enter your store</Text>
-      <Text variant="body">Shop from your favorite Kiosk Ke business</Text>
+    <KeyboardAvoidingView
+      style={styles.shell}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: insets.top + SPACE.xxxl, paddingBottom: insets.bottom + SPACE.xxl },
+        ]}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.mark}>
+          <Text style={styles.markText}>Palmart</Text>
+          <View style={styles.markRule} />
+        </View>
 
-      <TextInput
-        style={styles.input}
-        placeholder="e.g. palmart"
-        value={slug}
-        onChangeText={setSlug}
-        autoCapitalize="none"
-        autoCorrect={false}
-        accessibilityLabel="Store slug"
-      />
-      <Text variant="muted">{slug ? `${slug}.${TENANT_HOST_SUFFIX}` : `yourstore.${TENANT_HOST_SUFFIX}`}</Text>
-      <Text variant="muted" style={styles.apiHint}>API: {API_BASE_URL}</Text>
+        <Text style={styles.title}>Which store are you shopping?</Text>
+        <Text style={styles.body}>
+          Enter the short name on your receipt or shelf tag and we will open that shop.
+        </Text>
 
-      {error && <Text style={styles.error}>{error}</Text>}
+        <View style={[styles.field, focused && styles.fieldFocused, Boolean(error) && styles.fieldError]}>
+          <TextInput
+            style={styles.input}
+            placeholder="palmart"
+            placeholderTextColor={MART.inkQuiet}
+            value={slug}
+            onChangeText={(value) => {
+              setSlug(value);
+              setError(null);
+            }}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            onSubmitEditing={() => void handleContinue()}
+            returnKeyType="go"
+            autoCapitalize="none"
+            autoCorrect={false}
+            autoFocus
+            accessibilityLabel="Store short name"
+          />
+          <Text style={styles.suffix}>.{TENANT_HOST_SUFFIX}</Text>
+        </View>
 
-      {loading ? (
-        <ActivityIndicator size="large" color="#28a745" style={styles.loader} />
-      ) : (
-        <Button
-          title="Continue"
-          onPress={handleContinue}
-          disabled={!slug.trim()}
-          style={styles.button}
-        />
-      )}
-    </View>
+        {error ? (
+          <Text accessibilityLiveRegion="polite" style={styles.error}>
+            {error}
+          </Text>
+        ) : null}
+
+        <Pressable
+          onPress={() => void handleContinue()}
+          disabled={!trimmed || loading}
+          accessibilityRole="button"
+          style={({ pressed }) => [
+            styles.cta,
+            (!trimmed || loading) && styles.ctaDisabled,
+            pressed && styles.ctaPressed,
+          ]}
+        >
+          {loading ? (
+            <ActivityIndicator size="small" color={ON_BRAND.primary} />
+          ) : (
+            <Text style={styles.ctaLabel}>Open this store</Text>
+          )}
+        </Pressable>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  shell: {
     flex: 1,
-    padding: 24,
-    justifyContent: 'center',
-    alignItems: 'stretch',
+    backgroundColor: MART.paper,
+  },
+  content: {
+    paddingHorizontal: SPACE.xl,
+  },
+  mark: {
+    alignSelf: 'flex-start',
+    marginBottom: SPACE.xxl,
+  },
+  markText: {
+    ...TYPE.title,
+    color: MART.fallbackPrimary,
+  },
+  markRule: {
+    marginTop: SPACE.xs,
+    height: 2,
+    backgroundColor: MART.fallbackAccent,
+  },
+  title: {
+    ...TYPE.display,
+    color: MART.ink,
+  },
+  body: {
+    ...TYPE.body,
+    marginTop: SPACE.sm,
+    color: MART.inkMuted,
+  },
+  field: {
+    marginTop: SPACE.xl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACE.md,
+    borderWidth: 1,
+    borderColor: MART.border,
+    borderRadius: RADIUS.md,
+    backgroundColor: MART.paperElevated,
+  },
+  fieldFocused: {
+    borderColor: MART.fallbackPrimary,
+  },
+  fieldError: {
+    borderColor: MART.danger,
   },
   input: {
-    borderWidth: 1,
-    borderColor: '#dee2e6',
-    borderRadius: 8,
-    padding: 16,
-    fontSize: 16,
-    marginTop: 24,
-    marginBottom: 8,
+    flex: 1,
+    minHeight: 52,
+    ...TYPE.heading,
+    color: MART.ink,
   },
-  button: {
-    marginTop: 24,
-  },
-  loader: {
-    marginTop: 24,
-  },
-  apiHint: {
-    marginTop: 4,
-    fontSize: 12,
+  suffix: {
+    ...TYPE.label,
+    color: MART.inkQuiet,
   },
   error: {
-    color: '#dc3545',
-    marginTop: 16,
+    ...TYPE.meta,
+    marginTop: SPACE.sm,
+    color: MART.danger,
+  },
+  cta: {
+    marginTop: SPACE.xl,
+    minHeight: 52,
+    borderRadius: RADIUS.md,
+    backgroundColor: MART.fallbackPrimary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ctaDisabled: {
+    opacity: 0.4,
+  },
+  ctaPressed: {
+    opacity: 0.9,
+  },
+  ctaLabel: {
+    ...TYPE.heading,
+    color: ON_BRAND.primary,
   },
 });

@@ -8,7 +8,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { MART } from '../theme/mart';
+import { MART, RADIUS, SPACE, TYPE } from '../theme/mart';
 import { useTenant } from '../lib/TenantContext';
 import { useCart } from '../hooks/useCart';
 
@@ -118,32 +118,30 @@ export function QuickAddButton({ itemId, name, accent }: Props) {
 
 const styles = StyleSheet.create({
   add: {
-    minHeight: 32,
-    minWidth: 64,
-    paddingHorizontal: 10,
+    minHeight: 34,
+    minWidth: 66,
+    paddingHorizontal: SPACE.md,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: SPACE.xs,
     borderWidth: 1,
-    borderColor: MART.border,
+    borderColor: MART.borderStrong,
     backgroundColor: MART.paperElevated,
-    borderRadius: MART.radius,
+    borderRadius: RADIUS.sm,
   },
   addLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.8,
+    ...TYPE.shelf,
     color: MART.inkMuted,
   },
   stepper: {
-    minHeight: 32,
+    minHeight: 34,
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: MART.border,
+    borderColor: MART.borderStrong,
     backgroundColor: MART.paper,
-    borderRadius: MART.radius,
+    borderRadius: RADIUS.sm,
   },
   stepHit: {
     width: 32,
@@ -152,9 +150,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   qty: {
+    ...TYPE.label,
     minWidth: 22,
     textAlign: 'center',
-    fontSize: 13,
     fontWeight: '700',
     color: MART.ink,
   },

@@ -1,13 +1,37 @@
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
+import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
-import { Button, Text } from '@kiosk/ui';
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTenant } from '../lib/TenantContext';
 import { usePaymentOptions } from '../hooks/usePaymentOptions';
 import { useStkPush } from '../hooks/useStkPush';
 import { usePaymentStatus } from '../hooks/usePaymentStatus';
+import { Bone, SkeletonScope } from '../components/Skeleton';
+import { looksLikeKenyanMobile } from '../lib/phone';
+import { formatMoney } from '../lib/media';
 import { RootStackParamList } from '../navigation/AppNavigator';
+import {
+  ELEVATION,
+  GUTTER,
+  MART,
+  martFromTenant,
+  ON_BRAND,
+  RADIUS,
+  SPACE,
+  TYPE,
+} from '../theme/mart';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Payment'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -16,6 +40,8 @@ export function PaymentScreen() {
   const tenant = useTenant();
   const route = useRoute<Props['route']>();
   const navigation = useNavigation<NavigationProp>();
+  const insets = useSafeAreaInsets();
+  const mart = martFromTenant(tenant);
   const { orderId, grandTotal, currency, customerPhone } = route.params;
 
   const { data: paymentOptions, isLoading: optionsLoading } = usePaymentOptions(tenant.slug);
@@ -33,6 +59,21 @@ export function PaymentScreen() {
     }
   }, [status, navigation, orderId]);
 
+  useEffect(() => {
+    if (status?.paymentFailed) {
+      setPolling(false);
+    }
+  }, [status?.paymentFailed]);
+
+  const onlineMethods = paymentOptions?.online ?? [];
+  const manualMethods = paymentOptions?.manual ?? [];
+
+  useEffect(() => {
+    if (!selectedOnline && onlineMethods.length === 1) {
+      setSelectedOnline(onlineMethods[0].configId);
+    }
+  }, [onlineMethods, selectedOnline]);
+
   async function handlePayOnline() {
     if (!selectedOnline) return;
     const result = await stkPush.mutateAsync({
@@ -46,196 +87,348 @@ export function PaymentScreen() {
 
   if (optionsLoading) {
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#28a745" />
+      <View style={styles.shell}>
+        <SkeletonScope label="Loading payment options" style={styles.loading}>
+          <Bone h={84} />
+          <Bone h={50} />
+          <Bone h={44} />
+          <Bone h={52} />
+        </SkeletonScope>
       </View>
     );
   }
 
-  const onlineMethods = paymentOptions?.online ?? [];
-  const manualMethods = paymentOptions?.manual ?? [];
+  const phoneValid = looksLikeKenyanMobile(phone);
+  const canPay = phoneValid && Boolean(selectedOnline) && !stkPush.isPending;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <Text variant="h1">Payment</Text>
-        <Text variant="body">
-          Order total:{' '}
-          <Text style={styles.total}>
-            {currency} {grandTotal.toFixed(2)}
-          </Text>
-        </Text>
-      </View>
+    <KeyboardAvoidingView
+      style={styles.shell}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: SPACE.xxl + insets.bottom }]}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={[styles.amount, { backgroundColor: mart.primary }]}>
+          <Text style={styles.amountLabel}>Amount due</Text>
+          <Text style={styles.amountValue}>{formatMoney(currency, grandTotal)}</Text>
+          <Text style={styles.amountMeta}>Order #{orderId.slice(-8).toUpperCase()}</Text>
+        </View>
 
-      {onlineMethods.length > 0 && (
-        <View style={styles.section}>
-          <Text variant="h2">Pay with M-Pesa</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="M-Pesa phone number"
-            value={phone}
-            onChangeText={setPhone}
-            keyboardType="phone-pad"
-            accessibilityLabel="M-Pesa phone number"
-          />
+        {onlineMethods.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Pay with M-Pesa</Text>
 
-          <View style={styles.methods}>
-            {onlineMethods.map((method) => (
-              <TouchableMethod
-                key={method.configId}
-                label={method.displayName}
-                selected={selectedOnline === method.configId}
-                onPress={() => setSelectedOnline(method.configId)}
-              />
+            {onlineMethods.length > 1 ? (
+              <View style={styles.methods} accessibilityRole="radiogroup">
+                {onlineMethods.map((method) => {
+                  const selected = selectedOnline === method.configId;
+                  return (
+                    <Pressable
+                      key={method.configId}
+                      onPress={() => setSelectedOnline(method.configId)}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected }}
+                      style={[
+                        styles.methodChip,
+                        selected && { backgroundColor: mart.primary, borderColor: mart.primary },
+                      ]}
+                    >
+                      <Text style={[styles.methodText, selected && styles.methodTextOn]}>
+                        {method.displayName}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : null}
+
+            <Text style={styles.fieldLabel}>M-Pesa number</Text>
+            <Text style={styles.fieldHint}>The PIN prompt goes to this phone.</Text>
+            <TextInput
+              style={[styles.input, phone.length > 0 && !phoneValid && styles.inputError]}
+              placeholder="0712 345 678"
+              placeholderTextColor={MART.inkQuiet}
+              value={phone}
+              onChangeText={setPhone}
+              keyboardType="phone-pad"
+              editable={!polling}
+              accessibilityLabel="M-Pesa phone number"
+            />
+            {phone.length > 0 && !phoneValid ? (
+              <Text style={styles.fieldError}>
+                Enter a Kenyan mobile, e.g. 0712 345 678.
+              </Text>
+            ) : null}
+
+            {polling ? (
+              <View style={styles.waiting}>
+                <ActivityIndicator color={mart.primary} />
+                <View style={styles.waitingCopy}>
+                  <Text style={styles.waitingTitle}>Check your phone</Text>
+                  <Text style={styles.waitingBody}>
+                    Enter your M-Pesa PIN to confirm. This screen updates on its own.
+                  </Text>
+                </View>
+              </View>
+            ) : (
+              <Pressable
+                onPress={() => void handlePayOnline()}
+                disabled={!canPay}
+                accessibilityRole="button"
+                style={({ pressed }) => [
+                  styles.cta,
+                  { backgroundColor: mart.primary },
+                  !canPay && styles.ctaDisabled,
+                  pressed && styles.ctaPressed,
+                ]}
+              >
+                <Text style={styles.ctaLabel}>
+                  {stkPush.isPending
+                    ? 'Sending prompt…'
+                    : `Pay ${formatMoney(currency, grandTotal)}`}
+                </Text>
+              </Pressable>
+            )}
+
+            {stkPush.error ? (
+              <Text accessibilityLiveRegion="polite" style={styles.error}>
+                {stkPush.error instanceof Error
+                  ? stkPush.error.message
+                  : 'We could not send the M-Pesa prompt. Try again.'}
+              </Text>
+            ) : null}
+
+            {status?.paymentFailed ? (
+              <View style={styles.failed}>
+                <Ionicons name="alert-circle-outline" size={20} color={MART.danger} />
+                <View style={styles.waitingCopy}>
+                  <Text style={styles.failedTitle}>Payment did not go through</Text>
+                  <Text style={styles.failedBody}>
+                    {status.failureReason || 'Nothing was charged. You can send the prompt again.'}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        {manualMethods.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>
+              {onlineMethods.length > 0 ? 'Or pay at the counter' : 'Pay at the counter'}
+            </Text>
+            {manualMethods.map((method) => (
+              <View key={method.configId} style={styles.manualCard}>
+                <Text style={styles.manualLabel}>{method.label}</Text>
+                <Text style={styles.manualBody}>{method.instructions}</Text>
+                {method.tillNumber ? (
+                  <Text selectable style={styles.manualTill}>
+                    Till {method.tillNumber}
+                  </Text>
+                ) : null}
+              </View>
             ))}
           </View>
+        ) : null}
 
-          {polling ? (
-            <View style={styles.statusBox}>
-              <ActivityIndicator color="#28a745" />
-              <Text style={styles.statusText}>Waiting for M-Pesa confirmation...</Text>
-            </View>
-          ) : (
-            <Button
-              title={stkPush.isPending ? 'Requesting...' : 'Request STK Push'}
-              onPress={handlePayOnline}
-              disabled={!phone || !selectedOnline || stkPush.isPending}
-              style={styles.button}
-            />
-          )}
-
-          {stkPush.error && (
-            <Text style={styles.error}>
-              {stkPush.error instanceof Error ? stkPush.error.message : 'Payment request failed'}
+        {onlineMethods.length === 0 && manualMethods.length === 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>No payment method set up</Text>
+            <Text style={styles.manualBody}>
+              Your order is saved. Pay at the counter and mention order #
+              {orderId.slice(-8).toUpperCase()}.
             </Text>
-          )}
-
-          {status?.paymentFailed && (
-            <Text style={styles.error}>Payment failed: {status.failureReason}</Text>
-          )}
-        </View>
-      )}
-
-      {manualMethods.length > 0 && (
-        <View style={styles.section}>
-          <Text variant="h2">Manual Payment</Text>
-          {manualMethods.map((method) => (
-            <View key={method.configId} style={styles.manualCard}>
-              <Text style={styles.manualLabel}>{method.label}</Text>
-              <Text variant="body">{method.instructions}</Text>
-              {method.tillNumber && <Text variant="muted">Till: {method.tillNumber}</Text>}
-            </View>
-          ))}
-        </View>
-      )}
-    </ScrollView>
-  );
-}
-
-function TouchableMethod({
-  label,
-  selected,
-  onPress,
-}: {
-  label: string;
-  selected: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <TouchableOpacity
-      style={[styles.methodChip, selected && styles.methodChipSelected]}
-      onPress={onPress}
-      accessibilityRole="radio"
-      accessibilityState={{ selected }}
-    >
-      <Text style={selected ? styles.methodTextSelected : undefined}>{label}</Text>
-    </TouchableOpacity>
+          </View>
+        ) : null}
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  shell: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: MART.paper,
+  },
+  loading: {
+    paddingHorizontal: GUTTER,
+    paddingTop: SPACE.lg,
+    gap: SPACE.lg,
   },
   content: {
-    padding: 16,
-    paddingBottom: 32,
+    paddingHorizontal: GUTTER,
+    paddingTop: SPACE.md,
   },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+  amount: {
+    padding: SPACE.xl,
+    borderRadius: RADIUS.md,
   },
-  header: {
-    marginBottom: 16,
+  amountLabel: {
+    ...TYPE.meta,
+    color: ON_BRAND.secondary,
   },
-  total: {
-    fontWeight: '700',
-    color: '#28a745',
+  amountValue: {
+    ...TYPE.display,
+    marginTop: SPACE.xxs,
+    fontSize: 34,
+    lineHeight: 38,
+    color: ON_BRAND.primary,
+  },
+  amountMeta: {
+    ...TYPE.meta,
+    marginTop: SPACE.sm,
+    color: ON_BRAND.secondary,
+    fontVariant: ['tabular-nums'],
   },
   section: {
-    marginTop: 24,
+    marginTop: SPACE.xxl,
   },
-  input: {
-    borderWidth: 1,
-    borderColor: '#dee2e6',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    marginTop: 12,
-    minHeight: 48,
+  sectionTitle: {
+    ...TYPE.heading,
+    marginBottom: SPACE.md,
+    color: MART.ink,
   },
   methods: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginTop: 12,
+    gap: SPACE.sm,
+    marginBottom: SPACE.lg,
   },
   methodChip: {
-    borderWidth: 1,
-    borderColor: '#dee2e6',
-    borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    marginRight: 8,
-    marginBottom: 8,
     minHeight: 44,
+    paddingHorizontal: SPACE.lg,
+    justifyContent: 'center',
+    borderRadius: RADIUS.md,
+    ...ELEVATION.ruled,
+  },
+  methodText: {
+    ...TYPE.label,
+    color: MART.ink,
+  },
+  methodTextOn: {
+    color: ON_BRAND.primary,
+  },
+  fieldLabel: {
+    ...TYPE.label,
+    fontWeight: '700',
+    color: MART.ink,
+  },
+  fieldHint: {
+    ...TYPE.meta,
+    marginTop: SPACE.xxs,
+    color: MART.inkQuiet,
+  },
+  input: {
+    ...TYPE.heading,
+    marginTop: SPACE.sm,
+    minHeight: 52,
+    paddingHorizontal: SPACE.md,
+    borderWidth: 1,
+    borderColor: MART.border,
+    borderRadius: RADIUS.md,
+    backgroundColor: MART.paperElevated,
+    color: MART.ink,
+    letterSpacing: 0.4,
+  },
+  inputError: {
+    borderColor: MART.danger,
+  },
+  fieldError: {
+    ...TYPE.meta,
+    marginTop: SPACE.xs,
+    color: MART.danger,
+  },
+  waiting: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SPACE.md,
+    marginTop: SPACE.xl,
+    padding: SPACE.lg,
+    borderRadius: RADIUS.md,
+    ...ELEVATION.ruled,
+  },
+  waitingCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  waitingTitle: {
+    ...TYPE.label,
+    fontSize: 14,
+    fontWeight: '700',
+    color: MART.ink,
+  },
+  waitingBody: {
+    ...TYPE.meta,
+    marginTop: SPACE.xxs,
+    lineHeight: 18,
+    color: MART.inkMuted,
+  },
+  cta: {
+    marginTop: SPACE.xl,
+    minHeight: 52,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
     justifyContent: 'center',
   },
-  methodChipSelected: {
-    backgroundColor: '#28a745',
-    borderColor: '#28a745',
+  ctaDisabled: {
+    opacity: 0.4,
   },
-  methodTextSelected: {
-    color: '#fff',
-    fontWeight: '600',
+  ctaPressed: {
+    opacity: 0.9,
   },
-  button: {
-    marginTop: 16,
-  },
-  statusBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 16,
-    padding: 12,
-    backgroundColor: '#f8f9fa',
-    borderRadius: 8,
-  },
-  statusText: {
-    marginLeft: 12,
+  ctaLabel: {
+    ...TYPE.heading,
+    color: ON_BRAND.primary,
   },
   error: {
-    color: '#dc3545',
-    marginTop: 12,
+    ...TYPE.meta,
+    marginTop: SPACE.md,
+    color: MART.danger,
+  },
+  failed: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SPACE.md,
+    marginTop: SPACE.lg,
+    padding: SPACE.lg,
+    borderRadius: RADIUS.md,
+    backgroundColor: MART.dangerSurface,
+  },
+  failedTitle: {
+    ...TYPE.label,
+    fontSize: 14,
+    fontWeight: '700',
+    color: MART.danger,
+  },
+  failedBody: {
+    ...TYPE.meta,
+    marginTop: SPACE.xxs,
+    lineHeight: 18,
+    color: MART.ink,
   },
   manualCard: {
-    backgroundColor: '#f8f9fa',
-    borderRadius: 8,
-    padding: 16,
-    marginTop: 12,
+    marginBottom: SPACE.sm,
+    padding: SPACE.lg,
+    borderRadius: RADIUS.md,
+    ...ELEVATION.ruled,
   },
   manualLabel: {
-    fontWeight: '600',
-    marginBottom: 4,
+    ...TYPE.label,
+    fontSize: 14,
+    fontWeight: '700',
+    color: MART.ink,
+  },
+  manualBody: {
+    ...TYPE.body,
+    marginTop: SPACE.xs,
+    color: MART.inkMuted,
+  },
+  manualTill: {
+    ...TYPE.heading,
+    marginTop: SPACE.sm,
+    color: MART.ink,
+    fontVariant: ['tabular-nums'],
   },
 });

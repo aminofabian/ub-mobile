@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import type { MartPalette } from '../theme/mart';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { GUTTER, ON_BRAND, RADIUS, SPACE, TYPE, type MartPalette } from '../theme/mart';
 
 export function MartHero({
   mart,
@@ -12,30 +12,30 @@ export function MartHero({
 }) {
   const headline =
     mart.tagline?.replace(/^Palmart\s*[|—–-]\s*/i, '').trim() ||
-    'Your Everyday Mini Mart for Groceries, Snacks & Essentials';
+    'Your everyday mini mart, now in your pocket';
   const body =
     mart.description?.trim() ||
-    'Fresh products, fair prices, and fast delivery — from your neighborhood store, now in your pocket.';
+    'Fresh products, fair prices, and fast delivery from your neighbourhood store.';
 
   return (
     <View style={[styles.hero, { backgroundColor: mart.primary }]}>
       <Text style={styles.headline}>{headline}</Text>
-      <Text style={styles.subhead}>Right to your door.</Text>
       <Text numberOfLines={3} style={styles.body}>
         {body}
       </Text>
+      <View style={[styles.rule, { backgroundColor: mart.gold }]} />
       <Pressable
         onPress={onShopNow}
         accessibilityRole="button"
-        accessibilityLabel="Shop now"
+        accessibilityLabel="Start shopping"
         style={({ pressed }) => [
           styles.cta,
           { backgroundColor: mart.accent },
           pressed && styles.ctaPressed,
         ]}
       >
-        <Text style={styles.ctaLabel}>Shop now</Text>
-        <Ionicons name="arrow-forward" size={14} color="#0f172a" />
+        <Text style={styles.ctaLabel}>Start shopping</Text>
+        <Ionicons name="arrow-forward" size={14} color="#1a1204" />
       </Pressable>
     </View>
   );
@@ -43,50 +43,46 @@ export function MartHero({
 
 const styles = StyleSheet.create({
   hero: {
-    marginHorizontal: 12,
-    marginTop: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 18,
-    borderRadius: 4,
+    marginHorizontal: GUTTER,
+    paddingHorizontal: SPACE.xl,
+    paddingTop: SPACE.xl,
+    paddingBottom: SPACE.xl,
+    borderRadius: RADIUS.md,
   },
   headline: {
-    color: '#fff',
-    fontSize: 22,
-    lineHeight: 26,
-    fontWeight: '700',
-    letterSpacing: -0.4,
-    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
-  },
-  subhead: {
-    marginTop: 6,
-    color: 'rgba(255,255,255,0.72)',
-    fontSize: 16,
-    fontStyle: 'italic',
-    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
+    ...TYPE.display,
+    fontSize: 27,
+    lineHeight: 32,
+    color: ON_BRAND.primary,
   },
   body: {
-    marginTop: 10,
-    color: 'rgba(255,255,255,0.58)',
-    fontSize: 12,
-    lineHeight: 17,
+    ...TYPE.body,
+    marginTop: SPACE.sm,
+    color: ON_BRAND.secondary,
     maxWidth: 340,
+  },
+  rule: {
+    marginTop: SPACE.lg,
+    width: 44,
+    height: 2,
   },
   cta: {
     alignSelf: 'flex-start',
-    marginTop: 14,
-    minHeight: 36,
-    paddingHorizontal: 14,
+    marginTop: SPACE.lg,
+    minHeight: 44,
+    paddingHorizontal: SPACE.lg,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    borderRadius: 3,
+    gap: SPACE.sm,
+    borderRadius: RADIUS.md,
   },
   ctaPressed: {
-    transform: [{ scale: 0.98 }],
+    opacity: 0.88,
   },
   ctaLabel: {
-    color: '#0f172a',
-    fontSize: 13,
+    ...TYPE.label,
+    fontSize: 14,
     fontWeight: '700',
+    color: '#1a1204',
   },
 });

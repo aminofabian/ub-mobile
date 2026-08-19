@@ -1,7 +1,7 @@
 import React from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { phase_15_storefront_public } from '@kiosk/types';
-import { MART } from '../theme/mart';
+import { ELEVATION, MART, RADIUS, SPACE, TYPE } from '../theme/mart';
 import { formatMoney } from '../lib/media';
 import { QuickAddButton } from './QuickAddButton';
 
@@ -39,21 +39,19 @@ export function ProductCard({
             accessibilityLabel={name}
           />
         ) : (
-          <View style={styles.placeholder}>
-            <Text style={styles.placeholderLetter}>{name.slice(0, 1).toUpperCase()}</Text>
-          </View>
+          <Text style={styles.placeholderLetter}>{name.slice(0, 1).toUpperCase()}</Text>
         )}
       </View>
       <View style={styles.content}>
         <Text numberOfLines={2} style={styles.name}>
           {name}
         </Text>
-        <View style={styles.footer}>
-          <Text style={styles.price}>{formatMoney(currency, price)}</Text>
-          {item.id ? (
+        <Text style={styles.price}>{formatMoney(currency, price)}</Text>
+        {item.id ? (
+          <View style={styles.addRow}>
             <QuickAddButton itemId={item.id} name={name} accent={accent} />
-          ) : null}
-        </View>
+          </View>
+        ) : null}
       </View>
     </Pressable>
   );
@@ -62,63 +60,51 @@ export function ProductCard({
 const styles = StyleSheet.create({
   card: {
     flex: 1,
-    backgroundColor: MART.paperElevated,
-    borderRadius: MART.radius,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: MART.border,
+    borderRadius: RADIUS.md,
+    ...ELEVATION.ruled,
   },
   pressed: {
-    opacity: 0.92,
+    borderColor: MART.borderStrong,
   },
   imageWell: {
     width: '100%',
     aspectRatio: 1,
+    overflow: 'hidden',
+    borderTopLeftRadius: RADIUS.md,
+    borderTopRightRadius: RADIUS.md,
     backgroundColor: MART.paper,
     alignItems: 'center',
     justifyContent: 'center',
   },
   image: {
-    width: '88%',
-    height: '88%',
-  },
-  placeholder: {
-    width: 40,
-    height: 40,
-    borderWidth: 1,
-    borderColor: MART.border,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: '84%',
+    height: '84%',
   },
   placeholderLetter: {
-    fontSize: 16,
-    fontWeight: '700',
+    ...TYPE.title,
     color: MART.inkQuiet,
   },
   content: {
-    paddingHorizontal: 10,
-    paddingTop: 8,
-    paddingBottom: 10,
-    gap: 8,
+    paddingHorizontal: SPACE.md,
+    paddingTop: SPACE.md,
+    paddingBottom: SPACE.md,
+    gap: SPACE.sm,
   },
   name: {
-    fontSize: 13,
-    lineHeight: 18,
+    ...TYPE.label,
     fontWeight: '500',
     color: MART.ink,
     minHeight: 36,
   },
-  footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
   price: {
-    flexShrink: 1,
-    fontSize: 14,
-    fontWeight: '700',
+    ...TYPE.heading,
+    fontSize: 15,
+    lineHeight: 20,
+    flexShrink: 0,
+    fontVariant: ['tabular-nums'],
     color: MART.ink,
+  },
+  addRow: {
+    alignItems: 'flex-end',
   },
 });

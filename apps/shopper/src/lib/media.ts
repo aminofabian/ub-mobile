@@ -8,7 +8,20 @@ export function categoryIconImageUrl(icon: string | null | undefined): string | 
 export function formatMoney(currency: string, amount: number): string {
   const code = currency.trim() || 'KES';
   const prefix = code === 'KES' ? 'KSh' : code;
-  return `${prefix} ${amount.toFixed(2)}`;
+  const body = amount.toLocaleString('en-KE', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return `${prefix} ${body}`;
+}
+
+export function moneyFromUnknown(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
 }
 
 export function itemCountLabel(count: number | null | undefined): string {

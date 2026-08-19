@@ -1,33 +1,26 @@
 import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
-import React, { useMemo, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Linking,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { phase_15_storefront_public } from '@kiosk/types';
 import { useTenant } from '../lib/TenantContext';
 import { useStorefront } from '../hooks/useStorefront';
 import { useCategories } from '../hooks/useCategories';
 import { useCatalogTypes } from '../hooks/useCatalogTypes';
-import { useItems } from '../hooks/useItems';
-import { useCart } from '../hooks/useCart';
+import { useInfiniteItems } from '../hooks/useInfiniteItems';
 import { useAirtimeConfig } from '../hooks/useAirtimeConfig';
 import { AislePhotoRail } from '../components/AislePhotoRail';
+import { CounterServices } from '../components/CounterServices';
 import { MartHero } from '../components/MartHero';
-import { AisleDealsBar, MartHomeHeader, MartSearchField } from '../components/MartChrome';
-import { ProductGrid } from '../components/ProductGrid';
+import { MartHomeHeader, MartSearchField } from '../components/MartChrome';
+import { ProductCard } from '../components/ProductCard';
+import { ProductGridSkeleton, SkeletonScope, StorefrontBodySkeleton } from '../components/Skeleton';
+import { SectionHead } from '../components/SectionHead';
 import { TypeRail } from '../components/TypeRail';
-import { MART, martFromTenant } from '../theme/mart';
+import { GUTTER, MART, martFromTenant, SPACE, TYPE } from '../theme/mart';
+import { useBasketFloatReserve } from '../components/BasketFloat';
 import { MainTabParamList, RootStackParamList } from '../navigation/types';
 
 type Item = phase_15_storefront_public.components['schemas']['PublicCatalogItemCard'];
@@ -37,12 +30,16 @@ type NavigationProp = CompositeNavigationProp<
   NativeStackNavigationProp<RootStackParamList>
 >;
 
+/** The grid pads each cell, so the list itself stops short of the page gutter. */
+const CELL_PAD = SPACE.xs;
+const LIST_PAD = GUTTER - CELL_PAD;
+
 export function HomeScreen() {
   const tenant = useTenant();
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
-  const catalogY = useRef(0);
-  const scrollRef = useRef<ScrollView>(null);
+  const basketReserve = useBasketFloatReserve();
+  const listRef = useRef<FlatList<Item>>(null);
   const [selectedTypeId, setSelectedTypeId] = useState<string | null>(null);
   const [dealsOnly, setDealsOnly] = useState(false);
 
@@ -63,16 +60,9 @@ export function HomeScreen() {
     isLoading: typesLoading,
     refetch: refetchTypes,
   } = useCatalogTypes(tenant.slug);
-  const {
-    data: itemsData,
-    isLoading: itemsLoading,
-    error: itemsError,
-    refetch: refetchItems,
-  } = useItems(tenant.slug, {
-    limit: 40,
+  const catalog = useInfiniteItems(tenant.slug, {
     typeId: selectedTypeId ?? undefined,
   });
-  const { itemCount } = useCart(tenant.slug);
   const { data: airtime } = useAirtimeConfig(tenant.slug);
 
   const mart = useMemo(
@@ -84,149 +74,192 @@ export function HomeScreen() {
     [tenant, storefront?.announcement, storefront?.businessName]
   );
 
-  const isLoading = storefrontLoading || categoriesLoading || itemsLoading || typesLoading;
-  const error = storefrontError || categoriesError || itemsError;
+  const bootLoading =
+    (storefrontLoading || categoriesLoading || typesLoading || catalog.isLoading) &&
+    !storefront &&
+    !catalog.items.length;
+  const error = storefrontError || categoriesError || catalog.error;
   const types = typesData?.types?.filter((t) => t.label?.trim()) ?? [];
-  const catalogItems = dealsOnly
-    ? (storefront?.featured ?? []).filter((item) => Boolean(item.id))
-    : (itemsData?.items ?? []);
-  const currency = itemsData?.currency ?? storefront?.currency ?? 'KES';
+  const featured = (storefront?.featured ?? []).filter((item) => Boolean(item.id));
+  const catalogItems = dealsOnly ? featured : catalog.items;
+  const currency = catalog.currency ?? storefront?.currency ?? 'KES';
+  const totalCount = dealsOnly ? featured.length : catalog.totalCount;
+  const activeType = types.find((type) => type.id === selectedTypeId);
 
-  function handleRefresh() {
+  const handleRefresh = useCallback(() => {
     refetchStorefront();
     refetchCategories();
-    refetchItems();
     refetchTypes();
-  }
+    void catalog.refetch();
+  }, [refetchStorefront, refetchCategories, refetchTypes, catalog.refetch]);
 
   function handleCategorySelect(category: Category) {
     if (category.id) {
       navigation.navigate('Category', {
         categoryId: category.id,
-        categoryName: category.name ?? 'Category',
+        categoryName: category.name ?? 'Aisle',
+        categoryIcon: category.icon,
       });
     }
   }
 
-  function handleItemPress(item: Item) {
-    if (item.id) {
-      navigation.navigate('ProductDetail', { itemId: item.id });
+  const handleItemPress = useCallback(
+    (item: Item) => {
+      if (item.id) {
+        navigation.navigate('ProductDetail', { itemId: item.id });
+      }
+    },
+    [navigation]
+  );
+
+  function loadMore() {
+    if (dealsOnly) return;
+    if (catalog.hasNextPage && !catalog.isFetchingNextPage) {
+      void catalog.fetchNextPage();
     }
   }
 
-  function scrollToCatalog() {
-    scrollRef.current?.scrollTo({ y: Math.max(catalogY.current - 12, 0), animated: true });
-  }
+  const shelfTitle = dealsOnly
+    ? 'This week’s deals'
+    : activeType
+      ? activeType.label
+      : 'Everything in store';
+  const shelfHint =
+    typeof totalCount === 'number' && totalCount > catalogItems.length
+      ? `Showing ${catalogItems.length} of ${totalCount}`
+      : `${catalogItems.length} ${catalogItems.length === 1 ? 'item' : 'items'}`;
+
+  const listHeader = (
+    <View style={styles.headerBleed}>
+      <MartHero
+        mart={mart}
+        onShopNow={() => listRef.current?.scrollToOffset({ offset: 420, animated: true })}
+      />
+
+      <View style={styles.services}>
+        <CounterServices
+          airtimeAvailable={Boolean(airtime?.available)}
+          primary={mart.primary}
+          accent={mart.accent}
+          onAirtime={() => navigation.navigate('Airtime')}
+          onTokens={() => navigation.navigate('Kplc')}
+        />
+      </View>
+
+      {(categories?.categories?.length ?? 0) > 0 ? (
+        <>
+          <SectionHead title="Shop by aisle" hint="Tap an aisle to browse its shelves" />
+          <AislePhotoRail
+            categories={categories?.categories ?? []}
+            primary={mart.primary}
+            accent={mart.accent}
+            onSelect={handleCategorySelect}
+          />
+        </>
+      ) : null}
+
+      {types.length > 0 ? (
+        <>
+          <SectionHead
+            title="Departments"
+            actionLabel={activeType ? 'Clear' : undefined}
+            onAction={activeType ? () => setSelectedTypeId(null) : undefined}
+          />
+          <TypeRail
+            types={types}
+            primary={mart.primary}
+            selectedId={selectedTypeId}
+            onSelect={(type) => {
+              setDealsOnly(false);
+              setSelectedTypeId((current) => (current === type.id ? null : type.id));
+            }}
+          />
+        </>
+      ) : null}
+
+      <SectionHead
+        title={shelfTitle}
+        hint={shelfHint}
+        actionLabel={dealsOnly ? 'Show all' : featured.length > 0 ? 'Deals only' : undefined}
+        onAction={
+          dealsOnly
+            ? () => setDealsOnly(false)
+            : featured.length > 0
+              ? () => {
+                  setDealsOnly(true);
+                  setSelectedTypeId(null);
+                }
+              : undefined
+        }
+      />
+    </View>
+  );
 
   return (
     <View style={[styles.shell, { paddingTop: insets.top }]}>
-      <MartHomeHeader
-        mart={mart}
-        cartCount={itemCount}
-        onCart={() => navigation.navigate('Cart')}
-        onAccount={() => navigation.navigate('Account')}
-      />
+      <MartHomeHeader mart={mart} />
       <MartSearchField primary={mart.primary} onPress={() => navigation.navigate('Search')} />
-      <AisleDealsBar
-        primary={mart.primary}
-        categories={categories?.categories ?? []}
-        onSelectCategory={handleCategorySelect}
-        onDeals={() => {
-          setDealsOnly(true);
-          setSelectedTypeId(null);
-          requestAnimationFrame(scrollToCatalog);
-        }}
-      />
 
-      <ScrollView
-        ref={scrollRef}
-        style={styles.scroll}
-        contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl
-            refreshing={isLoading && Boolean(storefront || itemsData)}
-            onRefresh={handleRefresh}
-            tintColor={mart.primary}
-          />
-        }
-      >
-        <MartHero mart={mart} onShopNow={scrollToCatalog} />
-
-        {isLoading && !storefront && !categories && !itemsData ? (
-          <ActivityIndicator size="large" color={mart.primary} style={styles.loader} />
-        ) : error ? (
-          <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>Couldn’t load the store. Pull down to retry.</Text>
-          </View>
-        ) : (
-          <>
-            {types.length > 0 ? (
-              <View style={styles.section}>
-                <TypeRail
-                  types={types}
-                  primary={mart.primary}
-                  selectedId={selectedTypeId}
-                  onSelect={(type) => {
-                    setDealsOnly(false);
-                    setSelectedTypeId((current) => (current === type.id ? null : type.id));
-                  }}
-                />
-              </View>
-            ) : null}
-
-            {(categories?.categories?.length ?? 0) > 0 ? (
-              <View style={styles.section}>
-                <AislePhotoRail
-                  categories={categories?.categories ?? []}
-                  primary={mart.primary}
-                  accent={mart.accent}
-                  onSelect={handleCategorySelect}
-                />
-              </View>
-            ) : null}
-
-            <View
-              onLayout={(event) => {
-                catalogY.current = event.nativeEvent.layout.y;
-              }}
-            >
-              {catalogItems.length > 0 ? (
-                <ProductGrid
-                  title={dealsOnly ? 'Deals' : selectedTypeId ? 'In this aisle' : 'Featured'}
-                  items={catalogItems}
-                  currency={currency}
-                  accent={mart.primary}
-                  shownCount={catalogItems.length}
-                  totalCount={
-                    dealsOnly
-                      ? catalogItems.length
-                      : (itemsData as { totalCount?: number | null } | undefined)?.totalCount
-                  }
-                  onItemPress={handleItemPress}
-                />
-              ) : (
-                <Text style={styles.emptyText}>No products available right now.</Text>
-              )}
+      {bootLoading ? (
+        <StorefrontBodySkeleton />
+      ) : error ? (
+        <View style={styles.errorBlock}>
+          <Text style={styles.errorTitle}>We could not load the store</Text>
+          <Text style={styles.errorBody}>Pull down to try again.</Text>
+        </View>
+      ) : (
+        <FlatList
+          ref={listRef}
+          data={catalogItems}
+          keyExtractor={(item, index) => item.id ?? `${item.name ?? 'item'}-${index}`}
+          numColumns={2}
+          style={styles.scroll}
+          contentContainerStyle={[styles.content, { paddingBottom: SPACE.xxxl + basketReserve }]}
+          ListHeaderComponent={listHeader}
+          renderItem={({ item }) => (
+            <View style={styles.cell}>
+              <ProductCard
+                item={item}
+                currency={currency}
+                accent={mart.primary}
+                onPress={handleItemPress}
+              />
             </View>
-          </>
-        )}
-      </ScrollView>
-
-      {airtime?.available ? (
-        <Pressable
-          onPress={() => {
-            void Linking.openURL(`https://${tenant.host}/shop/airtime`);
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Buy airtime"
-          style={[styles.airtime, { bottom: 16 }]}
-        >
-          <View style={[styles.airtimeIcon, { backgroundColor: mart.accent }]}>
-            <Ionicons name="cellular" size={16} color="#fff" />
-          </View>
-          <Text style={styles.airtimeLabel}>INSTANT Airtime</Text>
-        </Pressable>
-      ) : null}
+          )}
+          ListEmptyComponent={
+            <View style={styles.emptyBlock}>
+              <Text style={styles.emptyTitle}>
+                {dealsOnly ? 'No deals running today' : 'This shelf is empty'}
+              </Text>
+              <Text style={styles.emptyBody}>
+                {dealsOnly
+                  ? 'Show all to browse the rest of the store.'
+                  : 'Try another department, or pull down to refresh.'}
+              </Text>
+            </View>
+          }
+          ListFooterComponent={
+            <View style={styles.footer}>
+              {catalog.isFetchingNextPage ? (
+                <SkeletonScope label="Loading more products">
+                  <ProductGridSkeleton count={2} />
+                </SkeletonScope>
+              ) : !dealsOnly && catalogItems.length > 0 && !catalog.hasNextPage ? (
+                <Text style={styles.endText}>That is the full aisle.</Text>
+              ) : null}
+            </View>
+          }
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.45}
+          refreshControl={
+            <RefreshControl
+              refreshing={Boolean(catalog.isRefetching && catalogItems.length > 0)}
+              onRefresh={handleRefresh}
+              tintColor={mart.primary}
+            />
+          }
+        />
+      )}
     </View>
   );
 }
@@ -241,59 +274,53 @@ const styles = StyleSheet.create({
     backgroundColor: MART.paper,
   },
   content: {
-    paddingTop: 10,
-    paddingBottom: 88,
+    paddingTop: SPACE.md,
+    paddingBottom: SPACE.xxxl,
+    paddingHorizontal: LIST_PAD,
   },
-  section: {
-    marginTop: 12,
+  /** Sections own the page gutter, so the header escapes the grid's cell pad. */
+  headerBleed: {
+    marginHorizontal: -LIST_PAD,
   },
-  loader: {
-    marginTop: 48,
+  services: {
+    marginTop: SPACE.lg,
   },
-  errorContainer: {
-    padding: 24,
-    alignItems: 'center',
+  cell: {
+    width: '50%',
+    padding: CELL_PAD,
   },
-  errorText: {
-    color: '#b42318',
-    textAlign: 'center',
-    fontSize: 14,
+  errorBlock: {
+    paddingHorizontal: GUTTER,
+    paddingTop: SPACE.xxl,
   },
-  emptyText: {
-    textAlign: 'center',
-    marginTop: 48,
-    color: MART.inkQuiet,
-  },
-  airtime: {
-    position: 'absolute',
-    left: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 8,
-    paddingLeft: 8,
-    paddingRight: 14,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.96)',
-    borderWidth: 1,
-    borderColor: MART.border,
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
-  },
-  airtimeIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  airtimeLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.4,
+  errorTitle: {
+    ...TYPE.heading,
     color: MART.ink,
+  },
+  errorBody: {
+    ...TYPE.body,
+    marginTop: SPACE.xs,
+    color: MART.inkMuted,
+  },
+  emptyBlock: {
+    paddingHorizontal: CELL_PAD,
+    paddingTop: SPACE.lg,
+  },
+  emptyTitle: {
+    ...TYPE.heading,
+    color: MART.ink,
+  },
+  emptyBody: {
+    ...TYPE.body,
+    marginTop: SPACE.xs,
+    color: MART.inkMuted,
+  },
+  footer: {
+    paddingVertical: SPACE.xl,
+    alignItems: 'center',
+  },
+  endText: {
+    ...TYPE.meta,
+    color: MART.inkQuiet,
   },
 });

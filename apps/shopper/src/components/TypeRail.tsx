@@ -3,7 +3,7 @@ import React from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { CatalogType } from '../api/storefront';
 import { categoryIconImageUrl, itemCountLabel } from '../lib/media';
-import { MART } from '../theme/mart';
+import { ELEVATION, GUTTER, MART, RADIUS, SPACE, TYPE, tint } from '../theme/mart';
 
 function titleCase(label: string): string {
   return label
@@ -60,19 +60,14 @@ export function TypeRail({
             accessibilityLabel={`${label}, ${itemCountLabel(type.itemCount)}`}
             style={[
               styles.chip,
-              selected && { borderColor: `${primary}4D`, backgroundColor: `${primary}12` },
+              selected && { borderColor: primary, backgroundColor: tint(primary, 0.07) },
             ]}
           >
-            <View
-              style={[
-                styles.iconWell,
-                { backgroundColor: selected ? `${primary}1F` : `${primary}17` },
-              ]}
-            >
+            <View style={[styles.iconWell, { backgroundColor: tint(primary, 0.1) }]}>
               {image ? (
                 <Image source={{ uri: image }} style={styles.iconImage} resizeMode="contain" />
               ) : (
-                <Ionicons name={iconForLabel(label)} size={22} color={primary} />
+                <Ionicons name={iconForLabel(label)} size={20} color={primary} />
               )}
             </View>
             <View style={styles.copy}>
@@ -90,45 +85,44 @@ export function TypeRail({
 
 const styles = StyleSheet.create({
   row: {
-    paddingHorizontal: 12,
-    gap: 8,
+    paddingHorizontal: GUTTER,
+    gap: SPACE.sm,
   },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    borderWidth: 1,
-    borderColor: MART.border,
-    backgroundColor: MART.paperElevated,
-    borderRadius: MART.radius,
-    maxWidth: 168,
+    gap: SPACE.sm,
+    minHeight: 56,
+    paddingVertical: SPACE.sm,
+    paddingLeft: SPACE.sm,
+    paddingRight: SPACE.md,
+    borderRadius: RADIUS.md,
+    maxWidth: 190,
+    ...ELEVATION.ruled,
   },
   iconWell: {
-    width: 40,
-    height: 40,
-    borderRadius: MART.radius,
+    width: 38,
+    height: 38,
+    borderRadius: RADIUS.sm,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
   iconImage: {
-    width: 32,
-    height: 32,
+    width: 30,
+    height: 30,
   },
   copy: {
     minWidth: 0,
-    paddingRight: 4,
+    flexShrink: 1,
   },
   label: {
-    fontSize: 12,
-    fontWeight: '700',
+    ...TYPE.label,
     color: MART.ink,
   },
   count: {
-    marginTop: 2,
-    fontSize: 10,
+    ...TYPE.meta,
+    marginTop: SPACE.xxs,
     color: MART.inkQuiet,
   },
 });
