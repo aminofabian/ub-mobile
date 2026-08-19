@@ -1,0 +1,30 @@
+{
+  "name": "@kiosk/orders",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Purchase order portal — place orders and confirm receipts — shared by Kiosk Ke mobile apps",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "react-native": "./src/index.ts",
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts --external react --external react-native --external @react-navigation/native",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@kiosk/core": "workspace:*",
+    "@kiosk/offline": "workspace:*",
+    "@kiosk/ui": "workspace:*",
+    "@react-navigation/native": "^7.0.14",
+    "react": "^19.1.0",
+    "react-native": "~0.81.5"
+  },
+  "devDependencies": {
+    "@kiosk/config": "workspace:*",
+    "@types/react": "^19.1.10",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2"
+  }
+}

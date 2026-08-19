@@ -97,6 +97,7 @@ export function App() {
   return (
     <AppNavigator
       api={api}
+      branchId={branchId!}
       onLogout={async () => {
         await logout(API_BASE_URL);
         reset();

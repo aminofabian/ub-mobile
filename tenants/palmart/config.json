@@ -5,11 +5,13 @@
   "tenantHost": "palmart.co.ke",
   "tenantHostSuffix": "palmart.co.ke",
   "apiBaseUrl": "https://api.kiosk.ke",
-  "splashBg": "#28a745",
+  "splashBg": "#164715",
+  "iconBackground": "#164715",
   "scheme": "palmart",
   "theme": {
-    "primary": "#28a745",
-    "secondary": "#1e7e34"
+    "primary": "#164715",
+    "accent": "#fd800e",
+    "gold": "#fbad00"
   },
   "apps": {
     "cashier": {
@@ -36,13 +38,15 @@
       "name": "Palmart Admin",
       "expoSlug": "palmart-admin",
       "iosBundleId": "com.palmart.admin",
-      "androidPackage": "com.palmart.admin"
+      "androidPackage": "com.palmart.admin",
+      "easProjectId": "e4b0940d-ff77-40b2-af4c-b4143ec1a49c"
     },
     "stock": {
       "name": "Palmart Stock",
       "expoSlug": "palmart-stock",
       "iosBundleId": "com.palmart.stock",
-      "androidPackage": "com.palmart.stock"
+      "androidPackage": "com.palmart.stock",
+      "easProjectId": "8a3f311d-dbac-43ea-b3f6-770533ab510f"
     }
   }
 }

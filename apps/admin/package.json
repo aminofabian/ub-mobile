@@ -18,6 +18,7 @@
   "dependencies": {
     "@kiosk/core": "workspace:*",
     "@kiosk/notifications": "workspace:*",
+    "@kiosk/orders": "workspace:*",
     "@kiosk/staff": "workspace:*",
     "@kiosk/types": "workspace:*",
     "@kiosk/ui": "workspace:*",

@@ -22,6 +22,7 @@ Monorepo for the Kiosk Ke mobile applications.
 | `@kiosk/ui` | Shared React Native UI components |
 | `@kiosk/offline` | Offline queue, sync engine, SQLite cache |
 | `@kiosk/barcode` | Barcode scanner wrapper |
+| `@kiosk/orders` | Purchase order portal — place orders and confirm receipts |
 | `@kiosk/payments` | M-Pesa STK and payment processing |
 | `@kiosk/realtime` | WebSocket realtime client |
 | `@kiosk/notifications` | Push notification registration |

@@ -36,7 +36,7 @@
     "publish:tenant": "node scripts/publish-tenant-shopper.js"
   },
   "devDependencies": {
-    "eas-cli": "^16.32.0",
+    "eas-cli": "^22.0.0",
     "sharp": "^0.35.2",
     "turbo": "^2.3.3",
     "typescript": "^5.7.2"

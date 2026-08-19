@@ -40,6 +40,8 @@ export function DashboardScreen({ navigation, api, onLogout }: Props) {
         <Text variant="h2">{lowStockCount}</Text>
       </Card>
       <Button title="Start stock take" onPress={() => navigation.navigate('StockTake')} />
+      <Button title="Place order" onPress={() => navigation.navigate('Orders')} style={styles.action} />
+      <Button title="Receive orders" variant="secondary" onPress={() => navigation.navigate('Receive')} style={styles.action} />
       <Button title="Supply batches" variant="secondary" onPress={() => navigation.navigate('Batches')} style={styles.action} />
       <Button title="Transfers" variant="secondary" onPress={() => navigation.navigate('Transfers')} style={styles.action} />
       <Button title="Sign out" variant="secondary" onPress={onLogout} style={styles.action} />

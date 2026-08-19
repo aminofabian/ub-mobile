@@ -19,6 +19,7 @@
     "@kiosk/barcode": "workspace:*",
     "@kiosk/core": "workspace:*",
     "@kiosk/offline": "workspace:*",
+    "@kiosk/orders": "workspace:*",
     "@kiosk/staff": "workspace:*",
     "@kiosk/types": "workspace:*",
     "@kiosk/ui": "workspace:*",
