@@ -42,11 +42,12 @@ export async function closeShift(
   api: ApiClient,
   shiftId: string,
   countedClosingCash: number,
-  notes?: string
+  notes?: string,
+  cashTakenOut?: number
 ): Promise<ShiftResponse> {
   return api.post<ShiftResponse>(
     `/api/v1/shifts/${shiftId}/close`,
-    { countedClosingCash, notes },
+    { countedClosingCash, notes, cashTakenOut },
     { idempotent: true }
   );
 }

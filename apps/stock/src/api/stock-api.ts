@@ -3,7 +3,9 @@ import type { ApiClient } from '@kiosk/core';
 export interface StockItem {
   id: string;
   name: string;
+  sku?: string;
   barcode?: string;
+  variantName?: string;
   stockOnHand?: number;
   lowStock?: boolean;
 }
@@ -74,17 +76,34 @@ export async function closeStockTake(api: ApiClient, sessionId: string): Promise
 export async function createTransfer(
   api: ApiClient,
   body: {
-    sourceBranchId: string;
-    destinationBranchId: string;
+    fromBranchId: string;
+    toBranchId: string;
+    notes?: string | null;
     lines: { itemId: string; quantity: number }[];
   }
 ): Promise<unknown> {
   return api.post('/api/v1/inventory/transfers', body, { idempotent: true });
 }
 
-export async function searchItems(api: ApiClient, barcode: string): Promise<StockItem[]> {
-  const response = await api.get<{ items?: StockItem[] } | StockItem[]>(
-    `/api/v1/items?barcode=${encodeURIComponent(barcode)}`
+function extractItems(response: { content?: StockItem[]; items?: StockItem[] } | StockItem[]): StockItem[] {
+  if (Array.isArray(response)) return response;
+  return response.content ?? response.items ?? [];
+}
+
+/** Catalog lookup by free-text search (name / SKU / barcode) or exact barcode. */
+export async function searchItems(
+  api: ApiClient,
+  options: { search?: string; barcode?: string; size?: number }
+): Promise<StockItem[]> {
+  const params: string[] = [];
+  const search = options.search?.trim();
+  const barcode = options.barcode?.trim();
+  if (search) params.push(`search=${encodeURIComponent(search)}`);
+  if (barcode) params.push(`barcode=${encodeURIComponent(barcode)}`);
+  params.push(`size=${String(options.size ?? 8)}`);
+  const query = params.length ? `?${params.join('&')}` : '';
+  const response = await api.get<{ content?: StockItem[]; items?: StockItem[] } | StockItem[]>(
+    `/api/v1/items${query}`
   );
-  return Array.isArray(response) ? response : (response.items ?? []);
+  return extractItems(response);
 }

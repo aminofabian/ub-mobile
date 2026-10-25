@@ -38,7 +38,7 @@ export function StockTakeScreen({ api, branchId }: Props) {
 
   const onScan = async (barcode: string) => {
     setShowScanner(false);
-    const items = await searchItems(api, barcode);
+    const items = await searchItems(api, { barcode });
     if (!items[0]) {
       Alert.alert('Not found', 'No item for this barcode');
       return;

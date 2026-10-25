@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { StyleSheet, View, Alert } from 'react-native';
+import { StyleSheet, View, Alert, TextInput } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Button, Card, Text, theme } from '@kiosk/ui';
 import type { ApiClient } from '@kiosk/core';
@@ -17,6 +17,7 @@ type Props = NativeStackScreenProps<CashierStackParamList, 'Shift'> & {
 export function ShiftScreen({ navigation, api, branchId, tenantName, onLogout }: Props) {
   const { currentShift, setShift } = usePosStore();
   const [loading, setLoading] = useState(false);
+  const [takenOut, setTakenOut] = useState('');
 
   const refreshShift = useCallback(async () => {
     setLoading(true);
@@ -49,9 +50,21 @@ export function ShiftScreen({ navigation, api, branchId, tenantName, onLogout }:
 
   const handleCloseShift = async () => {
     if (!currentShift?.id) return;
+    const removed = Number(takenOut);
+    if (!takenOut.trim() || !Number.isFinite(removed) || removed < 0) {
+      Alert.alert('Amount taken out', 'Enter the cash you are removing. Use 0 if nothing leaves the till.');
+      return;
+    }
     setLoading(true);
     try {
-      await closeShift(api, currentShift.id, currentShift.expectedClosingCash ?? 0);
+      await closeShift(
+        api,
+        currentShift.id,
+        currentShift.expectedClosingCash ?? 0,
+        undefined,
+        removed,
+      );
+      setTakenOut('');
       setShift(null);
       Alert.alert('Shift closed');
     } catch (e) {
@@ -87,6 +100,14 @@ export function ShiftScreen({ navigation, api, branchId, tenantName, onLogout }:
             title="Start selling"
             onPress={() => navigation.navigate('Pos')}
             style={styles.action}
+          />
+          <TextInput
+            value={takenOut}
+            onChangeText={setTakenOut}
+            keyboardType="decimal-pad"
+            placeholder="Amount taken out"
+            placeholderTextColor={theme.colors.textMuted}
+            style={styles.input}
           />
           <Button
             title="Close shift"
@@ -124,6 +145,15 @@ const styles = StyleSheet.create({
   },
   card: {
     marginBottom: theme.spacing.lg,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface,
+    color: theme.colors.text,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    marginBottom: theme.spacing.sm,
   },
   action: {
     marginTop: theme.spacing.sm,
