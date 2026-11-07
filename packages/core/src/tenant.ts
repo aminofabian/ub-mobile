@@ -91,7 +91,10 @@ async function resolveByHost(
     if (!response.ok) {
       return { tenant: null, attempt: new ResolveAttempt(url, response.status) };
     }
-    const body = (await response.json()) as PublicHostResolveResponse;
+    const body = (await response.json()) as PublicHostResolveResponse & { mapped?: boolean };
+    if (body?.mapped === false || !body?.tenantId) {
+      return { tenant: null, attempt: new ResolveAttempt(url, response.status) };
+    }
     return { tenant: mapHostResolve(host, body), attempt: new ResolveAttempt(url, response.status) };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Network error';
