@@ -1,4 +1,4 @@
-import { resolveTenant, type TenantContext } from './tenant';
+import { openStore, unwrapOpened, type StoreAudience, type TenantContext } from './tenant';
 
 export type TenantDeepLinkIntent = 'shop' | 'login' | 'tenant';
 
@@ -98,18 +98,20 @@ export function parseTenantDeepLink(url: string): ParsedTenantDeepLink | null {
 export async function resolveTenantFromDeepLink(
   url: string,
   baseURL: string,
-  options: { hostSuffixes?: string[] } = {}
+  options: { audience: StoreAudience }
 ): Promise<{ tenant: TenantContext; intent: TenantDeepLinkIntent } | null> {
   const parsed = parseTenantDeepLink(url);
   if (!parsed) {
     return null;
   }
 
-  const input = parsed.slug ?? parsed.host;
+  // A link that names a host is about that host. Its first label is only a guess at a slug, and for a
+  // custom domain such as shop.example.com the guess ("shop") names the wrong shop or none.
+  const input = parsed.host ?? parsed.slug;
   if (!input) {
     return null;
   }
 
-  const tenant = await resolveTenant(input, baseURL, options);
+  const tenant = unwrapOpened(await openStore(input, baseURL, { audience: options.audience }), input);
   return { tenant, intent: parsed.intent };
 }

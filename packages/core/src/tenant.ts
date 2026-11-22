@@ -1,212 +1,339 @@
-import * as SecureStore from 'expo-secure-store';
+import { onRuntimeReset, plain, secureRemove } from './storage';
+import { adoptProvisional, ensureStorageReady, removeNamespace } from './storage-schema';
+import { assertTenantId, isProvisionalId, isStorableTenantId, secureKey } from './storage-keys';
+import { readPointer, readRecents, readSnapshot, rememberTenant, writePointer, writeSnapshot } from './tenant-store';
+import { describeStoreResult, previewStore } from './tenant-resolve';
+import type { StoreAudience, StoreResult, StoreSnapshot, TenantContext, UnsentSummary } from './tenant-types';
 
-export interface TenantContext {
-  businessId: string;
-  slug: string;
-  host: string;
-  displayName: string;
-  branding: Record<string, unknown>;
-}
+export type {
+  StoreAudience,
+  StoreResult,
+  StoreSnapshot,
+  TenantContext,
+  UnavailableReason,
+  UnsentSummary,
+} from './tenant-types';
+export { classifyStore, describeStoreResult, parseStoreInput, previewStore } from './tenant-resolve';
+export type { PreviewOptions, StoreQuery } from './tenant-resolve';
 
-interface PublicHostResolveResponse {
-  tenantId: string;
-  tenantName: string;
-  slug: string;
-  branding?: { displayName?: string | null };
-  storefrontEnabled?: boolean;
-}
+/**
+ * Which shop this phone is working in (plan §5.2).
+ *
+ * One shop is active at a time. Everything that belongs to a shop (tokens, till id, profile, queued
+ * sales) is stored under that shop's id, so switching shops never mixes them. The record of the
+ * active shop is kept on the device, which is why the app opens offline.
+ *
+ * Nothing here guesses. A shop is found by the address or name the person typed, the server answers,
+ * and the answer is a StoreResult. Only a "found" result can become the active shop.
+ */
 
-interface PublicStorefrontResponse {
-  businessName: string;
-  slug: string;
-  label?: string | null;
-  catalogBranchId?: string;
-}
+export type SwitchResult =
+  | { kind: 'switched'; store: StoreSnapshot | null }
+  | { kind: 'blocked'; reason: 'unsent_sales'; unsent: UnsentSummary };
 
-const TENANT_KEY = 'kiosk.tenant';
+export type OpenStoreResult =
+  | { kind: 'opened'; store: StoreSnapshot }
+  | { kind: 'blocked'; reason: 'unsent_sales'; unsent: UnsentSummary }
+  | Exclude<StoreResult, { kind: 'found' }>;
 
-const DEFAULT_HOST_SUFFIXES = ['localhost', 'palmart.co.ke', 'kiosk.ke'];
+export type UnsentProbe = (tenantId: string) => Promise<UnsentSummary>;
 
-function normalizeSlug(input: string): string {
-  return input.trim().toLowerCase().replace(/^https?:\/\//, '').split('/')[0]?.split('.')[0] ?? '';
-}
+export class StoreLookupError extends Error {
+  readonly result: Exclude<StoreResult, { kind: 'found' }>;
 
-function hostFromSlugAndSuffix(slug: string, suffix: string): string {
-  const clean = suffix.trim().toLowerCase().replace(/^\./, '');
-  if (!clean) {
-    return slug;
-  }
-  // Apex / already-qualified hosts: "palmart" + "palmart.co.ke" → palmart.co.ke
-  if (clean === slug || clean.startsWith(`${slug}.`)) {
-    return clean;
-  }
-  return `${slug}.${clean}`;
-}
-
-function hostCandidates(input: string, extraSuffixes: string[] = []): string[] {
-  const trimmed = input.trim().toLowerCase();
-  if (trimmed.includes('.')) {
-    return [trimmed.replace(/^https?:\/\//, '').split('/')[0] ?? trimmed];
-  }
-  const slug = normalizeSlug(trimmed);
-  const suffixes = [...new Set([...extraSuffixes, ...DEFAULT_HOST_SUFFIXES])];
-  return [...new Set(suffixes.map((suffix) => hostFromSlugAndSuffix(slug, suffix)))];
-}
-
-function mapHostResolve(host: string, body: PublicHostResolveResponse): TenantContext {
-  return {
-    businessId: body.tenantId,
-    slug: body.slug,
-    host,
-    displayName: body.branding?.displayName?.trim() || body.tenantName,
-    branding: (body.branding as Record<string, unknown> | undefined) ?? {},
-  };
-}
-
-function mapStorefront(slug: string, body: PublicStorefrontResponse): TenantContext {
-  return {
-    businessId: body.catalogBranchId ?? body.slug,
-    slug: body.slug,
-    host: slug,
-    displayName: body.label?.trim() || body.businessName,
-    branding: {},
-  };
-}
-
-class ResolveAttempt {
-  constructor(
-    readonly url: string,
-    readonly status?: number,
-    readonly networkError?: string
-  ) {}
-}
-
-async function resolveByHost(
-  baseURL: string,
-  host: string
-): Promise<{ tenant: TenantContext | null; attempt: ResolveAttempt }> {
-  const url = `${baseURL}/api/v1/public/host/resolve?host=${encodeURIComponent(host)}`;
-  try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      return { tenant: null, attempt: new ResolveAttempt(url, response.status) };
-    }
-    const body = (await response.json()) as PublicHostResolveResponse & { mapped?: boolean };
-    if (body?.mapped === false || !body?.tenantId) {
-      return { tenant: null, attempt: new ResolveAttempt(url, response.status) };
-    }
-    return { tenant: mapHostResolve(host, body), attempt: new ResolveAttempt(url, response.status) };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Network error';
-    return { tenant: null, attempt: new ResolveAttempt(url, undefined, message) };
+  constructor(result: Exclude<StoreResult, { kind: 'found' }>, message: string) {
+    super(message);
+    this.name = 'StoreLookupError';
+    this.result = result;
   }
 }
 
-async function resolveByStorefrontSlug(
-  baseURL: string,
-  slug: string
-): Promise<{ tenant: TenantContext | null; attempt: ResolveAttempt }> {
-  const url = `${baseURL}/api/v1/public/businesses/${encodeURIComponent(slug)}/storefront`;
-  try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      return { tenant: null, attempt: new ResolveAttempt(url, response.status) };
-    }
-    const body = (await response.json()) as PublicStorefrontResponse;
-    return { tenant: mapStorefront(slug, body), attempt: new ResolveAttempt(url, response.status) };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Network error';
-    return { tenant: null, attempt: new ResolveAttempt(url, undefined, message) };
+export class StoreSwitchBlockedError extends Error {
+  readonly unsent: UnsentSummary;
+
+  constructor(unsent: UnsentSummary) {
+    super(
+      unsent.total === 1
+        ? 'This phone still has 1 unsent sale for the current shop. Send it before switching shops.'
+        : `This phone still has ${unsent.total} unsent sales for the current shop. Send them before switching shops.`,
+    );
+    this.name = 'StoreSwitchBlockedError';
+    this.unsent = unsent;
   }
 }
 
-export async function resolveShopperStore(
-  input: string,
-  baseURL: string,
-  options: { hostSuffixes?: string[] } = {}
-): Promise<TenantContext> {
-  const slug = normalizeSlug(input);
-  if (!slug) {
-    throw new Error('Enter a valid store slug');
-  }
+const NOTHING_UNSENT: UnsentSummary = { total: 0, needsAttention: 0 };
 
-  const attempts: ResolveAttempt[] = [];
+let cache: { loaded: boolean; store: StoreSnapshot | null } = { loaded: false, store: null };
+let mutations: Promise<unknown> = Promise.resolve();
+let unsentProbe: UnsentProbe | null = null;
+const listeners = new Set<(store: StoreSnapshot | null) => void>();
 
-  const storefrontResult = await resolveByStorefrontSlug(baseURL, slug);
-  attempts.push(storefrontResult.attempt);
-  if (storefrontResult.tenant) {
-    for (const host of hostCandidates(input, options.hostSuffixes)) {
-      const hostResult = await resolveByHost(baseURL, host);
-      attempts.push(hostResult.attempt);
-      if (hostResult.tenant) {
-        const enriched: TenantContext = {
-          ...hostResult.tenant,
-          displayName: storefrontResult.tenant.displayName || hostResult.tenant.displayName,
-        };
-        await SecureStore.setItemAsync(TENANT_KEY, JSON.stringify(enriched));
-        return enriched;
+onRuntimeReset(() => {
+  cache = { loaded: false, store: null };
+  mutations = Promise.resolve();
+});
+
+/** One change to the device's shop records at a time. */
+function mutate<T>(work: () => Promise<T>): Promise<T> {
+  const run = mutations.then(work, work);
+  mutations = run.catch(() => undefined);
+  return run;
+}
+
+function setActive(next: StoreSnapshot | null): void {
+  const changed = JSON.stringify(cache.store) !== JSON.stringify(next);
+  cache = { loaded: true, store: next };
+  if (changed) {
+    for (const listener of [...listeners]) {
+      try {
+        listener(next);
+      } catch {
+        // A listener that throws must not stop the others, or the change that triggered it.
       }
     }
-    const fallbackHost = hostCandidates(slug, options.hostSuffixes)[0] ?? `${slug}.localhost`;
-    const fixed: TenantContext = { ...storefrontResult.tenant, host: fallbackHost };
-    await SecureStore.setItemAsync(TENANT_KEY, JSON.stringify(fixed));
-    return fixed;
   }
-
-  for (const host of hostCandidates(input, options.hostSuffixes)) {
-    const result = await resolveByHost(baseURL, host);
-    attempts.push(result.attempt);
-    if (result.tenant) {
-      await SecureStore.setItemAsync(TENANT_KEY, JSON.stringify(result.tenant));
-      return result.tenant;
-    }
-  }
-
-  const networkError = attempts.find((a) => a.networkError)?.networkError;
-  if (networkError) {
-    throw new Error(
-      `Cannot reach API at ${baseURL} (${networkError}). ` +
-        'Ensure the backend is running on port 5050 and your phone is on the same Wi‑Fi.'
-    );
-  }
-
-  const triedHosts = hostCandidates(input, options.hostSuffixes).join(', ');
-  throw new Error(
-    `Store "${slug}" not found via ${baseURL}. Tried hosts: ${triedHosts}. ` +
-      'If the business exists, enable the web storefront in admin settings.'
-  );
 }
 
-export async function resolveTenant(
-  input: string,
-  baseURL: string = 'https://api.kiosk.ke',
-  options: { hostSuffixes?: string[] } = {}
-): Promise<TenantContext> {
-  if (!input.includes('.')) {
-    return resolveShopperStore(input, baseURL, options);
-  }
-
-  const host = input.trim().toLowerCase().replace(/^https?:\/\//, '').split('/')[0] ?? input;
-  const { tenant: resolved } = await resolveByHost(baseURL, host);
-  if (!resolved) {
-    throw new Error(`Failed to resolve tenant for ${host}`);
-  }
-  await SecureStore.setItemAsync(TENANT_KEY, JSON.stringify(resolved));
-  return resolved;
+/** @kiosk/offline registers how to count a shop's unsent work. Without it nothing is ever "unsent". */
+export function registerUnsentProbe(probe: UnsentProbe | null): void {
+  unsentProbe = probe;
 }
 
-export async function loadTenant(): Promise<TenantContext | null> {
-  const stored = await SecureStore.getItemAsync(TENANT_KEY);
-  return stored ? (JSON.parse(stored) as TenantContext) : null;
+export async function getUnsentSummary(tenantId?: string): Promise<UnsentSummary> {
+  const id = tenantId ?? (await getActiveTenantId());
+  if (!id || !unsentProbe) {
+    return NOTHING_UNSENT;
+  }
+  try {
+    return await unsentProbe(id);
+  } catch {
+    // An unreadable queue must not trap the person in a shop.
+    return NOTHING_UNSENT;
+  }
 }
 
-export function getTenantHeaders(tenant: TenantContext): Record<string, string> {
-  return {
-    'X-Tenant-Host': tenant.host,
-    'X-Tenant-Id': tenant.businessId,
+/** Calls the listener whenever the active shop, or what is known about it, changes. Returns the unsubscribe. */
+export function subscribeActiveStore(listener: (store: StoreSnapshot | null) => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
   };
 }
 
-export async function clearTenant(): Promise<void> {
-  await SecureStore.deleteItemAsync(TENANT_KEY);
+/** The active shop, from this device. Never touches the network, so it works in airplane mode. */
+export async function loadActiveStore(): Promise<StoreSnapshot | null> {
+  if (cache.loaded) {
+    return cache.store;
+  }
+  await ensureStorageReady();
+  const store = await plain();
+  const id = await readPointer(store);
+  const snapshot = id ? await readSnapshot(store, id) : null;
+  if (!cache.loaded) {
+    cache = { loaded: true, store: snapshot };
+  }
+  return cache.store;
+}
+
+/** A remembered shop by id: the active one from memory, any other from the device. Null when this phone has no record of it. */
+export async function loadStoreById(tenantId: string): Promise<StoreSnapshot | null> {
+  if (!isStorableTenantId(tenantId)) {
+    return null;
+  }
+  const active = await loadActiveStore();
+  if (active?.businessId === tenantId) {
+    return active;
+  }
+  await ensureStorageReady();
+  return readSnapshot(await plain(), tenantId);
+}
+
+export async function getActiveTenantId(): Promise<string | null> {
+  return (await loadActiveStore())?.businessId ?? null;
+}
+
+async function activateInternal(store: StoreSnapshot): Promise<void> {
+  assertTenantId(store.businessId);
+  const plainStore = await plain();
+  await writeSnapshot(plainStore, store);
+  // A shop carried over from the old layout has been living under a provisional id. Now that the
+  // server has named it, everything moves to the real one.
+  await adoptProvisional(store.slug, store.businessId);
+  await writePointer(plainStore, store.businessId);
+  await rememberTenant(plainStore, store.businessId);
+  setActive(store);
+}
+
+/** Makes a shop that `previewStore` found the active one. It is not checked against unsent work: use `switchStore` for that. */
+export function activateStore(store: StoreSnapshot): Promise<void> {
+  return mutate(async () => {
+    await ensureStorageReady();
+    await activateInternal(store);
+  });
+}
+
+/**
+ * Moves to another shop, or to none (null, which shows the picker).
+ *
+ * If the shop being left has sales that were never sent, nothing changes and the result is
+ * `blocked`, so the screen can ask. With `keepUnsent` the switch goes ahead and the sales wait in
+ * that shop's own queue; they are sent when the shop is opened again. When nothing is unsent, the
+ * session being left is ended on this phone.
+ */
+export function switchStore(to: StoreSnapshot | null, options: { keepUnsent?: boolean } = {}): Promise<SwitchResult> {
+  return mutate(async () => {
+    await ensureStorageReady();
+    const current = await loadActiveStore();
+    const leaving = current && (!to || to.businessId !== current.businessId) ? current : null;
+
+    if (leaving) {
+      const unsent = await getUnsentSummary(leaving.businessId);
+      if (unsent.total > 0 && !options.keepUnsent) {
+        return { kind: 'blocked', reason: 'unsent_sales', unsent } as const;
+      }
+      if (unsent.total === 0) {
+        await secureRemove(secureKey(leaving.businessId, 'accessToken'));
+        await secureRemove(secureKey(leaving.businessId, 'refreshToken'));
+      }
+    }
+
+    if (to) {
+      await activateInternal(to);
+    } else {
+      await writePointer(await plain(), null);
+      setActive(null);
+    }
+    return { kind: 'switched', store: to } as const;
+  });
+}
+
+/** Look a shop up and, if it can be opened, switch to it. The call a "find my shop" screen makes. */
+export async function openStore(
+  input: string,
+  baseURL: string,
+  options: { audience: StoreAudience; keepUnsent?: boolean },
+): Promise<OpenStoreResult> {
+  const result = await previewStore(input, baseURL, { audience: options.audience });
+  if (result.kind !== 'found') {
+    return result;
+  }
+  const switched = await switchStore(result.store, { keepUnsent: options.keepUnsent });
+  return switched.kind === 'blocked' ? switched : { kind: 'opened', store: result.store };
+}
+
+/**
+ * Asks the server about the active shop again and keeps what it says (name, branding, status).
+ * Meant to run in the background after the app is already open; it never throws and a failed
+ * attempt changes nothing. The result says what the server answered, so a screen can react to a
+ * shop that has since been suspended.
+ */
+export async function revalidateActive(baseURL: string, options: { audience: StoreAudience }): Promise<StoreResult | null> {
+  const current = await loadActiveStore();
+  if (!current) {
+    return null;
+  }
+  const result = await previewStore(current.slug, baseURL, { audience: options.audience });
+  if (result.kind !== 'found' && result.kind !== 'unavailable') {
+    return result;
+  }
+  const fresh = result.store;
+  if (!fresh) {
+    return result;
+  }
+  if (fresh.businessId !== current.businessId && !isProvisionalId(current.businessId)) {
+    // The address now belongs to a different business than the one saved here.
+    return { kind: 'not_found' };
+  }
+
+  // The host the shop was opened with stays: it is the one known to work from this phone.
+  const merged: StoreSnapshot = { ...fresh, host: current.host || fresh.host };
+  try {
+    await mutate(async () => {
+      const now = await loadActiveStore();
+      if (now && now.businessId === current.businessId) {
+        await activateInternal(merged);
+      }
+    });
+  } catch {
+    // Storage trouble here must not turn a background refresh into an error.
+  }
+  return result.kind === 'found' ? { kind: 'found', store: merged } : { kind: 'unavailable', reason: result.reason, store: merged };
+}
+
+/** The shops this phone has worked in, most recent first, for a switcher. */
+export async function listRememberedStores(): Promise<StoreSnapshot[]> {
+  await ensureStorageReady();
+  const store = await plain();
+  const snapshots = await Promise.all((await readRecents(store)).map((id) => readSnapshot(store, id)));
+  return snapshots.filter((snapshot): snapshot is StoreSnapshot => snapshot !== null);
+}
+
+/** Removes a shop from this phone: its session, till id, profile and hints. Unsent sales stay unless `dropOutbox`. */
+export function forgetStore(tenantId: string, options: { dropOutbox?: boolean } = {}): Promise<void> {
+  return mutate(async () => {
+    await ensureStorageReady();
+    assertTenantId(tenantId);
+    const active = await loadActiveStore();
+    await removeNamespace(tenantId, options);
+    if (active?.businessId === tenantId) {
+      await writePointer(await plain(), null);
+      setActive(null);
+    }
+  });
+}
+
+/** Forgets which shop is active, and nothing else. Use `switchStore(null)` to be asked about unsent sales first. */
+export function clearActiveStore(): Promise<void> {
+  return mutate(async () => {
+    await ensureStorageReady();
+    await writePointer(await plain(), null);
+    setActive(null);
+  });
+}
+
+/**
+ * The headers that tell the server which shop a request is for. A shop carried over from the old
+ * layout has no confirmed id yet, so only its host is sent until the server names it.
+ */
+export function getTenantHeaders(tenant: TenantContext): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (tenant.host) {
+    headers['X-Tenant-Host'] = tenant.host;
+  }
+  if (!isProvisionalId(tenant.businessId)) {
+    headers['X-Tenant-Id'] = tenant.businessId;
+  }
+  return headers;
+}
+
+/** The store an `openStore` call opened, or the error that explains why it did not. For callers that only catch errors. */
+export function unwrapOpened(result: OpenStoreResult, input = ''): StoreSnapshot {
+  if (result.kind === 'opened') {
+    return result.store;
+  }
+  if (result.kind === 'blocked') {
+    throw new StoreSwitchBlockedError(result.unsent);
+  }
+  throw new StoreLookupError(result, describeStoreResult(result, input));
+}
+
+/** @deprecated Use `openStore` and show the result. Kept so screens that only catch an error still work. */
+export async function resolveShopperStore(input: string, baseURL: string): Promise<TenantContext> {
+  return unwrapOpened(await openStore(input, baseURL, { audience: 'shopper' }), input);
+}
+
+/** @deprecated Use `openStore` and show the result. Kept so screens that only catch an error still work. */
+export async function resolveTenant(input: string, baseURL: string = 'https://api.kiosk.ke'): Promise<TenantContext> {
+  return unwrapOpened(await openStore(input, baseURL, { audience: 'staff' }), input);
+}
+
+/** @deprecated Use `loadActiveStore`. */
+export function loadTenant(): Promise<TenantContext | null> {
+  return loadActiveStore();
+}
+
+/** @deprecated Use `switchStore(null)`, which asks about unsent sales first, or `clearActiveStore`. */
+export function clearTenant(): Promise<void> {
+  return clearActiveStore();
 }

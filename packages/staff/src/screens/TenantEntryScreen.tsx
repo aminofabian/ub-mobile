@@ -53,7 +53,7 @@ export function TenantEntryScreen({ baseURL, appTitle, onTenantResolved }: Tenan
       </Text>
       <TextInput
         style={styles.input}
-        placeholder="e.g. palmart"
+        placeholder="e.g. your-shop"
         value={input}
         onChangeText={setInput}
         autoCapitalize="none"

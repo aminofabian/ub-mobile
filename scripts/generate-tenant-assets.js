@@ -20,6 +20,18 @@ const CURSOR_ASSETS = path.join(
   '.cursor/projects/Users-mac-02-DEVELOPMENT-01-REPOS-github-com-aminofabian-palmart/assets'
 );
 
+/**
+ * Palmart's own working copies of its art. They are a fallback for Palmart only: used for any other
+ * tenant they would put Palmart's icon and splash into that tenant's app.
+ */
+const PALMART_ONLY_FALLBACKS =
+  tenantId === 'palmart'
+    ? {
+        icon: [path.join(CURSOR_ASSETS, 'palmart-icon-1024.png')],
+        splash: [path.join(CURSOR_ASSETS, 'palmart-splash.png')],
+      }
+    : { icon: [], splash: [] };
+
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
 }
@@ -58,12 +70,12 @@ async function main() {
 
   const iconSource = copyIfMissing('icon-source.png', [
     path.join(sourceDir, 'icon-source.png'),
-    path.join(CURSOR_ASSETS, 'palmart-icon-1024.png'),
+    ...PALMART_ONLY_FALLBACKS.icon,
   ]);
 
   const splashSource = copyIfMissing('splash-source.png', [
     path.join(sourceDir, 'splash-source.png'),
-    path.join(CURSOR_ASSETS, 'palmart-splash.png'),
+    ...PALMART_ONLY_FALLBACKS.splash,
     iconSource,
   ]);
 

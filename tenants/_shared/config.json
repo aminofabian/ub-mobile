@@ -1,0 +1,40 @@
+{
+  "id": "_shared",
+  "marketplace": true,
+  "displayName": "Kiosk",
+  "apiBaseUrl": "https://api.kiosk.ke",
+  "splashBg": "#28a745",
+  "iconBackground": "#28a745",
+  "apps": {
+    "shopper": {
+      "name": "Kiosk Ke Shopper",
+      "expoSlug": "kiosk-shopper",
+      "iosBundleId": "com.kioskke.shopper",
+      "androidPackage": "com.kioskke.shopper"
+    },
+    "cashier": {
+      "name": "Kiosk Ke Cashier",
+      "expoSlug": "kiosk-cashier",
+      "iosBundleId": "com.kioskke.cashier",
+      "androidPackage": "com.kioskke.cashier"
+    },
+    "grocery": {
+      "name": "Kiosk Ke Grocery",
+      "expoSlug": "kiosk-grocery",
+      "iosBundleId": "com.kioskke.grocery",
+      "androidPackage": "com.kioskke.grocery"
+    },
+    "admin": {
+      "name": "Kiosk Ke Admin",
+      "expoSlug": "kiosk-admin",
+      "iosBundleId": "com.kioskke.admin",
+      "androidPackage": "com.kioskke.admin"
+    },
+    "stock": {
+      "name": "Kiosk Ke Stock",
+      "expoSlug": "kiosk-stock",
+      "iosBundleId": "com.kioskke.stock",
+      "androidPackage": "com.kioskke.stock"
+    }
+  }
+}

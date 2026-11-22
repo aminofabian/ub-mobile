@@ -1,54 +1,79 @@
-import Constants from 'expo-constants';
+import { getEmbeddedTenantSlug } from './embedded-config';
+import { tenantHost } from './mobile-config';
+import {
+  StoreLookupError,
+  activateStore,
+  clearActiveStore,
+  describeStoreResult,
+  loadActiveStore,
+  previewStore,
+  revalidateActive,
+  type StoreAudience,
+  type StoreResult,
+  type StoreSnapshot,
+  type TenantContext,
+} from './tenant';
 
-import { clearTenant, loadTenant, resolveTenant, type TenantContext } from './tenant';
-import { tenantHost, tenantHostSuffix } from './mobile-config';
+export { getEmbeddedTenantSlug, getTenantDisplayName, isWhiteLabelApp } from './embedded-config';
 
-export function getEmbeddedTenantSlug(): string | null {
-  const slug = Constants.expoConfig?.extra?.embeddedTenantSlug;
-  if (typeof slug !== 'string') return null;
-  const trimmed = slug.trim();
-  return trimmed || null;
-}
+export type BootResult =
+  | { kind: 'ready'; store: StoreSnapshot; source: 'device' | 'server' }
+  /** A build that serves any shop, with none chosen yet: show the picker. */
+  | { kind: 'picker' }
+  /** A build made for one shop that could not be found, or reached, on first launch. */
+  | Exclude<StoreResult, { kind: 'found' }>;
 
-export function isWhiteLabelApp(): boolean {
-  return Constants.expoConfig?.extra?.isWhiteLabel === true;
-}
+/**
+ * Opens the shop for this launch. The shop saved on the device opens immediately, with no network,
+ * and the server is asked about it afterwards in the background. Only when nothing is saved does a
+ * build made for one shop look that shop up, using the host or slug baked in at build time.
+ */
+export async function bootstrapStore(
+  baseURL: string,
+  options: { audience: StoreAudience } = { audience: 'staff' },
+): Promise<BootResult> {
+  const embeddedSlug = getEmbeddedTenantSlug();
+  const bakedHost = tenantHost();
+  const saved = await loadActiveStore();
 
-export function getTenantDisplayName(): string | null {
-  const name = Constants.expoConfig?.extra?.tenantDisplayName;
-  if (typeof name !== 'string') return null;
-  const trimmed = name.trim();
-  return trimmed || null;
+  if (saved) {
+    const slugMismatch = Boolean(embeddedSlug && saved.slug.toLowerCase() !== embeddedSlug.toLowerCase());
+    const hostMismatch = Boolean(bakedHost && saved.host && saved.host.toLowerCase() !== bakedHost);
+    if (!slugMismatch && !hostMismatch) {
+      void revalidateActive(baseURL, options).catch(() => undefined);
+      return { kind: 'ready', store: saved, source: 'device' };
+    }
+    // A build made for one shop found another one saved. Its own data stays; it just is not the active shop.
+    await clearActiveStore();
+  }
+
+  const input = bakedHost ?? embeddedSlug;
+  if (!input) {
+    return { kind: 'picker' };
+  }
+
+  const result = await previewStore(input, baseURL, options);
+  if (result.kind !== 'found') {
+    return result;
+  }
+  await activateStore(result.store);
+  return { kind: 'ready', store: result.store, source: 'server' };
 }
 
 /**
- * Loads a persisted tenant, or auto-resolves the slug baked in at build time
- * for white-label apps. Returns null when the generic app needs a tenant picker.
+ * Same as `bootstrapStore` for callers that want the shop or null (a build that serves any shop and
+ * needs the picker), and an error otherwise.
  */
-export async function bootstrapTenant(baseURL: string): Promise<TenantContext | null> {
-  const embeddedSlug = getEmbeddedTenantSlug();
-  const bakedHost = tenantHost();
-  const stored = await loadTenant();
-
-  if (stored) {
-    const slugMismatch = Boolean(embeddedSlug && stored.slug !== embeddedSlug);
-    const hostMismatch = Boolean(bakedHost && stored.host !== bakedHost);
-    if (slugMismatch || hostMismatch) {
-      await clearTenant();
-    } else {
-      return stored;
-    }
+export async function bootstrapTenant(
+  baseURL: string,
+  options: { audience?: StoreAudience } = {},
+): Promise<TenantContext | null> {
+  const result = await bootstrapStore(baseURL, { audience: options.audience ?? 'staff' });
+  if (result.kind === 'ready') {
+    return result.store;
   }
-
-  if (!embeddedSlug && !bakedHost) {
+  if (result.kind === 'picker') {
     return null;
   }
-
-  if (bakedHost) {
-    return resolveTenant(bakedHost, baseURL);
-  }
-
-  return resolveTenant(embeddedSlug as string, baseURL, {
-    hostSuffixes: [tenantHostSuffix()],
-  });
+  throw new StoreLookupError(result, describeStoreResult(result, getEmbeddedTenantSlug() ?? ''));
 }

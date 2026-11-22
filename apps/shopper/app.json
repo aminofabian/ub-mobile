@@ -19,7 +19,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#164715"
+        "backgroundColor": "#28a745"
       },
       "package": "com.kioskke.shopper"
     },
@@ -31,7 +31,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow Palmart to use your camera to scan product barcodes."
+          "cameraPermission": "Allow Kiosk to use your camera to scan product barcodes."
         }
       ],
       [
@@ -42,10 +42,7 @@
       ]
     ],
     "extra": {
-      "apiBaseURL": "https://api.kiosk.ke",
-      "eas": {
-        "projectId": "adbc177e-a021-48cc-89ab-2475dd0595f9"
-      }
+      "apiBaseURL": "https://api.kiosk.ke"
     }
   }
 }

@@ -1,5 +1,7 @@
 const {
+  SHARED_TENANT_ID,
   tenantIdFromEnv,
+  resolveProfilePath,
   loadTenantProfile,
   resolveTenantAsset,
   relativeFromCwd,
@@ -16,21 +18,95 @@ function pickAsset(tenantId, filename, configured) {
 }
 
 /**
- * Applies per-business branding when TENANT_ID or KIOSK_TENANT is set at
- * build/start time. Generic apps (unset) keep the default Kiosk Ke config
- * and show the tenant picker on first launch.
+ * The shared profile (tenants/_shared) brands the generic build: the listing's name, slug and bundle
+ * ids, and the OTA identity. It never sets isWhiteLabel, embeddedTenantSlug or any tenant extra, so
+ * the app boots into the store picker. Schemes come from expo-deep-links.js and art from
+ * apps/<app>/assets.
+ *
+ * @param {import('expo/config').ExpoConfig} expo
+ * @param {AppKey} appKey
+ * @param {Record<string, any>} profile
+ * @param {string} profileId
+ */
+function applyMarketplace(expo, appKey, profile, profileId) {
+  const appProfile = profile.apps?.[appKey];
+  if (!appProfile) {
+    throw new Error(`Shared profile "${profileId}" has no app profile for "${appKey}".`);
+  }
+
+  const easProjectId = appProfile.easProjectId ?? profile.easProjectId;
+
+  return {
+    ...expo,
+    name: appProfile.name ?? expo.name,
+    slug: appProfile.expoSlug ?? expo.slug,
+    runtimeVersion: expo.runtimeVersion ?? { policy: 'appVersion' },
+    ...(easProjectId
+      ? {
+          updates: {
+            ...(expo.updates ?? {}),
+            url: `https://u.expo.dev/${easProjectId}`,
+          },
+        }
+      : {}),
+    ios: {
+      ...expo.ios,
+      bundleIdentifier: appProfile.iosBundleId ?? appProfile.bundleId ?? expo.ios?.bundleIdentifier,
+    },
+    android: {
+      ...expo.android,
+      package: appProfile.androidPackage ?? appProfile.bundleId ?? expo.android?.package,
+    },
+    extra: {
+      ...expo.extra,
+      ...(easProjectId ? { eas: { ...(expo.extra?.eas ?? {}), projectId: easProjectId } } : {}),
+    },
+  };
+}
+
+/**
+ * Permission prompts in app.json name the platform ("Allow Kiosk to use your camera…"). A white-label
+ * build names the shop instead.
+ */
+function brandPlugins(plugins, displayName) {
+  if (!Array.isArray(plugins)) {
+    return plugins;
+  }
+  return plugins.map((plugin) => {
+    const options = Array.isArray(plugin) ? plugin[1] : null;
+    if (!options || typeof options !== 'object') {
+      return plugin;
+    }
+    const branded = Object.fromEntries(
+      Object.entries(options).map(([key, value]) => [
+        key,
+        typeof value === 'string' ? value.replace(/\bKiosk\b/g, () => displayName) : value,
+      ])
+    );
+    return [plugin[0], branded, ...plugin.slice(2)];
+  });
+}
+
+/**
+ * Applies per-business branding when TENANT_ID or KIOSK_TENANT is set at build/start time. With none
+ * set, the build is the generic one: tenants/_shared brands it, and it shows the store picker on
+ * first launch.
  *
  * @param {import('expo/config').ExpoConfig} expo
  * @param {AppKey} appKey
  */
 function applyWhiteLabel(expo, appKey) {
-  const tenantId = tenantIdFromEnv();
+  const requested = tenantIdFromEnv();
+  const tenantId = requested || (resolveProfilePath(SHARED_TENANT_ID) ? SHARED_TENANT_ID : '');
   if (!tenantId) {
     return expo;
   }
 
   const loaded = loadTenantProfile(tenantId);
   const profile = loaded.profile;
+  if (profile.marketplace === true) {
+    return applyMarketplace(expo, appKey, profile, tenantId);
+  }
   const appProfile = profile.apps?.[appKey];
   if (!appProfile) {
     throw new Error(`Tenant "${tenantId}" has no app profile for "${appKey}".`);
@@ -97,6 +173,7 @@ function applyWhiteLabel(expo, appKey) {
     slug: appProfile.expoSlug ?? `${tenantId}-${appKey}`,
     scheme: schemes.length === 1 ? schemes[0] : schemes,
     icon,
+    ...(expo.plugins ? { plugins: brandPlugins(expo.plugins, profile.displayName ?? slug) } : {}),
     runtimeVersion: expo.runtimeVersion ?? { policy: 'appVersion' },
     ...(easProjectId
       ? {
@@ -156,3 +233,6 @@ function applyWhiteLabel(expo, appKey) {
 }
 
 module.exports = applyWhiteLabel;
+// Exposed so scripts/white-label-config.test.js can reach the parts a profile on disk cannot.
+module.exports.applyMarketplace = applyMarketplace;
+module.exports.brandPlugins = brandPlugins;

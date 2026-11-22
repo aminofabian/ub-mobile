@@ -22,6 +22,7 @@ import { TenantEntryScreen } from './screens/TenantEntryScreen';
 import { TenantProvider, useTenant } from './lib/TenantContext';
 import { queryClient } from './lib/query-client';
 import { applyWaitingOta } from './lib/ota';
+import { brandName } from './lib/brand';
 import { useStorefrontRealtime } from './hooks/useStorefrontRealtime';
 import { API_BASE_URL } from './lib/config';
 import { MART, RADIUS, SPACE, TYPE } from './theme/mart';
@@ -59,7 +60,7 @@ function BootError({ message, onRetry }: { message: string; onRetry: () => void 
       <View style={styles.errorIcon}>
         <Ionicons name="cloud-offline-outline" size={24} color={MART.inkMuted} />
       </View>
-      <Text style={styles.errorTitle}>{getTenantDisplayName() ?? 'Palmart'} is offline</Text>
+      <Text style={styles.errorTitle}>{brandName(getTenantDisplayName())} is offline</Text>
       <Text style={styles.errorBody}>{message}</Text>
       <Pressable
         onPress={onRetry}

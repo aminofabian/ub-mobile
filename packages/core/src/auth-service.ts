@@ -6,7 +6,7 @@ import {
   readAuthTokens,
   type AuthTokenPayload,
 } from './auth-tokens';
-import { getTenantHeaders, loadTenant } from './tenant';
+import { getTenantHeaders, loadActiveStore, type TenantContext } from './tenant';
 import { generateIdempotencyKey } from './idempotency';
 import { readApiErrorMessage } from './problem';
 import { getOrCreateTillDeviceId, TILL_DEVICE_HEADER } from './till-device';
@@ -29,12 +29,20 @@ export interface RegisterResponse {
   verificationUrl?: string | null;
 }
 
-export type RefreshOutcome = { kind: 'ok' } | { kind: 'rejected' } | { kind: 'network' };
+export type RefreshOutcome =
+  | { kind: 'ok' }
+  /** The server refused the session. It has been ended on this phone. */
+  | { kind: 'rejected' }
+  | { kind: 'network' }
+  /** The session changed while the request was out (signed out, left the shop, signed in again). The answer was not used. */
+  | { kind: 'superseded' };
 
-let inFlightRefresh: Promise<RefreshOutcome> | null = null;
+// One refresh at a time per shop: two shops can refresh together, one shop never twice.
+const inFlightRefresh = new Map<string, Promise<RefreshOutcome>>();
 
 async function authFetch(
   baseURL: string,
+  tenant: TenantContext,
   path: string,
   options: { method?: string; body?: unknown; includeAccessToken?: boolean } = {}
 ): Promise<Response> {
@@ -42,20 +50,16 @@ async function authFetch(
     'Content-Type': 'application/json',
     'X-Correlation-Id': generateIdempotencyKey(),
     [NATIVE_KIOSK_CLIENT_HEADER]: NATIVE_KIOSK_CLIENT_VALUE,
+    ...getTenantHeaders(tenant),
   };
 
-  const tenant = await loadTenant();
-  if (tenant) {
-    Object.assign(headers, getTenantHeaders(tenant));
-  }
-
-  const tillId = await getOrCreateTillDeviceId();
+  const tillId = await getOrCreateTillDeviceId(tenant.businessId);
   if (tillId) {
     headers[TILL_DEVICE_HEADER] = tillId;
   }
 
   if (options.includeAccessToken !== false) {
-    const accessToken = await getAccessToken();
+    const accessToken = await getAccessToken(tenant.businessId);
     if (accessToken) {
       headers['Authorization'] = `Bearer ${accessToken}`;
     }
@@ -66,6 +70,15 @@ async function authFetch(
     headers,
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
+}
+
+/** The active shop, resolved once for the whole operation, or an error saying a shop must be chosen first. */
+async function requireTenant(message: string): Promise<TenantContext> {
+  const tenant = await loadActiveStore();
+  if (!tenant) {
+    throw new Error(message);
+  }
+  return tenant;
 }
 
 async function readSessionTokens(
@@ -85,12 +98,9 @@ export async function loginWithPassword(
   email: string,
   password: string
 ): Promise<void> {
-  const tenant = await loadTenant();
-  if (!tenant) {
-    throw new Error('Select a store first before signing in.');
-  }
+  const tenant = await requireTenant('Select a store first before signing in.');
 
-  const response = await authFetch(baseURL, '/api/v1/auth/login', {
+  const response = await authFetch(baseURL, tenant, '/api/v1/auth/login', {
     method: 'POST',
     body: { email, password },
     includeAccessToken: false,
@@ -102,7 +112,7 @@ export async function loginWithPassword(
   if (!tokens.accessToken) {
     throw new Error('Login failed: no access token');
   }
-  await storeTokens(tokens);
+  await storeTokens(tokens, tenant.businessId);
 }
 
 export async function loginWithPin(
@@ -111,10 +121,7 @@ export async function loginWithPin(
   pin: string,
   branchId: string
 ): Promise<void> {
-  const tenant = await loadTenant();
-  if (!tenant) {
-    throw new Error('Select a store first before signing in.');
-  }
+  const tenant = await requireTenant('Select a store first before signing in.');
 
   const body: { email: string; pin: string; branchId?: string } = { email, pin };
   const resolvedBranch = pinLoginBranchId(branchId);
@@ -122,7 +129,7 @@ export async function loginWithPin(
     body.branchId = resolvedBranch;
   }
 
-  const response = await authFetch(baseURL, '/api/v1/auth/login-pin', {
+  const response = await authFetch(baseURL, tenant, '/api/v1/auth/login-pin', {
     method: 'POST',
     body,
     includeAccessToken: false,
@@ -134,24 +141,30 @@ export async function loginWithPin(
   if (!tokens.accessToken) {
     throw new Error('PIN login failed: no access token');
   }
-  await storeTokens(tokens);
+  await storeTokens(tokens, tenant.businessId);
 }
 
-export async function refreshAccessToken(baseURL: string): Promise<RefreshOutcome> {
-  if (inFlightRefresh) {
-    return inFlightRefresh;
+export async function refreshAccessToken(baseURL: string, tenant?: TenantContext): Promise<RefreshOutcome> {
+  const shop = tenant ?? (await loadActiveStore());
+  if (!shop) {
+    return { kind: 'rejected' };
   }
-  inFlightRefresh = performRefreshOnce(baseURL).finally(() => {
-    inFlightRefresh = null;
+  const running = inFlightRefresh.get(shop.businessId);
+  if (running) {
+    return running;
+  }
+  const started = performRefreshOnce(baseURL, shop).finally(() => {
+    inFlightRefresh.delete(shop.businessId);
   });
-  return inFlightRefresh;
+  inFlightRefresh.set(shop.businessId, started);
+  return started;
 }
 
-async function performRefreshOnce(baseURL: string): Promise<RefreshOutcome> {
-  const refreshToken = await getRefreshToken();
+async function performRefreshOnce(baseURL: string, tenant: TenantContext): Promise<RefreshOutcome> {
+  const refreshToken = await getRefreshToken(tenant.businessId);
   let response: Response;
   try {
-    response = await authFetch(baseURL, '/api/v1/auth/refresh', {
+    response = await authFetch(baseURL, tenant, '/api/v1/auth/refresh', {
       method: 'POST',
       body: refreshToken ? { refreshToken } : {},
       includeAccessToken: false,
@@ -165,7 +178,7 @@ async function performRefreshOnce(baseURL: string): Promise<RefreshOutcome> {
   }
 
   if (!response.ok) {
-    return { kind: 'rejected' };
+    return refused(tenant, refreshToken);
   }
 
   let tokens: { accessToken: string; refreshToken: string };
@@ -176,14 +189,38 @@ async function performRefreshOnce(baseURL: string): Promise<RefreshOutcome> {
   }
 
   if (!tokens.accessToken) {
-    return { kind: 'rejected' };
+    return refused(tenant, refreshToken);
   }
 
-  await storeTokens({
-    accessToken: tokens.accessToken,
-    refreshToken: tokens.refreshToken || refreshToken || '',
-  });
+  // The answer belongs to the session that asked. If that session ended or was replaced while the
+  // request was out, storing it would bring a dead session back, or put an old one over a new one.
+  if (await sessionChanged(tenant, refreshToken)) {
+    return { kind: 'superseded' };
+  }
+
+  // Stored under the shop the refresh was for, even if another shop is active by now.
+  await storeTokens(
+    {
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken || refreshToken || '',
+    },
+    tenant.businessId
+  );
   return { kind: 'ok' };
+}
+
+/** True when the session on this phone is no longer the one that was used to ask for a refresh. */
+async function sessionChanged(tenant: TenantContext, sentRefreshToken: string | null): Promise<boolean> {
+  return (await getRefreshToken(tenant.businessId)) !== sentRefreshToken;
+}
+
+/** The server turned the session down. End it here, unless a newer sign-in already replaced it. */
+async function refused(tenant: TenantContext, sentRefreshToken: string | null): Promise<RefreshOutcome> {
+  if (await sessionChanged(tenant, sentRefreshToken)) {
+    return { kind: 'superseded' };
+  }
+  await clearTokens(tenant.businessId);
+  return { kind: 'rejected' };
 }
 
 export async function registerAccount(
@@ -193,17 +230,14 @@ export async function registerAccount(
   password: string,
   opts?: { staffInviteToken?: string }
 ): Promise<RegisterResponse> {
-  const tenant = await loadTenant();
-  if (!tenant) {
-    throw new Error('Select a store first before creating an account.');
-  }
+  const tenant = await requireTenant('Select a store first before creating an account.');
 
   const body: Record<string, unknown> = { name, email, password };
   const token = opts?.staffInviteToken?.trim();
   if (token) {
     body.staffInviteToken = token;
   }
-  const response = await authFetch(baseURL, '/api/v1/auth/register', {
+  const response = await authFetch(baseURL, tenant, '/api/v1/auth/register', {
     method: 'POST',
     body,
     includeAccessToken: false,
@@ -218,12 +252,9 @@ export async function resendVerificationEmail(
   baseURL: string,
   email: string
 ): Promise<{ verificationUrl?: string | null }> {
-  const tenant = await loadTenant();
-  if (!tenant) {
-    throw new Error('Select a store first.');
-  }
+  const tenant = await requireTenant('Select a store first.');
 
-  const response = await authFetch(baseURL, '/api/v1/auth/resend-verification', {
+  const response = await authFetch(baseURL, tenant, '/api/v1/auth/resend-verification', {
     method: 'POST',
     body: { email },
     includeAccessToken: false,
@@ -238,15 +269,20 @@ export async function resendVerificationEmail(
 }
 
 export async function logout(baseURL: string): Promise<void> {
+  const tenant = await loadActiveStore();
+  if (!tenant) {
+    return;
+  }
   try {
-    await authFetch(baseURL, '/api/v1/auth/logout', { method: 'POST' });
+    await authFetch(baseURL, tenant, '/api/v1/auth/logout', { method: 'POST' });
   } finally {
-    await clearTokens();
+    await clearTokens(tenant.businessId);
   }
 }
 
 export async function fetchBranches(baseURL: string): Promise<BranchOption[]> {
-  const response = await authFetch(baseURL, '/api/v1/auth/branches');
+  const tenant = await requireTenant('Select a store first.');
+  const response = await authFetch(baseURL, tenant, '/api/v1/auth/branches');
   if (!response.ok) {
     throw new Error(`Failed to fetch branches: ${response.status}`);
   }

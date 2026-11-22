@@ -10,5 +10,7 @@ export * from './mobile-config';
 export * from './mobile-distribution';
 export * from './problem';
 export * from './tenant';
+export * from './tenant-data';
+export { outboxKey, isProvisionalId, UNOWNED_ID } from './storage-keys';
 export * from './idempotency';
 export * from './till-device';

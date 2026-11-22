@@ -5,5 +5,5 @@ const appJson = require('./app.json');
 
 /** @type {import('expo/config').ExpoConfig} */
 module.exports = {
-  expo: applyDevConfig(applyWhiteLabel(applyDeepLinks(appJson.expo), 'grocery')),
+  expo: applyDevConfig(applyWhiteLabel(applyDeepLinks(appJson.expo, 'grocery'), 'grocery')),
 };

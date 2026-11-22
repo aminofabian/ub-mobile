@@ -1,7 +1,13 @@
 #!/usr/bin/env node
-/** Copies shared eas.json into each app directory (EAS requires it beside app.config.js). */
+/**
+ * Copies eas.json into each app directory (EAS requires it beside app.config.js).
+ *
+ * The root file is a template: `{app}` becomes the app's name, so the generic builds' channels are
+ * generic-<app>-production and generic-<app>-preview (plan §5.9).
+ */
 const fs = require('fs');
 const path = require('path');
+const { renderEasConfig } = require('./lib/channel-guard');
 
 const mobileRoot = path.join(__dirname, '..');
 const source = path.join(mobileRoot, 'eas.json');
@@ -15,6 +21,6 @@ if (!fs.existsSync(source)) {
 const body = fs.readFileSync(source, 'utf8');
 for (const app of apps) {
   const dest = path.join(mobileRoot, 'apps', app, 'eas.json');
-  fs.writeFileSync(dest, body);
+  fs.writeFileSync(dest, renderEasConfig(body, app));
   console.log(`Synced eas.json → apps/${app}/`);
 }

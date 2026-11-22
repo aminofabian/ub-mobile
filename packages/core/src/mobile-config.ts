@@ -37,8 +37,15 @@ export function resolveMobileApiBaseUrl(): string {
   return `http://localhost:${BACKEND_PORT}`;
 }
 
+/**
+ * The platform's shared domain. A host such as acme.kiosk.ke belongs to a shop called "acme".
+ * Dev builds override it through app.config extra (expo-dev-config.js sets "localhost").
+ */
+export const DEFAULT_PLATFORM_HOST_SUFFIX = 'kiosk.ke';
+
 export function tenantHostSuffix(): string {
-  return (Constants.expoConfig?.extra?.tenantHostSuffix as string | undefined) ?? 'localhost';
+  const configured = Constants.expoConfig?.extra?.tenantHostSuffix;
+  return typeof configured === 'string' && configured.trim() ? configured.trim() : DEFAULT_PLATFORM_HOST_SUFFIX;
 }
 
 /** Full hostname for a white-label tenant (e.g. palmart.co.ke), if baked in. */

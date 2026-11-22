@@ -17,8 +17,10 @@ import {
   registerAccount,
   resendVerificationEmail,
   clearTokens,
+  getTenantDisplayName,
 } from '@kiosk/core';
 import { API_BASE_URL } from '../lib/config';
+import { brandName } from '../lib/brand';
 import { MART, ON_BRAND, RADIUS, SPACE, TYPE } from '../theme/mart';
 
 type AuthMode = 'login' | 'register';
@@ -195,7 +197,7 @@ export function AccountAuthPanel({
         </Text>
         <View style={styles.passChip}>
           <Ionicons name="shield-checkmark-outline" size={12} color="#fff" />
-          <Text style={styles.passChipText}>Palmart member</Text>
+          <Text style={styles.passChipText}>{brandName(getTenantDisplayName() ?? storeName)} member</Text>
         </View>
       </View>
 

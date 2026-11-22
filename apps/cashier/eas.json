@@ -20,7 +20,7 @@
     },
     "production": {
       "extends": "base",
-      "channel": "production",
+      "channel": "generic-cashier-production",
       "android": {
         "buildType": "app-bundle"
       }
@@ -28,7 +28,7 @@
     "preview": {
       "extends": "base",
       "distribution": "internal",
-      "channel": "preview",
+      "channel": "generic-cashier-preview",
       "android": {
         "buildType": "apk"
       },

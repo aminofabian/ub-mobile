@@ -46,13 +46,17 @@ export function PaymentScreen({ navigation, api, branchId }: Props) {
         clientSoldAt: new Date().toISOString(),
       };
 
+      // One key per sale: the live request and the queued copy both carry it. If the server
+      // recorded the sale but the response never arrived, the later replay is recognised by
+      // this key and returns that sale instead of recording a second one.
+      const idempotencyKey = generateIdempotencyKey();
+
       try {
-        const sale = await createSale(api, body);
+        const sale = await createSale(api, body, idempotencyKey);
         setLastSale(sale);
         clearCart();
         navigation.replace('Receipt');
       } catch (networkError) {
-        const idempotencyKey = generateIdempotencyKey();
         await outbox.enqueue({
           id: idempotencyKey,
           method: 'POST',

@@ -20,7 +20,7 @@
     },
     "production": {
       "extends": "base",
-      "channel": "production",
+      "channel": "generic-stock-production",
       "android": {
         "buildType": "app-bundle"
       }
@@ -28,7 +28,7 @@
     "preview": {
       "extends": "base",
       "distribution": "internal",
-      "channel": "preview",
+      "channel": "generic-stock-preview",
       "android": {
         "buildType": "apk"
       },

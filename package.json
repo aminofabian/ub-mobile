@@ -33,7 +33,9 @@
     "eas:build:tenant": "node scripts/eas-tenant-build.js",
     "eas:update:tenant": "node scripts/eas-tenant-update.js",
     "eas:submit": "node scripts/eas-tenant-submit.js",
-    "publish:tenant": "node scripts/publish-tenant-shopper.js"
+    "publish:tenant": "node scripts/publish-tenant-shopper.js",
+    "guard:config": "node scripts/check-generic-config.js",
+    "test:scripts": "node --test scripts/*.test.js packages/config/metro/*.test.js"
   },
   "devDependencies": {
     "eas-cli": "^22.0.0",

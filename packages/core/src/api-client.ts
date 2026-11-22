@@ -1,6 +1,6 @@
 import { generateIdempotencyKey } from './idempotency';
 import { getAccessToken } from './auth';
-import { getTenantHeaders, loadTenant, type TenantContext } from './tenant';
+import { getTenantHeaders, loadActiveStore, type TenantContext } from './tenant';
 import { getOrCreateTillDeviceId, TILL_DEVICE_HEADER } from './till-device';
 
 export interface ApiClientConfig {
@@ -25,19 +25,20 @@ export async function apiRequest<T>(
   };
 
   if (!options.public) {
-    const tenant = config.getTenant ? await config.getTenant() : await loadTenant();
+    // The shop is resolved once. Its tokens and till id are read for that shop, not for whichever is active by then.
+    const tenant = config.getTenant ? await config.getTenant() : await loadActiveStore();
     if (tenant) {
       Object.assign(headers, getTenantHeaders(tenant));
-    }
 
-    const accessToken = await getAccessToken();
-    if (accessToken) {
-      headers['Authorization'] = `Bearer ${accessToken}`;
-    }
+      const accessToken = await getAccessToken(tenant.businessId);
+      if (accessToken) {
+        headers['Authorization'] = `Bearer ${accessToken}`;
+      }
 
-    const tillId = await getOrCreateTillDeviceId();
-    if (tillId) {
-      headers[TILL_DEVICE_HEADER] = tillId;
+      const tillId = await getOrCreateTillDeviceId(tenant.businessId);
+      if (tillId) {
+        headers[TILL_DEVICE_HEADER] = tillId;
+      }
     }
   }
 

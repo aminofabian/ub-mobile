@@ -67,8 +67,14 @@ export async function searchItems(
   return Array.isArray(response) ? response : (response.items ?? []);
 }
 
-export async function createSale(api: ApiClient, request: PostSaleRequest): Promise<SaleResponse> {
-  return api.post<SaleResponse>('/api/v1/sales', request, { idempotent: true });
+// Pass the same `idempotencyKey` each time one sale is sent (live request, queued copy, replay)
+// so the server records it once. Without one, every call gets a fresh key.
+export async function createSale(
+  api: ApiClient,
+  request: PostSaleRequest,
+  idempotencyKey?: string
+): Promise<SaleResponse> {
+  return api.post<SaleResponse>('/api/v1/sales', request, { idempotent: true, idempotencyKey });
 }
 
 export type PosCustomerHit = {

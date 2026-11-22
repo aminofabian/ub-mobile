@@ -3,7 +3,7 @@ import { StyleSheet, View, FlatList, Alert } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Button, Card, Text, theme } from '@kiosk/ui';
 import type { ApiClient } from '@kiosk/core';
-import { outbox, type OutboxItem } from '@kiosk/offline';
+import { outbox, replayItem, type OutboxItem } from '@kiosk/offline';
 import type { CashierStackParamList } from '../navigation/AppNavigator';
 
 type Props = NativeStackScreenProps<CashierStackParamList, 'Conflicts'> & {
@@ -29,7 +29,7 @@ export function ConflictResolutionScreen({ api }: Props) {
 
   const retry = async (item: OutboxItem) => {
     try {
-      await api.post(item.path, item.body, { idempotent: true });
+      await replayItem(api, item);
       await outbox.remove(item.id);
       Alert.alert('Synced', 'Mutation applied successfully');
       void load();

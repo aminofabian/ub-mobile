@@ -1,6 +1,7 @@
 import Constants from 'expo-constants';
 import { Easing, Platform, type TextStyle } from 'react-native';
 import type { TenantContext } from '@kiosk/core';
+import { resolveBrandColors } from './brand-colors';
 
 export const MART = {
   ink: '#141816',
@@ -165,20 +166,19 @@ export type MartPalette = {
   heroBanners: string[];
 };
 
-function asHex(value: unknown, fallback: string): string {
-  if (typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value.trim())) {
-    return value.trim();
-  }
-  return fallback;
-}
-
 function asText(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
-function isPalmartBinary(): boolean {
-  const extra = Constants.expoConfig?.extra as { isWhiteLabel?: boolean } | undefined;
-  return Boolean(extra?.isWhiteLabel);
+/** What a white-label build carries in its manifest: the shop's own colours, baked in at build time. */
+function bakedBrand(): {
+  whiteLabel: boolean;
+  baked: { primary?: unknown; accent?: unknown } | null;
+} {
+  const extra = Constants.expoConfig?.extra as
+    | { isWhiteLabel?: boolean; themeColors?: { primary?: unknown; accent?: unknown } }
+    | undefined;
+  return { whiteLabel: Boolean(extra?.isWhiteLabel), baked: extra?.themeColors ?? null };
 }
 
 export function martFromTenant(
@@ -186,7 +186,11 @@ export function martFromTenant(
   extras?: { announcement?: string | null; businessName?: string | null }
 ): MartPalette {
   const branding = tenant.branding ?? {};
-  const palmart = isPalmartBinary();
+  const colors = resolveBrandColors({
+    ...bakedBrand(),
+    cms: { primaryColor: branding.primaryColor, accentColor: branding.accentColor },
+    fallback: { primary: MART.fallbackPrimary, accent: MART.fallbackAccent },
+  });
   const banners = Array.isArray(branding.heroBannerUrls)
     ? branding.heroBannerUrls.filter(
         (url): url is string => typeof url === 'string' && /^https?:\/\//i.test(url)
@@ -194,9 +198,10 @@ export function martFromTenant(
     : [];
 
   return {
-    // Palmart APK: MART tokens win. Stale EAS extra / CMS still ship Bootstrap green.
-    primary: palmart ? MART.fallbackPrimary : asHex(branding.primaryColor, MART.fallbackPrimary),
-    accent: palmart ? MART.fallbackAccent : asHex(branding.accentColor, MART.fallbackAccent),
+    // A white-label build wears its baked colours: its CMS record can be stale and still ship the
+    // platform green. The generic build wears the chosen shop's CMS colours.
+    primary: colors.primary,
+    accent: colors.accent,
     gold: MART.gold,
     logoUrl: asText(branding.logoUrl),
     displayName:

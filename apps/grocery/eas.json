@@ -20,7 +20,7 @@
     },
     "production": {
       "extends": "base",
-      "channel": "production",
+      "channel": "generic-grocery-production",
       "android": {
         "buildType": "app-bundle"
       }
@@ -28,7 +28,7 @@
     "preview": {
       "extends": "base",
       "distribution": "internal",
-      "channel": "preview",
+      "channel": "generic-grocery-preview",
       "android": {
         "buildType": "apk"
       },

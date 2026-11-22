@@ -1,5 +1,6 @@
 import type { ApiClient } from '@kiosk/core';
 import { outbox, type OutboxItem } from './outbox';
+import { replayItem } from './replay';
 
 export interface SyncEngineOptions {
   api: ApiClient;
@@ -23,13 +24,7 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
     if (item.retries >= maxRetries) return;
 
     try {
-      if (item.method === 'POST') {
-        await api.post(item.path, item.body, { idempotent: true });
-      } else if (item.method === 'PATCH') {
-        await api.patch(item.path, item.body, { idempotent: true });
-      } else if (item.method === 'DELETE') {
-        await api.delete(item.path, { idempotent: true });
-      }
+      await replayItem(api, item);
       await outbox.remove(item.id);
       onSynced?.(item);
     } catch (error) {

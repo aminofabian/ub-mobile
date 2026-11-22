@@ -13,6 +13,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { resolveShopperStore, type TenantContext } from '@kiosk/core';
 import { API_BASE_URL, TENANT_HOST_SUFFIX } from '../lib/config';
+import { PLATFORM_NAME } from '../lib/brand';
 import { MART, ON_BRAND, RADIUS, SPACE, TYPE } from '../theme/mart';
 
 interface TenantEntryScreenProps {
@@ -56,7 +57,7 @@ export function TenantEntryScreen({ onTenantResolved }: TenantEntryScreenProps) 
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.mark}>
-          <Text style={styles.markText}>Palmart</Text>
+          <Text style={styles.markText}>{PLATFORM_NAME}</Text>
           <View style={styles.markRule} />
         </View>
 
@@ -68,7 +69,7 @@ export function TenantEntryScreen({ onTenantResolved }: TenantEntryScreenProps) 
         <View style={[styles.field, focused && styles.fieldFocused, Boolean(error) && styles.fieldError]}>
           <TextInput
             style={styles.input}
-            placeholder="palmart"
+            placeholder="your-shop"
             placeholderTextColor={MART.inkQuiet}
             value={slug}
             onChangeText={(value) => {

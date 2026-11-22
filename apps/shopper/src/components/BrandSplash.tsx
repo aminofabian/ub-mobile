@@ -9,9 +9,9 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MART, MOTION, ON_BRAND, RADIUS, SPACE, TYPE } from '../theme/mart';
+import { brandName } from '../lib/brand';
 
 const MARK = require('../../assets/brand-mark.png');
-const WORDMARK = 'Palmart';
 const STAMP = 152;
 /** Hold long enough that the stamp reads, even on a fast boot. */
 const MIN_VISIBLE_MS = 1400;
@@ -26,11 +26,13 @@ type Props = {
 };
 
 /**
- * The bag is stamped onto forest-green stock. Orange then gold rings flash
- * like a till impression (the m, then the smile), the gold shelf rule draws,
- * and Palmart prints underneath.
+ * The brand mark is stamped onto forest-green stock. Orange then gold rings
+ * flash like a till impression, the gold shelf rule draws, and the name prints
+ * underneath: the shop's own name in a white-label build, "Kiosk" in the
+ * generic app, which has no shop yet.
  */
 export function BrandSplash({ ready, storeName, onDone }: Props) {
+  const wordmark = brandName(storeName);
   const [width, setWidth] = useState(0);
   const [reduceMotion, setReduceMotion] = useState<boolean | null>(null);
 
@@ -224,10 +226,10 @@ export function BrandSplash({ ready, storeName, onDone }: Props) {
         >
           <Text
             accessibilityRole="header"
-            accessibilityLabel={`${WORDMARK}${storeName ? `, ${storeName}` : ''}`}
+            accessibilityLabel={`${wordmark}${storeName ? `, ${storeName}` : ''}`}
             style={styles.wordmark}
           >
-            {WORDMARK}
+            {wordmark}
           </Text>
           {width > 0 && reduceMotion === false ? (
             <Animated.View

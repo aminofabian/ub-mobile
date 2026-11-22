@@ -1,14 +1,28 @@
-const PLATFORM_SCHEME = 'kiosk';
+const LEGACY_SCHEME = 'kiosk';
+const APPS = ['shopper', 'cashier', 'grocery', 'admin', 'stock'];
 
 /**
- * Registers the shared `kiosk://` deep-link scheme for generic platform apps.
- * White-label profiles may add tenant-specific schemes on top via expo-white-label.js.
+ * One deep-link scheme per app (plan §5.7): kioskshopper://, kioskcashier://, and so on, so a phone
+ * with two Kiosk apps can tell which one should open a link.
+ *
+ * The Shopper also keeps `kiosk://` through a deprecation window, because printed links and codes in
+ * the wild use it. No other app claims it. White-label builds replace all of this in
+ * expo-white-label.js.
  *
  * @param {import('expo/config').ExpoConfig} expo
+ * @param {'cashier' | 'shopper' | 'grocery' | 'admin' | 'stock'} appKey
  */
-module.exports = function applyDeepLinks(expo) {
+module.exports = function applyDeepLinks(expo, appKey) {
+  if (!APPS.includes(appKey)) {
+    throw new Error(`applyDeepLinks needs the app key (${APPS.join(', ')}), got "${appKey}".`);
+  }
+
+  const schemes = new Set([`kiosk${appKey}`]);
+  if (appKey === 'shopper') {
+    schemes.add(LEGACY_SCHEME);
+  }
+
   const existing = expo.scheme;
-  const schemes = new Set([PLATFORM_SCHEME]);
   if (typeof existing === 'string' && existing.trim()) {
     schemes.add(existing.trim());
   } else if (Array.isArray(existing)) {

@@ -1,6 +1,6 @@
-import * as SecureStore from 'expo-secure-store';
+import { readTenantSecret, writeTenantSecret } from './tenant-data';
+import { getActiveTenantId } from './tenant';
 
-const TILL_DEVICE_STORAGE_KEY = 'ub.tillDeviceId';
 export const TILL_DEVICE_HEADER = 'X-Till-Device-Id';
 
 function randomTillId(): string {
@@ -11,16 +11,39 @@ function randomTillId(): string {
   return rand;
 }
 
-/** Durable per-install till id for shift scoping. */
-export async function getOrCreateTillDeviceId(): Promise<string> {
+const creating = new Map<string, Promise<string>>();
+
+/**
+ * Durable till id for shift scoping, one per shop on this phone. Empty when there is no shop (the
+ * id is not made up for nobody) or storage fails.
+ */
+export async function getOrCreateTillDeviceId(tenantId?: string): Promise<string> {
   try {
-    const existing = (await SecureStore.getItemAsync(TILL_DEVICE_STORAGE_KEY))?.trim();
+    const id = tenantId ?? (await getActiveTenantId());
+    if (!id) {
+      return '';
+    }
+    const existing = (await readTenantSecret('tillDeviceId', id))?.trim();
     if (existing) {
       return existing;
     }
-    const created = randomTillId();
-    await SecureStore.setItemAsync(TILL_DEVICE_STORAGE_KEY, created);
-    return created;
+    // Requests start in parallel on a first launch; they must all get the same id.
+    let pending = creating.get(id);
+    if (!pending) {
+      pending = (async () => {
+        const again = (await readTenantSecret('tillDeviceId', id))?.trim();
+        if (again) {
+          return again;
+        }
+        const created = randomTillId();
+        await writeTenantSecret('tillDeviceId', created, id);
+        return created;
+      })().finally(() => {
+        creating.delete(id);
+      });
+      creating.set(id, pending);
+    }
+    return await pending;
   } catch {
     return '';
   }
