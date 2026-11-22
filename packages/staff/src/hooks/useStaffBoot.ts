@@ -44,7 +44,9 @@ export function useStaffBoot(
   const applyDeepLinkTenant = useCallback(
     (tenant: TenantContext) => {
       // A link to a different store starts from nothing: the branch and sign-in on screen belong to the old one.
-      if (useAuthStore.getState().tenant?.businessId !== tenant.businessId) {
+      // Stores are told apart by their address, which never changes; a store carried over from the old layout
+      // is given its confirmed id while the app is open, and is still the same store.
+      if (useAuthStore.getState().tenant?.slug !== tenant.slug) {
         useAuthStore.getState().reset();
       }
       setTenant(tenant);

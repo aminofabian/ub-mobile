@@ -5,6 +5,7 @@ import { Button, Card, Text, theme } from '@kiosk/ui';
 import type { ApiClient } from '@kiosk/core';
 import { closeShift, fetchCurrentShift, openShift } from '../api/pos-api';
 import { usePosStore } from '../store/pos-store';
+import { useUnsentSales } from '../hooks/useUnsentSales';
 import type { CashierStackParamList } from '../navigation/AppNavigator';
 
 type Props = NativeStackScreenProps<CashierStackParamList, 'Shift'> & {
@@ -16,6 +17,7 @@ type Props = NativeStackScreenProps<CashierStackParamList, 'Shift'> & {
 
 export function ShiftScreen({ navigation, api, branchId, tenantName, onLogout }: Props) {
   const { currentShift, setShift } = usePosStore();
+  const unsent = useUnsentSales();
   const [loading, setLoading] = useState(false);
   const [takenOut, setTakenOut] = useState('');
 
