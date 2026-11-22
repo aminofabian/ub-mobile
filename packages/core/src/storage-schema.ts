@@ -14,6 +14,7 @@ import {
   plainKey,
   provisionalId,
   secureKey,
+  unreadableOutboxKey,
 } from './storage-keys';
 import {
   onRuntimeReset,
@@ -323,6 +324,9 @@ async function moveNamespace(store: KeyValueStore, from: string, to: string): Pr
 /**
  * If the shop was carried over from v1 under a provisional id and the server has now confirmed its
  * real id, moves everything to the real id. Returns whether anything moved.
+ *
+ * Call it with the outbox lock held (see outbox-lock.ts), through to the moment the new shop is
+ * active: it moves the queue, and a sale queued meanwhile would be lost.
  */
 export async function adoptProvisional(slug: string, verifiedId: string): Promise<boolean> {
   const store = await plain();
@@ -345,7 +349,10 @@ export async function adoptProvisional(slug: string, verifiedId: string): Promis
   return from !== verifiedId;
 }
 
-/** Deletes one shop's data from this device. Its queued work stays unless asked for. */
+/**
+ * Deletes one shop's data from this device. Its queued work stays unless asked for. Call it with the
+ * outbox lock held, like `adoptProvisional`.
+ */
 export async function removeNamespace(tenantId: string, options: { dropOutbox?: boolean } = {}): Promise<void> {
   const store = await plain();
   for (const field of SECURE_FIELDS) {
@@ -357,6 +364,7 @@ export async function removeNamespace(tenantId: string, options: { dropOutbox?: 
   await removeSnapshot(store, tenantId);
   if (options.dropOutbox) {
     await store.remove(outboxKey(tenantId));
+    await store.remove(unreadableOutboxKey(tenantId));
   }
   const recents = await readRecents(store);
   await writeRecents(store, recents.filter((id) => id !== tenantId));

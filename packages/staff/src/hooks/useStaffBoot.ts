@@ -5,23 +5,24 @@ import {
   getEmbeddedTenantSlug,
   isStaffDeepLinkIntent,
   resolveTenantFromDeepLink,
-  tenantHostSuffix,
+  StoreSwitchBlockedError,
   useTenantDeepLink,
   type TenantContext,
 } from '@kiosk/core';
+import { confirmLeavingUnsent } from '../lib/store-switch';
+import { useAuthStore } from '../store/auth-store';
 
 export type StaffBootPhase = 'loading' | 'tenant' | 'branch' | 'login' | 'ready' | 'error';
 
 async function tryResolveStaffDeepLink(
   url: string | null | undefined,
-  baseURL: string
+  baseURL: string,
+  keepUnsent = false
 ): Promise<TenantContext | null> {
   if (!url?.trim()) {
     return null;
   }
-  const result = await resolveTenantFromDeepLink(url, baseURL, {
-    hostSuffixes: [tenantHostSuffix()],
-  });
+  const result = await resolveTenantFromDeepLink(url, baseURL, { audience: 'staff', keepUnsent });
   if (!result || !isStaffDeepLinkIntent(result.intent)) {
     return null;
   }
@@ -42,6 +43,10 @@ export function useStaffBoot(
 
   const applyDeepLinkTenant = useCallback(
     (tenant: TenantContext) => {
+      // A link to a different store starts from nothing: the branch and sign-in on screen belong to the old one.
+      if (useAuthStore.getState().tenant?.businessId !== tenant.businessId) {
+        useAuthStore.getState().reset();
+      }
       setTenant(tenant);
       setBootError(null);
       setPhase('branch');
@@ -54,7 +59,15 @@ export function useStaffBoot(
     setBootError(null);
     try {
       const initialUrl = await Linking.getInitialURL();
-      const fromDeepLink = await tryResolveStaffDeepLink(initialUrl, baseURL);
+      let fromDeepLink: TenantContext | null = null;
+      try {
+        fromDeepLink = await tryResolveStaffDeepLink(initialUrl, baseURL);
+      } catch (error) {
+        // The saved store still holds sales that were never sent: the link waits and that store opens.
+        if (!(error instanceof StoreSwitchBlockedError)) {
+          throw error;
+        }
+      }
       if (fromDeepLink) {
         applyDeepLinkTenant(fromDeepLink);
         return;
@@ -93,8 +106,18 @@ export function useStaffBoot(
         return;
       }
       applyDeepLinkTenant(tenant);
-    } catch {
-      // Ignore malformed or unknown links while the app is open.
+    } catch (error) {
+      if (error instanceof StoreSwitchBlockedError && (await confirmLeavingUnsent(error.unsent))) {
+        try {
+          const tenant = await tryResolveStaffDeepLink(url, baseURL, true);
+          if (tenant) {
+            applyDeepLinkTenant(tenant);
+          }
+        } catch {
+          // The store could not be opened after all.
+        }
+      }
+      // Anything else is a malformed or unknown link while the app is open: ignore it.
     }
   });
 

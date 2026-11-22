@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import {
+  getTenantHeaders,
   loginWithPassword,
   loginWithPin,
   registerAccount,
@@ -245,8 +246,7 @@ function AuthSheet({
           headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
-            'X-Tenant-Host': tenant.host,
-            'X-Tenant-Id': tenant.businessId,
+            ...getTenantHeaders(tenant),
           },
           body: JSON.stringify({ token }),
         });

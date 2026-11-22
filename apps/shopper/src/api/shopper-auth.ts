@@ -1,4 +1,4 @@
-import { generateIdempotencyKey, type TenantContext } from '@kiosk/core';
+import { generateIdempotencyKey, getTenantHeaders, type TenantContext } from '@kiosk/core';
 import { API_BASE_URL } from '../lib/config';
 import { toKenyanLocal07 } from '../lib/phone';
 
@@ -18,8 +18,7 @@ async function post<T>(tenant: TenantContext, path: string, body: unknown): Prom
       Accept: 'application/json',
       'Content-Type': 'application/json',
       'X-Correlation-Id': generateIdempotencyKey(),
-      'X-Tenant-Host': tenant.host,
-      'X-Tenant-Id': tenant.businessId,
+      ...getTenantHeaders(tenant),
     },
     body: JSON.stringify(body),
   });

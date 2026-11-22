@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import {
   createApiClient,
-  clearTenant,
   getEmbeddedTenantSlug,
   getTenantDisplayName,
   logout,
@@ -16,6 +15,7 @@ import {
   WhiteLabelErrorScreen,
   useAuthStore,
   useStaffBoot,
+  leaveStore,
 } from '@kiosk/staff';
 import { createSyncEngine } from '@kiosk/offline';
 import { createRealtimeClient } from '@kiosk/realtime';
@@ -30,7 +30,8 @@ export function App() {
   const canChangeStore = !getEmbeddedTenantSlug();
   const goToTenant = async () => {
     if (!canChangeStore) return;
-    await clearTenant();
+    // Sales that were never sent are asked about first; leaving without confirming changes nothing.
+    if (!(await leaveStore(tenant?.displayName))) return;
     reset();
     setBranches([]);
     setPhase('tenant');

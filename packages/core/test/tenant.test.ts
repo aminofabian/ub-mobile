@@ -21,6 +21,7 @@ import {
   resolveTenant,
   revalidateActive,
   subscribeActiveStore,
+  subscribeActiveStoreId,
   switchStore,
 } from '../src/tenant';
 import { bootstrapStore, bootstrapTenant } from '../src/embedded-tenant';
@@ -403,6 +404,30 @@ test('listeners hear about real changes only, and one that throws does not stop 
   stopSecond();
   await open('acme');
   assert.deepEqual(heard, ['acme', 'bobs', 'none']);
+});
+
+test('asking the server again about the shop that is already open is not a change anyone should redraw for', async () => {
+  serve(allShops());
+  const realIso = Date.prototype.toISOString;
+  let second = 0;
+  Date.prototype.toISOString = function toISOString(this: Date) {
+    second += 1; // every lookup is stamped with a different time, however fast the phone is
+    return realIso.call(new Date(Date.UTC(2026, 10, 22, 12, 0, second)));
+  };
+  try {
+    const heard: string[] = [];
+    const stop = subscribeActiveStore((store) => heard.push(store?.slug ?? 'none'));
+    await open('acme');
+    const first = await loadActiveStore();
+    await open('acme');
+    await revalidateActive(API, { audience: 'staff' });
+    const later = await loadActiveStore();
+    stop();
+    assert.deepEqual(heard, ['acme'], 'same shop, same look: nothing to redraw');
+    assert.ok(first && later && later.fetchedAt > first.fetchedAt, 'but the time it was last confirmed is kept up to date');
+  } finally {
+    Date.prototype.toISOString = realIso;
+  }
 });
 
 test('two shops opened at once end with a consistent record', async () => {
@@ -932,4 +957,149 @@ test('activating a shop directly is the same as opening it, minus the guard', as
   assert.equal(await getActiveTenantId(), ACME.tenantId);
   await activateStore(bobs);
   assert.equal(await getActiveTenantId(), BOBS.tenantId);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Telling the app when the shop on screen becomes a different shop
+// ---------------------------------------------------------------------------------------------
+
+test('the store-id listener fires when the shop becomes a different one, not when the same shop looks different', async () => {
+  serve(allShops());
+  const ids: Array<string | null> = [];
+  const looks: string[] = [];
+  const stop = subscribeActiveStoreId((id) => ids.push(id));
+  const stopLooks = subscribeActiveStore((store) => looks.push(store?.displayName ?? 'none'));
+
+  await open('acme');
+  await open('acme');
+  serve([[mobileUrl('acme'), { status: 200, body: mobileBody(ACME, { displayName: 'Acme Supermarket' }) }], [mobileUrl('bobs'), { status: 200, body: mobileBody(BOBS) }]]);
+  await revalidateActive(API, { audience: 'staff' });
+  assert.deepEqual(looks, ['Acme Mart', 'Acme Supermarket'], 'the rename is a real change for the screen');
+  assert.deepEqual(ids, [ACME.tenantId], 'but it is still the same shop, so nothing held for it is wrong');
+
+  await open('bobs', true);
+  await clearActiveStore();
+  assert.deepEqual(ids, [ACME.tenantId, BOBS.tenantId, null]);
+
+  stop();
+  stopLooks();
+  await open('acme');
+  assert.deepEqual(ids, [ACME.tenantId, BOBS.tenantId, null], 'a listener that stopped hears nothing more');
+});
+
+test('a shop carried over from the old layout settling on its real id is not a different shop', async () => {
+  freshPhone(PALMART_BUILD);
+  configureStorage(null);
+  seedPalmartV1();
+  net = offlineNetwork() as Handle;
+  const boot = await bootstrapStore(API, { audience: 'staff' });
+  assert.equal(boot.kind === 'ready' && boot.store.businessId, 'pending-palmart');
+  await settle();
+
+  const ids: Array<string | null> = [];
+  const looks: string[] = [];
+  const stop = subscribeActiveStoreId((id) => ids.push(id));
+  const stopLooks = subscribeActiveStore((store) => looks.push(store?.businessId ?? 'none'));
+  serve(allShops());
+  await revalidateActive(API, { audience: 'staff' });
+  assert.deepEqual(looks, [PALMART.tenantId], 'the screen is told the shop has its real id');
+  assert.deepEqual(ids, [], 'but the session, cart and cached answers it holds are still this shop\'s');
+
+  await open('acme', true);
+  stop();
+  stopLooks();
+  assert.deepEqual(ids, [ACME.tenantId], 'a different shop is still announced');
+});
+
+test('a different shop that happens to reuse a verified shop\'s address is a different shop', async () => {
+  serve(allShops());
+  await open('acme');
+  const ids: Array<string | null> = [];
+  const stop = subscribeActiveStoreId((id) => ids.push(id));
+  const impostor = { ...ACME, tenantId: 'dddddddd-0000-4000-8000-000000000009' };
+  await activateStore({
+    businessId: impostor.tenantId,
+    slug: impostor.slug,
+    host: impostor.host,
+    displayName: impostor.name,
+    status: 'ACTIVE',
+    storefrontEnabled: true,
+    branding: {},
+    fetchedAt: new Date().toISOString(),
+  } as Parameters<typeof activateStore>[0]);
+  stop();
+  assert.deepEqual(ids, [impostor.tenantId]);
+});
+
+test('a listener added while a shop is already open stays quiet about that shop and hears the next one', async () => {
+  serve(allShops());
+  await open('acme');
+  const ids: Array<string | null> = [];
+  const stop = subscribeActiveStoreId((id) => ids.push(id));
+  serve([[mobileUrl('acme'), { status: 200, body: mobileBody(ACME, { displayName: 'Acme Supermarket' }) }], [mobileUrl('bobs'), { status: 200, body: mobileBody(BOBS) }]]);
+  await revalidateActive(API, { audience: 'staff' });
+  assert.deepEqual(ids, [], 'the shop it joined on is not news');
+  await open('bobs', true);
+  stop();
+  assert.deepEqual(ids, [BOBS.tenantId]);
+});
+
+test('leaving a carried-over shop for a different one is announced, even before its real id was known', async () => {
+  freshPhone(PALMART_BUILD);
+  configureStorage(null);
+  seedPalmartV1();
+  net = offlineNetwork() as Handle;
+  const boot = await bootstrapStore(API, { audience: 'staff' });
+  assert.equal(boot.kind === 'ready' && boot.store.businessId, 'pending-palmart');
+  await settle();
+
+  const ids: Array<string | null> = [];
+  const stop = subscribeActiveStoreId((id) => ids.push(id));
+  serve(allShops());
+  await open('acme', true);
+  stop();
+  assert.deepEqual(ids, [ACME.tenantId]);
+});
+
+test('a listener added before any shop has loaded hears the first shop that opens', async () => {
+  serve(allShops());
+  const ids: Array<string | null> = [];
+  const stop = subscribeActiveStoreId((id) => ids.push(id));
+  await open('bobs');
+  stop();
+  assert.deepEqual(ids, [BOBS.tenantId]);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Links that point at another shop while this one still has sales to send
+// ---------------------------------------------------------------------------------------------
+
+test('a link to another shop waits while the shop on the phone has unsent sales, and goes through once the person agrees', async () => {
+  serve(allShops());
+  countQueuesAsUnsent();
+  await open('acme');
+  await storeTokens({ accessToken: 'A-access', refreshToken: 'A-refresh' });
+  await queue(ACME.tenantId, [{ id: 'a1' }]);
+
+  await assert.rejects(
+    resolveTenantFromDeepLink('kiosk://shop/bobs', API, { audience: 'staff' }),
+    (error: unknown) => error instanceof StoreSwitchBlockedError && error.unsent.total === 1,
+  );
+  assert.equal(await getActiveTenantId(), ACME.tenantId, 'nothing changed while it waited');
+  assert.equal(await getAccessToken(), 'A-access');
+
+  const result = await resolveTenantFromDeepLink('kiosk://shop/bobs', API, { audience: 'staff', keepUnsent: true });
+  assert.equal(result?.tenant.businessId, BOBS.tenantId);
+  assert.equal(await getActiveTenantId(), BOBS.tenantId);
+  assert.equal(queued(ACME.tenantId).length, 1, 'the sale still waits in its own shop');
+  assert.equal(await getAccessToken(ACME.tenantId), 'A-access', 'with the session it needs to be sent');
+});
+
+test('a link to the shop that is already open never waits, even with unsent sales', async () => {
+  serve(allShops());
+  countQueuesAsUnsent();
+  await open('acme');
+  await queue(ACME.tenantId, [{ id: 'a1' }]);
+  const result = await resolveTenantFromDeepLink('kiosk://shop/acme', API, { audience: 'staff' });
+  assert.equal(result?.tenant.businessId, ACME.tenantId);
 });

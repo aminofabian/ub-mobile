@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { View, StyleSheet } from 'react-native';
-import { createApiClient, clearTenant, getEmbeddedTenantSlug, getTenantDisplayName, logout, type TenantContext } from '@kiosk/core';
+import { createApiClient, getEmbeddedTenantSlug, getTenantDisplayName, logout, type TenantContext } from '@kiosk/core';
 import {
   TenantEntryScreen,
   PinLoginScreen,
@@ -8,6 +8,7 @@ import {
   WhiteLabelErrorScreen,
   useAuthStore,
   useStaffBoot,
+  leaveStore,
 } from '@kiosk/staff';
 import { AppNavigator } from './navigation/AppNavigator';
 import { API_BASE_URL } from './lib/config';
@@ -19,7 +20,8 @@ export function App() {
   const canChangeStore = !getEmbeddedTenantSlug();
   const goToTenant = async () => {
     if (!canChangeStore) return;
-    await clearTenant();
+    // Sales that were never sent are asked about first; leaving without confirming changes nothing.
+    if (!(await leaveStore(tenant?.displayName))) return;
     reset();
     setPhase('tenant');
   };

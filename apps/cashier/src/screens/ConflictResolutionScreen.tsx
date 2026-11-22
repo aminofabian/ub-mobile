@@ -3,7 +3,7 @@ import { StyleSheet, View, FlatList, Alert } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Button, Card, Text, theme } from '@kiosk/ui';
 import type { ApiClient } from '@kiosk/core';
-import { outbox, replayItem, type OutboxItem } from '@kiosk/offline';
+import { needsAttention, outbox, replayItem, type OutboxItem } from '@kiosk/offline';
 import type { CashierStackParamList } from '../navigation/AppNavigator';
 
 type Props = NativeStackScreenProps<CashierStackParamList, 'Conflicts'> & {
@@ -15,7 +15,7 @@ export function ConflictResolutionScreen({ api }: Props) {
 
   const load = useCallback(async () => {
     const pending = await outbox.pending();
-    setItems(pending.filter((i) => i.conflictType || i.retries >= 3));
+    setItems(pending.filter(needsAttention));
   }, []);
 
   React.useEffect(() => {

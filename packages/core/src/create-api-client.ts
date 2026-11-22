@@ -10,6 +10,10 @@ import { getActiveTenantId, getTenantHeaders, loadActiveStore, loadStoreById, ty
 import { getOrCreateTillDeviceId, TILL_DEVICE_HEADER } from './till-device';
 
 export interface ApiClient {
+  /** The shop this client is pinned to. Absent when it follows whichever shop is active. */
+  readonly tenantId?: string;
+  /** The same client, pinned to one shop. What the sync engine sends through, so a shop switch cannot redirect a queued sale. */
+  forTenant?(tenantId: string): ApiClient;
   get<T>(path: string): Promise<T>;
   post<T>(path: string, body?: unknown, options?: IdempotencyOptions): Promise<T>;
   patch<T>(path: string, body?: unknown, options?: IdempotencyOptions): Promise<T>;
@@ -101,6 +105,8 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
   }
 
   return {
+    tenantId: options.tenantId,
+    forTenant: (tenantId: string) => createApiClient({ ...options, getTenant: undefined, tenantId }),
     get: <T>(path: string) => request<T>('GET', path),
     post: <T>(path: string, body?: unknown, opts?: IdempotencyOptions) =>
       request<T>('POST', path, body, { ...opts }),

@@ -1,4 +1,4 @@
-import { generateIdempotencyKey, type TenantContext } from '@kiosk/core';
+import { generateIdempotencyKey, getTenantHeaders, type TenantContext } from '@kiosk/core';
 import { API_BASE_URL } from '../lib/config';
 import type { AirtimeConfig } from './storefront';
 
@@ -21,7 +21,7 @@ async function tenantFetch<T>(
     Accept: 'application/json',
     'Content-Type': 'application/json',
     'X-Correlation-Id': generateIdempotencyKey(),
-    'X-Tenant-Host': tenant.host,
+    ...getTenantHeaders(tenant),
   };
   const res = await fetch(`${API_BASE_URL}${path}`, {
     method,

@@ -96,6 +96,11 @@ export function outboxKey(tenantId: string): string {
   return `@kiosk/offline/outbox/${assertTenantId(tenantId)}`;
 }
 
+/** Where a queue that could not be read is kept, for support, while a fresh one takes its place. */
+export function unreadableOutboxKey(tenantId: string): string {
+  return `${outboxKey(tenantId)}.unreadable`;
+}
+
 /** What a shop-less install called a store that has not been confirmed by the server yet. */
 export function provisionalId(slug: string): string {
   return `${PROVISIONAL_PREFIX}${slug}`;

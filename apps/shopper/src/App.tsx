@@ -10,7 +10,8 @@ import {
   getTenantDisplayName,
   isShopperDeepLinkIntent,
   resolveTenantFromDeepLink,
-  tenantHostSuffix,
+  subscribeActiveStore,
+  subscribeActiveStoreId,
   useTenantDeepLink,
   type TenantContext,
 } from '@kiosk/core';
@@ -45,9 +46,7 @@ async function tryResolveShopperDeepLink(
   if (!url?.trim()) {
     return null;
   }
-  const result = await resolveTenantFromDeepLink(url, API_BASE_URL, {
-    hostSuffixes: [tenantHostSuffix()],
-  });
+  const result = await resolveTenantFromDeepLink(url, API_BASE_URL, { audience: 'shopper' });
   if (!result || !isShopperDeepLinkIntent(result.intent)) {
     return null;
   }
@@ -89,7 +88,7 @@ export function App() {
         return;
       }
 
-      const tenant = await bootstrapTenant(API_BASE_URL);
+      const tenant = await bootstrapTenant(API_BASE_URL, { audience: 'shopper' });
       if (tenant) {
         setBoot({ status: 'ready', tenant });
         return;
@@ -117,6 +116,23 @@ export function App() {
   useEffect(() => {
     void runBootstrap();
   }, [runBootstrap]);
+
+  // Everything held in memory for one store (cached answers, the cart on screen) is dropped when another store
+  // is opened, so nothing from the last one can show in the next.
+  useEffect(() => subscribeActiveStoreId(() => queryClient.clear()), []);
+
+  // The store on screen follows what the device knows about it: a new name or colour, or the id the server
+  // confirmed for a store carried over from the old layout.
+  useEffect(
+    () =>
+      subscribeActiveStore((store) => {
+        if (!store) return;
+        setBoot((current) =>
+          current.status === 'ready' && current.tenant.slug === store.slug ? { status: 'ready', tenant: store } : current
+        );
+      }),
+    []
+  );
 
   useTenantDeepLink(async (url) => {
     try {
@@ -146,7 +162,7 @@ export function App() {
   } else if (boot.status === 'ready') {
     content = (
       <QueryClientProvider client={queryClient}>
-        <TenantProvider tenant={boot.tenant}>
+        <TenantProvider key={boot.tenant.slug} tenant={boot.tenant}>
           <RealtimeBridge />
           <AuthGateProvider>
             <AppNavigator />

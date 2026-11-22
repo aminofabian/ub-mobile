@@ -126,7 +126,7 @@ export function ShiftScreen({ navigation, api, branchId, tenantName, onLogout }:
         style={styles.action}
       />
       <Button
-        title="Sync conflicts"
+        title={unsent.total > 0 ? `Unsent sales (${unsent.total})` : 'Unsent sales'}
         variant="secondary"
         onPress={() => navigation.navigate('Conflicts')}
         style={styles.action}

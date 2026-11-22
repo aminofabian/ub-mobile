@@ -98,7 +98,7 @@ export function parseTenantDeepLink(url: string): ParsedTenantDeepLink | null {
 export async function resolveTenantFromDeepLink(
   url: string,
   baseURL: string,
-  options: { audience: StoreAudience }
+  options: { audience: StoreAudience; keepUnsent?: boolean }
 ): Promise<{ tenant: TenantContext; intent: TenantDeepLinkIntent } | null> {
   const parsed = parseTenantDeepLink(url);
   if (!parsed) {
@@ -112,6 +112,9 @@ export async function resolveTenantFromDeepLink(
     return null;
   }
 
-  const tenant = unwrapOpened(await openStore(input, baseURL, { audience: options.audience }), input);
+  const tenant = unwrapOpened(
+    await openStore(input, baseURL, { audience: options.audience, keepUnsent: options.keepUnsent }),
+    input,
+  );
   return { tenant, intent: parsed.intent };
 }

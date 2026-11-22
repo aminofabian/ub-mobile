@@ -3,6 +3,7 @@
 import * as SecureStoreFake from './fakes/expo-secure-store.mjs';
 import * as AsyncStorageFake from './fakes/async-storage.mjs';
 import * as ConstantsFake from './fakes/expo-constants.mjs';
+import * as ReactNativeFake from './fakes/react-native.mjs';
 
 export const secureStore = SecureStoreFake;
 export const asyncStore = AsyncStorageFake;
@@ -12,6 +13,7 @@ export function freshPhone(extra = {}) {
   SecureStoreFake.__reset();
   AsyncStorageFake.__reset();
   ConstantsFake.__setExtra(extra);
+  ReactNativeFake.__resetAlerts();
 }
 
 /** The app is reinstalled: app data is gone. The keychain stays, as it does on iOS. */

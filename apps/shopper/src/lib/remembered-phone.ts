@@ -1,27 +1,30 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { readTenantValue, removeTenantValue, writeTenantValue } from '@kiosk/core';
 import { toKenyanLocal07 } from './phone';
 
-const TAB_PHONE_KEY = 'palmart.customer.tabPhone';
-const RECIPIENT_KEY = 'palmart.customer.lastAirtimeRecipient';
-const PAYER_KEY = 'palmart.customer.lastAirtimePayer';
+// Kept per store by @kiosk/core: a number remembered in one store is not offered in another.
+const TAB_PHONE_KEY = 'tabPhone';
+const RECIPIENT_KEY = 'airtimeRecipient';
+const PAYER_KEY = 'airtimePayer';
 
-async function read(key: string): Promise<string | null> {
+type Field = typeof TAB_PHONE_KEY | typeof RECIPIENT_KEY | typeof PAYER_KEY;
+
+async function read(field: Field): Promise<string | null> {
   try {
-    const value = await AsyncStorage.getItem(key);
+    const value = await readTenantValue(field);
     return value?.trim() || null;
   } catch {
     return null;
   }
 }
 
-async function write(key: string, value: string | null) {
+async function write(field: Field, value: string | null) {
   try {
     if (!value?.trim()) {
-      await AsyncStorage.removeItem(key);
+      await removeTenantValue(field);
       return;
     }
     const local = toKenyanLocal07(value) || value.trim();
-    await AsyncStorage.setItem(key, local);
+    await writeTenantValue(field, local);
   } catch {
     /* ignore */
   }

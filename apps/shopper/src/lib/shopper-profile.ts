@@ -1,5 +1,11 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as SecureStore from 'expo-secure-store';
+import {
+  readTenantSecret,
+  readTenantValue,
+  removeTenantSecret,
+  removeTenantValue,
+  writeTenantSecret,
+  writeTenantValue,
+} from '@kiosk/core';
 import { toKenyanLocal07 } from './phone';
 
 export type ShopperProfile = {
@@ -9,12 +15,11 @@ export type ShopperProfile = {
   shipping: string;
 };
 
-const PROFILE_KEY = 'palmart.shopper.profile';
-const SECRET_KEY = 'palmart.shopper.deviceSecret';
+// Kept per store by @kiosk/core: a profile or device secret saved in one store is never read in another.
 
 export async function loadShopperProfile(): Promise<ShopperProfile | null> {
   try {
-    const raw = await AsyncStorage.getItem(PROFILE_KEY);
+    const raw = await readTenantValue('profile');
     if (!raw) return null;
     const parsed = JSON.parse(raw) as ShopperProfile;
     if (!parsed?.email || !parsed?.phone) return null;
@@ -26,8 +31,8 @@ export async function loadShopperProfile(): Promise<ShopperProfile | null> {
 
 export async function saveShopperProfile(profile: ShopperProfile): Promise<void> {
   const phone = toKenyanLocal07(profile.phone) || profile.phone.trim();
-  await AsyncStorage.setItem(
-    PROFILE_KEY,
+  await writeTenantValue(
+    'profile',
     JSON.stringify({
       name: profile.name.trim(),
       email: profile.email.trim().toLowerCase(),
@@ -38,19 +43,19 @@ export async function saveShopperProfile(profile: ShopperProfile): Promise<void>
 }
 
 export async function clearShopperProfile(): Promise<void> {
-  await AsyncStorage.removeItem(PROFILE_KEY);
+  await removeTenantValue('profile');
 }
 
 export async function saveDeviceSecret(secret: string): Promise<void> {
-  await SecureStore.setItemAsync(SECRET_KEY, secret);
+  await writeTenantSecret('deviceSecret', secret);
 }
 
 export async function loadDeviceSecret(): Promise<string | null> {
-  return SecureStore.getItemAsync(SECRET_KEY);
+  return readTenantSecret('deviceSecret');
 }
 
 export async function clearDeviceSecret(): Promise<void> {
-  await SecureStore.deleteItemAsync(SECRET_KEY);
+  await removeTenantSecret('deviceSecret');
 }
 
 export function randomDeviceSecret(): string {

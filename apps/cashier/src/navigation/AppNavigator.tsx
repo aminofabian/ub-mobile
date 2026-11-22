@@ -8,6 +8,7 @@ import { PaymentScreen } from '../screens/PaymentScreen';
 import { ReceiptScreen } from '../screens/ReceiptScreen';
 import { GroceryInvoicesScreen } from '../screens/GroceryInvoicesScreen';
 import { ConflictResolutionScreen } from '../screens/ConflictResolutionScreen';
+import { UnsentBadge } from '../components/UnsentBadge';
 
 export type CashierStackParamList = {
   Shift: undefined;
@@ -30,7 +31,7 @@ interface AppNavigatorProps {
 export function AppNavigator({ api, tenant, branchId, onLogout }: AppNavigatorProps) {
   return (
     <NavigationContainer>
-      <Stack.Navigator initialRouteName="Shift">
+      <Stack.Navigator initialRouteName="Shift" screenOptions={{ headerRight: () => <UnsentBadge /> }}>
         <Stack.Screen name="Shift" options={{ title: 'Shift' }}>
           {(props) => (
             <ShiftScreen
@@ -54,7 +55,7 @@ export function AppNavigator({ api, tenant, branchId, onLogout }: AppNavigatorPr
         <Stack.Screen name="GroceryInvoices" options={{ title: 'Grocery Invoices' }}>
           {(props) => <GroceryInvoicesScreen {...props} api={api} />}
         </Stack.Screen>
-        <Stack.Screen name="Conflicts" options={{ title: 'Sync Conflicts' }}>
+        <Stack.Screen name="Conflicts" options={{ title: 'Unsent sales', headerRight: () => null }}>
           {(props) => <ConflictResolutionScreen {...props} api={api} />}
         </Stack.Screen>
       </Stack.Navigator>

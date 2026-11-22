@@ -1,3 +1,4 @@
+import { withOutboxLock } from './outbox-lock';
 import { onRuntimeReset, plain, secureRemove } from './storage';
 import { adoptProvisional, ensureStorageReady, removeNamespace } from './storage-schema';
 import { assertTenantId, isProvisionalId, isStorableTenantId, secureKey } from './storage-keys';
@@ -81,8 +82,31 @@ function mutate<T>(work: () => Promise<T>): Promise<T> {
   return run;
 }
 
+/**
+ * Same shop, same look, same standing. When the server last confirmed it (`fetchedAt`) is not a
+ * change anyone should redraw for: apps clear their caches when this fires, so asking the server
+ * again about the shop that is already open must stay quiet.
+ */
+function sameStore(a: StoreSnapshot | null, b: StoreSnapshot | null): boolean {
+  if (a === b) {
+    return true;
+  }
+  if (!a || !b) {
+    return false;
+  }
+  return (
+    a.businessId === b.businessId &&
+    a.slug === b.slug &&
+    a.host === b.host &&
+    a.displayName === b.displayName &&
+    a.status === b.status &&
+    a.storefrontEnabled === b.storefrontEnabled &&
+    JSON.stringify(a.branding ?? null) === JSON.stringify(b.branding ?? null)
+  );
+}
+
 function setActive(next: StoreSnapshot | null): void {
-  const changed = JSON.stringify(cache.store) !== JSON.stringify(next);
+  const changed = !sameStore(cache.store, next);
   cache = { loaded: true, store: next };
   if (changed) {
     for (const listener of [...listeners]) {
@@ -121,6 +145,30 @@ export function subscribeActiveStore(listener: (store: StoreSnapshot | null) => 
   };
 }
 
+/**
+ * Calls the listener with the id of the active shop each time it becomes a different shop, or none.
+ * It stays quiet for changes to the same shop: a new name or colour, or a shop carried over from the
+ * old layout getting the id the server confirmed. For anything held in memory for one shop, such as a
+ * query cache, which must be dropped when the shop changes.
+ */
+export function subscribeActiveStoreId(listener: (tenantId: string | null) => void): () => void {
+  let last: { id: string | null; slug: string | null } | undefined = cache.loaded
+    ? { id: cache.store?.businessId ?? null, slug: cache.store?.slug ?? null }
+    : undefined;
+  return subscribeActiveStore((store) => {
+    const next = { id: store?.businessId ?? null, slug: store?.slug ?? null };
+    const previous = last;
+    last = next;
+    if (previous && previous.id === next.id) {
+      return;
+    }
+    if (previous?.id && next.id && isProvisionalId(previous.id) && previous.slug === next.slug) {
+      return;
+    }
+    listener(next.id);
+  });
+}
+
 /** The active shop, from this device. Never touches the network, so it works in airplane mode. */
 export async function loadActiveStore(): Promise<StoreSnapshot | null> {
   if (cache.loaded) {
@@ -157,12 +205,15 @@ async function activateInternal(store: StoreSnapshot): Promise<void> {
   assertTenantId(store.businessId);
   const plainStore = await plain();
   await writeSnapshot(plainStore, store);
-  // A shop carried over from the old layout has been living under a provisional id. Now that the
-  // server has named it, everything moves to the real one.
-  await adoptProvisional(store.slug, store.businessId);
-  await writePointer(plainStore, store.businessId);
-  await rememberTenant(plainStore, store.businessId);
-  setActive(store);
+  // The queue is held still from here until the new shop is active. A shop carried over from the old
+  // layout has been living under a provisional id; now that the server has named it, its queue moves
+  // to the real one, and no sale may be queued into the old name while that happens.
+  await withOutboxLock(async () => {
+    await adoptProvisional(store.slug, store.businessId);
+    await writePointer(plainStore, store.businessId);
+    await rememberTenant(plainStore, store.businessId);
+    setActive(store);
+  });
 }
 
 /** Makes a shop that `previewStore` found the active one. It is not checked against unsent work: use `switchStore` for that. */
@@ -274,12 +325,14 @@ export function forgetStore(tenantId: string, options: { dropOutbox?: boolean } 
   return mutate(async () => {
     await ensureStorageReady();
     assertTenantId(tenantId);
-    const active = await loadActiveStore();
-    await removeNamespace(tenantId, options);
-    if (active?.businessId === tenantId) {
-      await writePointer(await plain(), null);
-      setActive(null);
-    }
+    await withOutboxLock(async () => {
+      const active = await loadActiveStore();
+      await removeNamespace(tenantId, options);
+      if (active?.businessId === tenantId) {
+        await writePointer(await plain(), null);
+        setActive(null);
+      }
+    });
   });
 }
 

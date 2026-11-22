@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { StyleSheet, View, TextInput, Alert } from 'react-native';
 import { Button, Text, theme } from '@kiosk/ui';
-import { resolveTenant, resolveTenantByEmail, type TenantContext } from '@kiosk/core';
+import { describeStoreResult, openStore, resolveTenantByEmail, type TenantContext } from '@kiosk/core';
 import { AuthBackBar } from '../components/AuthBackBar';
+import { confirmLeavingUnsent } from '../lib/store-switch';
 
 interface TenantEntryScreenProps {
   baseURL: string;
@@ -16,12 +17,27 @@ export function TenantEntryScreen({ baseURL, appTitle, onTenantResolved }: Tenan
   const [loading, setLoading] = useState(false);
   const [showEmailFallback, setShowEmailFallback] = useState(false);
 
+  /** Opens the store and tells the screen, or tells the person why it could not be opened. */
+  const open = async (value: string, keepUnsent = false): Promise<void> => {
+    const result = await openStore(value, baseURL, { audience: 'staff', keepUnsent });
+    if (result.kind === 'opened') {
+      onTenantResolved(result.store);
+      return;
+    }
+    if (result.kind === 'blocked') {
+      if (await confirmLeavingUnsent(result.unsent)) {
+        await open(value, true);
+      }
+      return;
+    }
+    Alert.alert('Could not open store', describeStoreResult(result, value));
+  };
+
   const resolve = async () => {
     if (!input.trim()) return;
     setLoading(true);
     try {
-      const tenant = await resolveTenant(input.trim(), baseURL);
-      onTenantResolved(tenant);
+      await open(input.trim());
     } catch (e) {
       Alert.alert('Error', e instanceof Error ? e.message : 'Could not resolve tenant');
     } finally {
@@ -34,8 +50,7 @@ export function TenantEntryScreen({ baseURL, appTitle, onTenantResolved }: Tenan
     setLoading(true);
     try {
       const result = await resolveTenantByEmail(baseURL, email.trim());
-      const tenant = await resolveTenant(result.host, baseURL);
-      onTenantResolved(tenant);
+      await open(result.host);
     } catch (e) {
       Alert.alert('Error', e instanceof Error ? e.message : 'Could not find tenant for email');
     } finally {

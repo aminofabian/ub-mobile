@@ -1,4 +1,4 @@
-import { createApiClient, loadTenant } from '@kiosk/core';
+import { createApiClient, getActiveTenantId } from '@kiosk/core';
 import { setupNotifications } from '@kiosk/notifications';
 import { API_BASE_URL } from './config';
 
@@ -11,7 +11,8 @@ import { API_BASE_URL } from './config';
  * authenticated. Shoppers who never sign in still get the SMS reminder, which is
  * keyed off their tab phone number instead.
  */
-let registered = false;
+// The device token is claimed for one shop's account, so which shop it was claimed for is remembered.
+let registeredFor: string | null = null;
 let presentationReady = false;
 
 /**
@@ -46,19 +47,18 @@ async function allowForegroundBanners(): Promise<void> {
 }
 
 export async function registerForDepletionAlerts(): Promise<void> {
-  if (registered) return;
+  const tenantId = await getActiveTenantId();
+  if (!tenantId || registeredFor === tenantId) return;
 
   try {
     await allowForegroundBanners();
 
-    const api = createApiClient({
-      baseURL: API_BASE_URL,
-      getTenant: () => loadTenant(),
-    });
+    // Follows the active shop, which is the one whose session this registration needs.
+    const api = createApiClient({ baseURL: API_BASE_URL });
     // Resolves to null when the OS denies permission or the native module is
     // missing, in which case there is nothing to register and SMS still covers us.
     const token = await setupNotifications(api);
-    registered = token !== null;
+    registeredFor = token !== null ? tenantId : null;
   } catch {
     // Never surface this: reminders are a background nicety, not a task the
     // shopper started, and the server-side SMS path is unaffected.
@@ -66,5 +66,5 @@ export async function registerForDepletionAlerts(): Promise<void> {
 }
 
 export function forgetDepletionAlertRegistration(): void {
-  registered = false;
+  registeredFor = null;
 }

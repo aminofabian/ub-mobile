@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { resolveShopperStore, type TenantContext } from '@kiosk/core';
+import { describeStoreResult, openStore, type TenantContext } from '@kiosk/core';
 import { API_BASE_URL, TENANT_HOST_SUFFIX } from '../lib/config';
 import { PLATFORM_NAME } from '../lib/brand';
 import { MART, ON_BRAND, RADIUS, SPACE, TYPE } from '../theme/mart';
@@ -33,12 +33,19 @@ export function TenantEntryScreen({ onTenantResolved }: TenantEntryScreenProps) 
     setLoading(true);
     setError(null);
     try {
-      const tenant = await resolveShopperStore(trimmed, API_BASE_URL, {
-        hostSuffixes: [TENANT_HOST_SUFFIX],
-      });
-      onTenantResolved(tenant);
+      const result = await openStore(trimmed, API_BASE_URL, { audience: 'shopper' });
+      if (result.kind === 'opened') {
+        onTenantResolved(result.store);
+      } else if (result.kind === 'not_found') {
+        setError(`No store answers at ${trimmed}.${TENANT_HOST_SUFFIX}. Check the spelling with the till.`);
+      } else if (result.kind === 'blocked') {
+        // A shopper phone holds no queued sales, so a switch is never held up. Kept so the result is not ignored.
+        setError('Could not switch stores right now. Try again.');
+      } else {
+        setError(describeStoreResult(result, trimmed));
+      }
     } catch {
-      setError(`No store answers at ${trimmed}.${TENANT_HOST_SUFFIX}. Check the spelling with the till.`);
+      setError('Something went wrong opening that store. Try again.');
     } finally {
       setLoading(false);
     }

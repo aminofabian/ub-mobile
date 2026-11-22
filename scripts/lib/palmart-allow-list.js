@@ -8,15 +8,10 @@
  */
 module.exports = [
   {
-    file: 'apps/shopper/src/lib/shopper-profile.ts',
-    match: /palmart\.shopper\./,
+    file: 'packages/core/src/storage-keys.ts',
+    match: /palmart\.(shopper|customer)\./,
     reason:
-      'Storage keys kept so a Palmart upgrade still finds its profile. Phase 0b namespaces storage per tenant and migrates them.',
-  },
-  {
-    file: 'apps/shopper/src/lib/remembered-phone.ts',
-    match: /palmart\.customer\./,
-    reason: 'Storage keys kept for the same migration as shopper-profile.ts.',
+      'The old Shopper storage names. They are only the inputs of the one-time migration that carries a Palmart upgrade\'s profile, remembered numbers and device secret into the per-store layout, so nothing reads or writes them any more.',
   },
   {
     file: 'apps/shopper/src/components/MartHero.tsx',
@@ -28,11 +23,6 @@ module.exports = [
     match: /Palmart's world/,
     reason:
       'Comment naming the design language. The tokens are the Shopper\'s fallback palette; no code asks whether the build is Palmart.',
-  },
-  {
-    file: 'packages/core/src/tenant.ts',
-    match: /palmart\.co\.ke/,
-    reason: 'The host-suffix list and its comment. Both go with host guessing in Phase 0b.',
   },
   {
     file: 'packages/core/src/deep-link.ts',
