@@ -7,7 +7,7 @@ import { ACME, API, mobileBody, mobileUrl } from '../../core/test/fixtures';
 import { getAccessToken, getActiveTenantId, openStore } from '@kiosk/core';
 import { storeTokens } from '@kiosk/core';
 import { outboxFor } from '@kiosk/offline';
-import { confirmLeavingUnsent, describeUnsent, leaveStore } from '../src/lib/store-switch';
+import { confirmLeavingUnsent, confirmSignOut, confirmSigningOutWithUnsent, describeUnsent, leaveStore } from '../src/lib/store-switch';
 
 let net: { restore(): void } | null = null;
 
@@ -86,6 +86,35 @@ test('the question names the shop, says how many need attention, and copes with 
   assert.match(__asked[1].message, /^This store has 3 unsent sales/);
   assert.match(__asked[1].message, /sign in to it\. Switch anyway\?$/);
   assert.match(__asked[0].message, /sign in to Acme Mart\. Switch anyway\?$/);
+});
+
+test('signing out with nothing unsent asks nothing', async () => {
+  assert.equal(await confirmSignOut('Acme Mart'), true);
+  assert.equal(__asked.length, 0);
+});
+
+test('signing out with unsent sales says who will send them, and only "Sign out anyway" goes ahead', async () => {
+  await queueSales(2, 1);
+  __answerWith(() => 'Stay signed in');
+  assert.equal(await confirmSignOut('Acme Mart'), false);
+  assert.equal(__asked.length, 1);
+  assert.match(__asked[0].message, /^Acme Mart has 2 unsent sales \(1 needs attention\)\./);
+  assert.match(__asked[0].message, /Whoever signs in next on this phone sends them, under their own name and shift\. Sign out anyway\?$/);
+  assert.deepEqual(__asked[0].buttons, ['Stay signed in', 'Sign out anyway']);
+  assert.equal(await getAccessToken(), 'A-access', 'asking changes nothing');
+
+  __answerWith(() => 'Sign out anyway');
+  assert.equal(await confirmSignOut('Acme Mart'), true);
+  __answerWith(() => 'dismiss');
+  assert.equal(await confirmSignOut('Acme Mart'), false, 'backing out is staying signed in');
+});
+
+test('the sign-out question copes with a shop that has no name, and counts one sale in the singular', async () => {
+  __answerWith(() => 'Stay signed in');
+  await confirmSigningOutWithUnsent({ total: 1, needsAttention: 0 }, '   ');
+  assert.match(__asked[0].message, /^This store has 1 unsent sale\. Whoever signs in next/);
+  await confirmSigningOutWithUnsent({ total: 3, needsAttention: 0 });
+  assert.match(__asked[1].message, /^This store has 3 unsent sales\./);
 });
 
 test('describeUnsent counts in plain words', () => {

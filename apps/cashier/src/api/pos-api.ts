@@ -1,5 +1,8 @@
 import type { ApiClient } from '@kiosk/core';
 import type { phase_1 } from '@kiosk/types';
+import { matchCustomers, type CustomerMatch } from '../lib/customer-match';
+import { normalizeKenyanPhone } from '../lib/phone';
+import type { CloseBody } from '../lib/shift-cash';
 
 type ShiftResponse = phase_1.components['schemas']['ShiftResponse'];
 type SaleResponse = phase_1.components['schemas']['SaleResponse'];
@@ -38,18 +41,17 @@ export async function openShift(
   );
 }
 
-export async function closeShift(
+/** What the last shift on this till counted at close: the float the next one can start from. Empty when there was none. */
+export async function fetchLastClosed(
   api: ApiClient,
-  shiftId: string,
-  countedClosingCash: number,
-  notes?: string,
-  cashTakenOut?: number
-): Promise<ShiftResponse> {
-  return api.post<ShiftResponse>(
-    `/api/v1/shifts/${shiftId}/close`,
-    { countedClosingCash, notes, cashTakenOut },
-    { idempotent: true }
-  );
+  branchId: string
+): Promise<{ countedClosingCash?: number | null; closedAt?: string | null }> {
+  return api.get(`/api/v1/shifts/last-closed?branchId=${encodeURIComponent(branchId)}`);
+}
+
+/** Closes a shift on what the cashier counted. `varianceReason` is the cashier's words for a count that does not match. */
+export async function closeShift(api: ApiClient, shiftId: string, body: CloseBody): Promise<ShiftResponse> {
+  return api.post<ShiftResponse>(`/api/v1/shifts/${shiftId}/close`, body, { idempotent: true });
 }
 
 export async function searchItems(
@@ -82,18 +84,40 @@ export type PosCustomerHit = {
   name: string;
 };
 
-export async function lookupCustomerByPhone(
-  api: ApiClient,
-  phone: string
-): Promise<PosCustomerHit | null> {
+/** Every customer the server says has exactly this number (it matches whole numbers, digits only, not part of one). */
+async function customersWithPhone(api: ApiClient, phone: string): Promise<PosCustomerHit[]> {
   const q = phone.trim();
-  if (!q) return null;
+  if (!q) return [];
   const params = new URLSearchParams({ page: '0', size: '5', phone: q });
   const response = await api.get<{ content?: PosCustomerHit[] } | PosCustomerHit[]>(
     `/api/v1/customers?${params}`
   );
-  const rows = Array.isArray(response) ? response : (response.content ?? []);
-  return rows[0] ?? null;
+  return Array.isArray(response) ? response : (response.content ?? []);
+}
+
+export async function lookupCustomerByPhone(
+  api: ApiClient,
+  phone: string
+): Promise<PosCustomerHit | null> {
+  return (await customersWithPhone(api, phone))[0] ?? null;
+}
+
+/**
+ * The customer who is already on file under this number. Never creates one. The server keeps a number the way it
+ * was typed ("0712..." and "254712..." are two numbers to it), so both are looked up, and a number that more than one
+ * customer has is reported as such rather than guessed at.
+ */
+export async function findCustomerByPhone(
+  api: ApiClient,
+  raw: string
+): Promise<CustomerMatch<PosCustomerHit> | null> {
+  const phone = normalizeKenyanPhone(raw);
+  if (!phone) return null;
+  const rows: PosCustomerHit[] = [];
+  for (const variant of [phone, `0${phone.slice(3)}`]) {
+    rows.push(...(await customersWithPhone(api, variant)));
+  }
+  return matchCustomers(rows);
 }
 
 /** Find or create a customer from MSISDN only (name stored as the number). */

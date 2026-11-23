@@ -3,7 +3,7 @@ import { onRuntimeReset, plain, secureRemove } from './storage';
 import { adoptProvisional, ensureStorageReady, removeNamespace } from './storage-schema';
 import { assertTenantId, isProvisionalId, isStorableTenantId, secureKey } from './storage-keys';
 import { readPointer, readRecents, readSnapshot, rememberTenant, writePointer, writeSnapshot } from './tenant-store';
-import { describeStoreResult, previewStore } from './tenant-resolve';
+import { classifyStore, describeStoreResult, previewStore } from './tenant-resolve';
 import type { StoreAudience, StoreResult, StoreSnapshot, TenantContext, UnsentSummary } from './tenant-types';
 
 export type {
@@ -14,7 +14,7 @@ export type {
   UnavailableReason,
   UnsentSummary,
 } from './tenant-types';
-export { classifyStore, describeStoreResult, parseStoreInput, previewStore } from './tenant-resolve';
+export { classifyStore, describeStoreResult, parseStoreInput, previewStore, previewStoreByCode } from './tenant-resolve';
 export type { PreviewOptions, StoreQuery } from './tenant-resolve';
 
 /**
@@ -101,8 +101,15 @@ function sameStore(a: StoreSnapshot | null, b: StoreSnapshot | null): boolean {
     a.displayName === b.displayName &&
     a.status === b.status &&
     a.storefrontEnabled === b.storefrontEnabled &&
-    JSON.stringify(a.branding ?? null) === JSON.stringify(b.branding ?? null)
+    JSON.stringify(a.branding ?? null) === JSON.stringify(b.branding ?? null) &&
+    JSON.stringify(a.storeTypes ?? null) === JSON.stringify(b.storeTypes ?? null) &&
+    capabilityKey(a.capabilities) === capabilityKey(b.capabilities)
   );
+}
+
+/** The same capabilities in a different order are the same capabilities. */
+function capabilityKey(capabilities: Record<string, boolean> | undefined): string {
+  return capabilities ? JSON.stringify(Object.entries(capabilities).sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0))) : 'none';
 }
 
 function setActive(next: StoreSnapshot | null): void {
@@ -271,6 +278,48 @@ export async function openStore(
   }
   const switched = await switchStore(result.store, { keepUnsent: options.keepUnsent });
   return switched.kind === 'blocked' ? switched : { kind: 'opened', store: result.store };
+}
+
+/**
+ * Opens a shop this phone already knows, from its saved record: the shop is on screen at once, with or
+ * without a connection, and the server is asked about it in the background (see `revalidateActive`). A
+ * shop that was suspended, or had its storefront off, when the phone last heard is asked about first,
+ * because it may have come back; if that cannot be asked, it stays closed rather than opening on old news.
+ */
+export async function openRememberedStore(
+  tenantId: string,
+  baseURL: string,
+  options: { audience: StoreAudience; keepUnsent?: boolean },
+): Promise<OpenStoreResult> {
+  const saved = await loadStoreById(tenantId);
+  if (!saved) {
+    return { kind: 'not_found' };
+  }
+  let target = saved;
+  if (classifyStore(saved, options.audience).kind !== 'found') {
+    const fresh = await previewStore(saved.slug, baseURL, { audience: options.audience });
+    if (fresh.kind !== 'found' && fresh.kind !== 'unavailable') {
+      return fresh;
+    }
+    // The address may have passed to another business since this one was saved. What the server says about
+    // that business is not news about this one, and it is not opened in its place (`revalidateActive` holds
+    // the same line).
+    if (fresh.store && fresh.store.businessId !== saved.businessId && !isProvisionalId(saved.businessId)) {
+      return { kind: 'not_found' };
+    }
+    if (fresh.kind !== 'found') {
+      return fresh;
+    }
+    target = fresh.store;
+  }
+  const switched = await switchStore(target, { keepUnsent: options.keepUnsent });
+  if (switched.kind === 'blocked') {
+    return switched;
+  }
+  if (target === saved) {
+    void revalidateActive(baseURL, { audience: options.audience }).catch(() => undefined);
+  }
+  return { kind: 'opened', store: target };
 }
 
 /**

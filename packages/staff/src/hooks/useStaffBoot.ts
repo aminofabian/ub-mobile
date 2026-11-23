@@ -31,7 +31,9 @@ async function tryResolveStaffDeepLink(
 
 export function useStaffBoot(
   baseURL: string,
-  setTenant: (tenant: TenantContext) => void
+  setTenant: (tenant: TenantContext) => void,
+  /** Asked before a link that arrives while the app is open is followed. Saying no leaves the link unopened. */
+  mayFollowLink?: (url: string) => boolean
 ): {
   phase: StaffBootPhase;
   setPhase: (phase: StaffBootPhase) => void;
@@ -102,6 +104,10 @@ export function useStaffBoot(
   }, [runBootstrap]);
 
   useTenantDeepLink(async (url) => {
+    // Someone may be working: a link to another shop would end their session and lose their cart.
+    if (mayFollowLink && !mayFollowLink(url)) {
+      return;
+    }
     try {
       const tenant = await tryResolveStaffDeepLink(url, baseURL);
       if (!tenant) {

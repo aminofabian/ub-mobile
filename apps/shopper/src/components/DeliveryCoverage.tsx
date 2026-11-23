@@ -8,6 +8,7 @@ import { useOrderHistory } from '../hooks/useOrderHistory';
 import { useSession } from '../hooks/useSession';
 import { useStorefront } from '../hooks/useStorefront';
 import { useTenant } from '../lib/TenantContext';
+import { deliveryAreasKey } from '../lib/shop-storage';
 import {
   ELEVATION,
   MART,
@@ -17,12 +18,6 @@ import {
   SPACE,
   TYPE,
 } from '../theme/mart';
-
-const SEEN_KEY = 'kiosk.shopper.seenDeliveryAreas';
-
-function seenStorageKey(slug: string) {
-  return `${SEEN_KEY}.${slug}`;
-}
 
 /** First-time shoppers: no local till slips and no Pass pickup history. */
 function neverPurchased(opts: {
@@ -70,7 +65,7 @@ export function DeliveryCoverage() {
 
   useEffect(() => {
     let cancelled = false;
-    void AsyncStorage.getItem(seenStorageKey(tenant.slug)).then((raw) => {
+    void AsyncStorage.getItem(deliveryAreasKey(tenant.slug)).then((raw) => {
       if (!cancelled) setSeen(Boolean(raw));
     });
     return () => {
@@ -91,7 +86,7 @@ export function DeliveryCoverage() {
   async function dismiss() {
     setOpen(false);
     setSeen(true);
-    await AsyncStorage.setItem(seenStorageKey(tenant.slug), new Date().toISOString());
+    await AsyncStorage.setItem(deliveryAreasKey(tenant.slug), new Date().toISOString());
   }
 
   if (!open) return null;

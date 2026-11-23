@@ -15,6 +15,11 @@ interface PinLoginScreenProps {
   onChangeStore?: () => void;
 }
 
+/**
+ * @deprecated No app uses this any more: `StaffShell` signs people in (`SignInScreen`), asks the server who they
+ * are, and finds their branch. Kept exported until a release has gone out without it; it still sends the branch
+ * chosen before sign-in and shows server errors in a system dialog.
+ */
 export function PinLoginScreen({
   baseURL,
   branchId,

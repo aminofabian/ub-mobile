@@ -1,6 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const ORDERS_KEY = 'kiosk.shopper.orders';
+import { ordersKey } from './shop-storage';
 
 export interface StoredOrder {
   orderId: string;
@@ -15,11 +14,11 @@ export async function addOrder(order: StoredOrder): Promise<void> {
   const existing = await getOrders(order.slug);
   const filtered = existing.filter((o) => o.orderId !== order.orderId);
   const next = [order, ...filtered].slice(0, 50);
-  await AsyncStorage.setItem(`${ORDERS_KEY}.${order.slug}`, JSON.stringify(next));
+  await AsyncStorage.setItem(ordersKey(order.slug), JSON.stringify(next));
 }
 
 export async function getOrders(slug: string): Promise<StoredOrder[]> {
-  const raw = await AsyncStorage.getItem(`${ORDERS_KEY}.${slug}`);
+  const raw = await AsyncStorage.getItem(ordersKey(slug));
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw) as StoredOrder[];
@@ -30,5 +29,5 @@ export async function getOrders(slug: string): Promise<StoredOrder[]> {
 }
 
 export async function clearOrders(slug: string): Promise<void> {
-  await AsyncStorage.removeItem(`${ORDERS_KEY}.${slug}`);
+  await AsyncStorage.removeItem(ordersKey(slug));
 }

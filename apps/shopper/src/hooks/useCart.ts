@@ -1,8 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { addCartLine, createCart, getCart } from '../api/storefront';
-
-const CART_ID_KEY = 'kiosk.shopper.cartId';
+import { cartIdKey } from '../lib/shop-storage';
 
 export function useCart(slug: string | undefined) {
   const queryClient = useQueryClient();
@@ -11,7 +10,7 @@ export function useCart(slug: string | undefined) {
     queryKey: ['cartId', slug],
     queryFn: async () => {
       if (!slug) return null;
-      const stored = await AsyncStorage.getItem(`${CART_ID_KEY}.${slug}`);
+      const stored = await AsyncStorage.getItem(cartIdKey(slug));
       return stored;
     },
     enabled: !!slug,
@@ -32,7 +31,7 @@ export function useCart(slug: string | undefined) {
         const newCart = await createCart(slug);
         cartId = newCart.id;
         if (cartId) {
-          await AsyncStorage.setItem(`${CART_ID_KEY}.${slug}`, cartId);
+          await AsyncStorage.setItem(cartIdKey(slug), cartId);
         }
       }
 

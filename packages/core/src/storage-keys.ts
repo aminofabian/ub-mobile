@@ -36,7 +36,16 @@ export const RECENT_LIMIT = 5;
 /** Kept in SecureStore. */
 export const SECURE_FIELDS = ['accessToken', 'refreshToken', 'tillDeviceId', 'deviceSecret'] as const;
 /** Kept in AsyncStorage. */
-export const PLAIN_FIELDS = ['profile', 'tabPhone', 'airtimeRecipient', 'airtimePayer'] as const;
+export const PLAIN_FIELDS = [
+  'profile',
+  'tabPhone',
+  'airtimeRecipient',
+  'airtimePayer',
+  /** Staff apps: the people who have signed in on this phone at this shop (first name and email), for the sign-in chips. */
+  'knownStaff',
+  /** Staff apps: the branch this phone was last seen registered as a till for. Lets the app say "removed", not "never registered". */
+  'tillSeen',
+] as const;
 
 export type SecureField = (typeof SECURE_FIELDS)[number];
 export type PlainField = (typeof PLAIN_FIELDS)[number];

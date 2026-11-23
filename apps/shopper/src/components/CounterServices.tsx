@@ -18,6 +18,7 @@ type Service = {
  */
 export function CounterServices({
   airtimeAvailable,
+  showPowerTokens = true,
   primary,
   accent,
   onAirtime,
@@ -25,6 +26,8 @@ export function CounterServices({
   flush = false,
 }: {
   airtimeAvailable: boolean;
+  /** Off only when the server says the shop does not sell power tokens (plan §5.6). */
+  showPowerTokens?: boolean;
   primary: string;
   accent: string;
   onAirtime: () => void;
@@ -43,14 +46,19 @@ export function CounterServices({
       onPress: onAirtime,
     });
   }
-  services.push({
-    key: 'tokens',
-    icon: 'flash',
-    label: 'Power tokens',
-    hint: 'KPLC balance',
-    color: primary,
-    onPress: onTokens,
-  });
+  if (showPowerTokens) {
+    services.push({
+      key: 'tokens',
+      icon: 'flash',
+      label: 'Power tokens',
+      hint: 'KPLC balance',
+      color: primary,
+      onPress: onTokens,
+    });
+  }
+  if (services.length === 0) {
+    return null;
+  }
 
   return (
     <View style={[styles.row, flush && styles.rowFlush]}>

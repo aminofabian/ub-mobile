@@ -5,7 +5,7 @@ import {
   resolveIdempotencyKey,
   type IdempotencyOptions,
 } from './idempotency';
-import { readApiErrorMessage } from './problem';
+import { readApiError } from './problem';
 import { getActiveTenantId, getTenantHeaders, loadActiveStore, loadStoreById, type TenantContext } from './tenant';
 import { getOrCreateTillDeviceId, TILL_DEVICE_HEADER } from './till-device';
 
@@ -94,7 +94,7 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
     }
 
     if (!response.ok) {
-      throw new Error(await readApiErrorMessage(response));
+      throw await readApiError(response);
     }
 
     if (response.status === 204) {

@@ -13,12 +13,16 @@ import { useInfiniteItems } from '../hooks/useInfiniteItems';
 import { useAirtimeConfig } from '../hooks/useAirtimeConfig';
 import { AislePhotoRail } from '../components/AislePhotoRail';
 import { CounterServices } from '../components/CounterServices';
+import { CoverageNotice } from '../components/CoverageNotice';
 import { MartHero } from '../components/MartHero';
 import { MartHomeHeader, MartSearchField } from '../components/MartChrome';
 import { ProductCard } from '../components/ProductCard';
+import { StoreSwitcherSheet } from '../components/StoreSwitcherSheet';
 import { ProductGridSkeleton, SkeletonScope, StorefrontBodySkeleton } from '../components/Skeleton';
 import { SectionHead } from '../components/SectionHead';
 import { TypeRail } from '../components/TypeRail';
+import { counterServices } from '../lib/coverage';
+import { useShopNavigator } from '../lib/ShopNavigator';
 import { GUTTER, MART, martFromTenant, SPACE, TYPE } from '../theme/mart';
 import { useBasketFloatReserve } from '../components/BasketFloat';
 import { MainTabParamList, RootStackParamList } from '../navigation/types';
@@ -42,6 +46,8 @@ export function HomeScreen() {
   const listRef = useRef<FlatList<Item>>(null);
   const [selectedTypeId, setSelectedTypeId] = useState<string | null>(null);
   const [dealsOnly, setDealsOnly] = useState(false);
+  const shopNavigator = useShopNavigator();
+  const [switcherOpen, setSwitcherOpen] = useState(false);
 
   const {
     data: storefront,
@@ -64,6 +70,9 @@ export function HomeScreen() {
     typeId: selectedTypeId ?? undefined,
   });
   const { data: airtime } = useAirtimeConfig(tenant.slug);
+  // The server can switch a counter service off for a shop; a shop it says nothing about keeps both.
+  const services = counterServices(tenant.capabilities);
+  const airtimeShown = Boolean(airtime?.available) && services.airtime;
 
   const mart = useMemo(
     () =>
@@ -136,15 +145,20 @@ export function HomeScreen() {
         onShopNow={() => listRef.current?.scrollToOffset({ offset: 420, animated: true })}
       />
 
-      <View style={styles.services}>
-        <CounterServices
-          airtimeAvailable={Boolean(airtime?.available)}
-          primary={mart.primary}
-          accent={mart.accent}
-          onAirtime={() => navigation.navigate('Airtime')}
-          onTokens={() => navigation.navigate('Kplc')}
-        />
-      </View>
+      <CoverageNotice tenant={tenant} />
+
+      {airtimeShown || services.powerTokens ? (
+        <View style={styles.services}>
+          <CounterServices
+            airtimeAvailable={airtimeShown}
+            showPowerTokens={services.powerTokens}
+            primary={mart.primary}
+            accent={mart.accent}
+            onAirtime={() => navigation.navigate('Airtime')}
+            onTokens={() => navigation.navigate('Kplc')}
+          />
+        </View>
+      ) : null}
 
       {(categories?.categories?.length ?? 0) > 0 ? (
         <>
@@ -197,7 +211,10 @@ export function HomeScreen() {
 
   return (
     <View style={[styles.shell, { paddingTop: insets.top }]}>
-      <MartHomeHeader mart={mart} />
+      <MartHomeHeader
+        mart={mart}
+        onPressShop={shopNavigator.enabled ? () => setSwitcherOpen(true) : undefined}
+      />
       <MartSearchField primary={mart.primary} onPress={() => navigation.navigate('Search')} />
 
       {bootLoading ? (
@@ -260,6 +277,15 @@ export function HomeScreen() {
           }
         />
       )}
+
+      {shopNavigator.enabled ? (
+        <StoreSwitcherSheet
+          visible={switcherOpen}
+          activeSlug={tenant.slug}
+          activeName={mart.displayName}
+          onClose={() => setSwitcherOpen(false)}
+        />
+      ) : null}
     </View>
   );
 }

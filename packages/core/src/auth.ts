@@ -13,6 +13,22 @@ export interface AuthTokens {
  */
 
 /**
+ * Shops whose session this phone ended on purpose (a sign-out) and that nobody has signed in to since. Until then
+ * nothing may bring that session back: a request that was already on its way when the person signed out could
+ * ask for a refresh with no token of its own and be answered from the cookie the phone still holds, and a
+ * signed-out person would be signed in again. Kept in memory: after a restart no such request exists.
+ */
+const sessionsEnded = new Set<string>();
+
+export function markSessionEnded(tenantId: string): void {
+  sessionsEnded.add(tenantId);
+}
+
+export function sessionWasEnded(tenantId: string): boolean {
+  return sessionsEnded.has(tenantId);
+}
+
+/**
  * Stores a session for a shop. A shop this phone has no record of (forgotten while the request was
  * in flight) gets nothing stored, so a removed shop cannot leave a session behind.
  */
@@ -26,6 +42,8 @@ export async function storeTokens(tokens: AuthTokens, tenantId?: string): Promis
   }
   await writeTenantSecret('accessToken', tokens.accessToken, id);
   await writeTenantSecret('refreshToken', tokens.refreshToken, id);
+  // Someone has signed in: the shop has a session again.
+  sessionsEnded.delete(id);
 }
 
 export async function getAccessToken(tenantId?: string): Promise<string | null> {

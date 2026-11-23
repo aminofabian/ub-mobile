@@ -6,10 +6,13 @@ import { GUTTER, MART, RADIUS, SPACE, TYPE, type MartPalette } from '../theme/ma
 /**
  * Identity only. Cart and account live in the tab bar, so repeating them here
  * gave the page two competing navigations for the same destinations.
+ *
+ * In the generic app the shop's name is also the way to change shops: a chip that opens the shops this
+ * phone knows (plan §5.12.4 row 8). A shop's own app has one shop and no chip.
  */
-export function MartHomeHeader({ mart }: { mart: MartPalette }) {
-  return (
-    <View style={styles.header}>
+export function MartHomeHeader({ mart, onPressShop }: { mart: MartPalette; onPressShop?: () => void }) {
+  const identity = (
+    <>
       {mart.logoUrl ? (
         <Image source={{ uri: mart.logoUrl }} style={styles.logo} resizeMode="contain" />
       ) : (
@@ -25,6 +28,24 @@ export function MartHomeHeader({ mart }: { mart: MartPalette }) {
           Everyday essentials, close to you
         </Text>
       </View>
+    </>
+  );
+
+  if (!onPressShop) {
+    return <View style={styles.header}>{identity}</View>;
+  }
+  return (
+    <View style={styles.header}>
+      <Pressable
+        onPress={onPressShop}
+        accessibilityRole="button"
+        accessibilityLabel={`${mart.displayName}. Change shop`}
+        accessibilityHint="Shows the shops on this phone"
+        style={({ pressed }) => [styles.chip, pressed && styles.chipPressed]}
+      >
+        {identity}
+        <Ionicons name="chevron-down" size={18} color={MART.inkMuted} />
+      </Pressable>
     </View>
   );
 }
@@ -58,6 +79,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: GUTTER,
     paddingTop: SPACE.sm,
     paddingBottom: SPACE.md,
+  },
+  chip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACE.md,
+    minHeight: 44,
+    borderRadius: RADIUS.md,
+  },
+  chipPressed: {
+    backgroundColor: MART.paperSunken,
   },
   logo: {
     width: 38,

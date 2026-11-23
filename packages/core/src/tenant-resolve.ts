@@ -1,4 +1,5 @@
 import { tenantHostSuffix } from './mobile-config';
+import { cleanDisplayText } from './display-text';
 import { isProvisionalId, isStorableTenantId } from './storage-keys';
 import type { StoreAudience, StoreResult, StoreSnapshot } from './tenant-types';
 
@@ -24,7 +25,7 @@ const RESERVED_LABELS = new Set([
   'undefined', 'marketplace', 'supplier', 'suppliers', 'trade', 'wholesale', 'portal', 's', 'shop', 'shops',
 ]);
 
-const DEFAULT_TIMEOUT_MS = 10_000;
+export const DEFAULT_TIMEOUT_MS = 10_000;
 
 export type StoreQuery = { kind: 'slug'; slug: string } | { kind: 'host'; host: string };
 
@@ -65,11 +66,11 @@ export function platformSlugFromHost(host: string): string | null {
   return SLUG_RE.test(label) && !RESERVED_LABELS.has(label) ? label : null;
 }
 
-type Fetched =
+export type Fetched =
   | { kind: 'response'; status: number; body: unknown; retryAfter: string | null }
   | { kind: 'offline' };
 
-async function getJson(url: string, timeoutMs: number): Promise<Fetched> {
+export async function getJson(url: string, timeoutMs: number): Promise<Fetched> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -109,7 +110,7 @@ function parseRetryAfter(value: string | null): number | undefined {
 }
 
 /** The answers that mean "no answer yet". Everything else is the caller's to interpret. */
-function transientFailure(fetched: Fetched): StoreResult | null {
+export function transientFailure(fetched: Fetched): StoreResult | null {
   if (fetched.kind === 'offline') {
     return { kind: 'offline' };
   }
@@ -138,20 +139,62 @@ interface MobileConfigBody {
   tenantStatus?: string;
   storefrontEnabled?: boolean;
   branding?: Record<string, unknown> | null;
+  storeTypes?: unknown;
+  capabilities?: unknown;
+}
+
+const MAX_STORE_TYPES = 12;
+const MAX_CAPABILITIES = 40;
+
+/** Format names such as "mini-mart" or "fast-food". Anything that is not a short plain name is dropped. */
+function parseStoreTypes(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) {
+    return undefined;
+  }
+  const types = new Set<string>();
+  for (const entry of raw) {
+    const type = typeof entry === 'string' ? entry.trim().toLowerCase() : '';
+    if (/^[a-z0-9][a-z0-9_-]{0,39}$/.test(type)) {
+      types.add(type);
+    }
+    if (types.size >= MAX_STORE_TYPES) {
+      break;
+    }
+  }
+  return [...types];
+}
+
+/** Only true and false are kept. A value of any other kind says nothing, so it is not read as "off". */
+function parseCapabilities(raw: unknown): Record<string, boolean> | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return undefined;
+  }
+  const capabilities: Record<string, boolean> = {};
+  for (const [name, value] of Object.entries(raw as Record<string, unknown>).slice(0, MAX_CAPABILITIES)) {
+    if (typeof value === 'boolean' && /^[A-Za-z][A-Za-z0-9]{0,39}$/.test(name)) {
+      capabilities[name] = value;
+    }
+  }
+  return capabilities;
 }
 
 function fromMobileConfig(body: MobileConfigBody | null, fetchedAt: string): StoreSnapshot | null {
   if (!body || !validId(body.tenantId) || typeof body.slug !== 'string' || !body.slug) {
     return null;
   }
+  const storeTypes = parseStoreTypes(body.storeTypes);
+  const capabilities = parseCapabilities(body.capabilities);
   return {
     businessId: body.tenantId,
     slug: body.slug,
     host: (body.tenantHost ?? '').trim().toLowerCase(),
-    displayName: body.displayName?.trim() || body.slug,
+    displayName: cleanDisplayText(body.displayName) || body.slug,
     branding: body.branding ?? {},
     status: normalizeStatus(body.tenantStatus),
     storefrontEnabled: body.storefrontEnabled !== false,
+    // Left out when the server did not send them, so a shop saved from an older server looks the same as before.
+    ...(storeTypes ? { storeTypes } : {}),
+    ...(capabilities ? { capabilities } : {}),
     fetchedAt,
   };
 }
@@ -164,20 +207,27 @@ interface HostResolveBody {
   status?: string;
   branding?: { displayName?: string | null } | null;
   storefrontEnabled?: boolean;
+  storeTypes?: unknown;
+  capabilities?: unknown;
 }
 
 function fromHostResolve(host: string, body: HostResolveBody | null, fetchedAt: string): StoreSnapshot | null {
   if (!body || body.mapped === false || !validId(body.tenantId) || typeof body.slug !== 'string' || !body.slug) {
     return null;
   }
+  const storeTypes = parseStoreTypes(body.storeTypes);
+  const capabilities = parseCapabilities(body.capabilities);
   return {
     businessId: body.tenantId,
     slug: body.slug,
     host,
-    displayName: body.branding?.displayName?.trim() || body.tenantName?.trim() || body.slug,
+    displayName: cleanDisplayText(body.branding?.displayName) || cleanDisplayText(body.tenantName) || body.slug,
     branding: (body.branding as Record<string, unknown> | null | undefined) ?? {},
     status: normalizeStatus(body.status),
     storefrontEnabled: body.storefrontEnabled !== false,
+    // Left out when the server did not send them, as in fromMobileConfig.
+    ...(storeTypes ? { storeTypes } : {}),
+    ...(capabilities ? { capabilities } : {}),
     fetchedAt,
   };
 }
@@ -217,10 +267,12 @@ async function lookupHost(base: string, host: string, options: PreviewOptions): 
 }
 
 async function lookupSlug(base: string, slug: string, options: PreviewOptions): Promise<StoreResult> {
-  const fetched = await getJson(
-    `${base}/api/v1/public/businesses/${encodeURIComponent(slug)}/mobile`,
-    options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-  );
+  return lookupConfig(`${base}/api/v1/public/businesses/${encodeURIComponent(slug)}/mobile`, options);
+}
+
+/** Reads a shop's mobile config from the given address. The by-slug and by-code routes answer the same body. */
+async function lookupConfig(url: string, options: PreviewOptions): Promise<StoreResult> {
+  const fetched = await getJson(url, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
   const failure = transientFailure(fetched);
   if (failure) {
     return failure;
@@ -258,6 +310,16 @@ export async function previewStore(input: string, baseURL: string, options: Prev
   // An unmapped address on the platform domain is still a shop if its first label is one.
   const slug = platformSlugFromHost(query.host);
   return slug ? lookupSlug(base, slug, options) : { kind: 'not_found' };
+}
+
+/**
+ * Looks a shop up by the short code printed on its receipts and posters. `code` is what
+ * `parseShopCode` returned: already upper case and in the code alphabet. The server answers with the
+ * same body as the by-slug route (plan §5.10 row 3), so the result is classified the same way.
+ */
+export async function previewStoreByCode(code: string, baseURL: string, options: PreviewOptions): Promise<StoreResult> {
+  const base = baseURL.replace(/\/+$/, '');
+  return lookupConfig(`${base}/api/v1/public/shops/by-code/${encodeURIComponent(code)}`, options);
 }
 
 /** A sentence for a screen that has no design for each outcome yet. */

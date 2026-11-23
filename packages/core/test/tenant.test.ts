@@ -862,7 +862,11 @@ test('one refresh at a time per shop; two shops can refresh together', async () 
   assert.equal(calls, 2);
 });
 
-test('signing in stores the session under the shop the sign-in started in', async () => {
+// Phase 0b stored a sign-in that came back after a shop switch under the shop it started in. That left a shop that
+// had been walked away from signed in, with nobody to end it, so the staff sign-in (ADR 0047) ends it instead:
+// it is stored under neither shop, and the caller is told the answer was not used. The other half of the old rule
+// holds as it did: a session is never handed to the shop that is open now.
+test('a sign-in that comes back after the person went to another shop is stored under neither shop', async () => {
   serve([
     ...allShops(),
     [
@@ -873,12 +877,13 @@ test('signing in stores the session under the shop the sign-in started in', asyn
         return { status: 200, body: { accessToken: 'A-token', refreshToken: 'A-refresh' } };
       },
     ],
+    [`${API}/api/v1/auth/logout`, { status: 204, body: {} }],
   ]);
   await open('bobs');
   await open('acme');
-  await loginWithPassword(API, 'owner@acme.test', 'pw');
-  assert.equal(await getAccessToken(ACME.tenantId), 'A-token');
-  assert.equal(await getAccessToken(BOBS.tenantId), null);
+  await assert.rejects(loginWithPassword(API, 'owner@acme.test', 'pw'), (error: unknown) => error instanceof Error && error.name === 'AbortError');
+  assert.equal(await getAccessToken(ACME.tenantId), null, 'the shop that was left is not left signed in');
+  assert.equal(await getAccessToken(BOBS.tenantId), null, 'and the shop that is open is not given the other one\'s session');
 });
 
 test('signing in with no shop chosen says so', async () => {

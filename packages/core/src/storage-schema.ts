@@ -135,6 +135,9 @@ async function readLegacy(store: KeyValueStore): Promise<LegacyData> {
     tabPhone: await store.get(LEGACY_PLAIN.tabPhone),
     airtimeRecipient: await store.get(LEGACY_PLAIN.airtimeRecipient),
     airtimePayer: await store.get(LEGACY_PLAIN.airtimePayer),
+    // Staff-app fields: the original layout never held them.
+    knownStaff: null,
+    tillSeen: null,
   };
   const outboxRaw = await store.get(LEGACY_PLAIN.outbox);
 

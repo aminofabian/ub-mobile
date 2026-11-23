@@ -23,6 +23,8 @@ export interface OutboxItem {
   conflictType?: string;
   /** The shop this request belongs to. Set when it is queued; sales queued before shops were kept apart get it when they are carried over. */
   tenantId?: string;
+  /** A line of words about what this is (what was in a sale), for the person who has to find it again. Never sent to the server. */
+  label?: string;
 }
 
 export interface Outbox {
@@ -279,12 +281,33 @@ export async function retryStuck(tenantId?: string): Promise<number> {
   return count;
 }
 
-/** A shop's queue as text, for a person to keep or send to support when a sale will not go through. */
+/** The most of a server's answer kept with a sale in an export: enough to say what went wrong, too little to carry a web page. */
+export const EXPORT_ERROR_LIMIT = 300;
+/** The most of a damaged queue kept in an export. The rest is still on the phone, only not in the copy. */
+export const EXPORT_UNREADABLE_LIMIT = 20_000;
+
+/** The start of `text`, cut by characters (never through an emoji), with a note of how much was left out. */
+export function clipText(text: string, limit: number): string {
+  if (text.length <= limit) return text;
+  const characters = Array.from(text);
+  if (characters.length <= limit) return text;
+  const left = characters.length - limit;
+  return `${characters.slice(0, limit).join('')}... (${left} more ${left === 1 ? 'character' : 'characters'} not copied)`;
+}
+
+/**
+ * A shop's queue as text, for a person to keep or send to support when a sale will not go through. What a server
+ * said about each sale, and what could not be read, are cut to a size a message can carry: the copy goes to a share
+ * sheet, and anywhere on it.
+ */
 export async function exportOutbox(tenantId?: string): Promise<string> {
   await ensureStorageReady();
   const id = tenantId === undefined ? await getActiveTenantId() : await currentId(tenantId);
-  const items = id ? await readItems(id, { keepUnreadable: false }) : [];
-  const unreadable = id ? await (await getStorage()).getItem(unreadableOutboxKey(id)) : null;
+  const items = (id ? await readItems(id, { keepUnreadable: false }) : []).map((item) =>
+    typeof item.lastError === 'string' ? { ...item, lastError: clipText(item.lastError, EXPORT_ERROR_LIMIT) } : item,
+  );
+  const stored = id ? await (await getStorage()).getItem(unreadableOutboxKey(id)) : null;
+  const unreadable = stored ? clipText(stored, EXPORT_UNREADABLE_LIMIT) : null;
   return JSON.stringify(
     { tenantId: id, exportedAt: new Date().toISOString(), items, ...(unreadable ? { unreadable } : {}) },
     null,

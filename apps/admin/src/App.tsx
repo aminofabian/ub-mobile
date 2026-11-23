@@ -1,112 +1,25 @@
-import React, { useEffect, useMemo } from 'react';
-import { View, StyleSheet } from 'react-native';
-import { createApiClient, getEmbeddedTenantSlug, getTenantDisplayName, logout, type TenantContext } from '@kiosk/core';
-import {
-  TenantEntryScreen,
-  PinLoginScreen,
-  BranchSelectScreen,
-  WhiteLabelErrorScreen,
-  useAuthStore,
-  useStaffBoot,
-  leaveStore,
-} from '@kiosk/staff';
+import React, { useEffect } from 'react';
+import { StaffShell, type StaffSession } from '@kiosk/staff';
 import { setupNotifications } from '@kiosk/notifications';
 import { AppNavigator } from './navigation/AppNavigator';
 import { API_BASE_URL } from './lib/config';
 
-export function App() {
-  const { tenant, setTenant, branchId, branchName, setBranch, isAuthenticated, setAuthenticated, reset } =
-    useAuthStore();
-  const { phase, setPhase, bootError, retry } = useStaffBoot(API_BASE_URL, setTenant);
-  const canChangeStore = !getEmbeddedTenantSlug();
-  const goToTenant = async () => {
-    if (!canChangeStore) return;
-    // Sales that were never sent are asked about first; leaving without confirming changes nothing.
-    if (!(await leaveStore(tenant?.displayName))) return;
-    reset();
-    setPhase('tenant');
-  };
-  const goToBranch = () => {
-    setBranch(null);
-    setPhase('branch');
-  };
-  const storeName = tenant?.displayName ?? getTenantDisplayName();
-  const appTitle = storeName ? `${storeName} Admin` : 'Kiosk Ke Admin';
-
-  const api = useMemo(
-    () =>
-      createApiClient({
-        baseURL: API_BASE_URL,
-        onAuthFailed: () => {
-          setAuthenticated(false);
-          setPhase('login');
-        },
-      }),
-    [setAuthenticated, setPhase]
-  );
+/** The admin screens, and the notification setup that needs a signed-in session. */
+function Admin({ session }: { session: StaffSession }) {
+  const { api, branchId, signOut } = session;
 
   useEffect(() => {
-    if (isAuthenticated) void setupNotifications(api);
-  }, [api, isAuthenticated]);
+    void setupNotifications(api);
+  }, [api]);
 
-  if (phase === 'loading') return <View style={styles.container} />;
-  if (phase === 'error' && bootError) {
-    return <WhiteLabelErrorScreen message={bootError} onRetry={retry} />;
-  }
-  if (phase === 'tenant') {
-    return (
-      <TenantEntryScreen
-        baseURL={API_BASE_URL}
-        appTitle={appTitle}
-        onTenantResolved={(t: TenantContext) => {
-          setTenant(t);
-          setPhase('branch');
-        }}
-      />
-    );
-  }
-  if (phase === 'branch' && !branchId) {
-    return (
-      <BranchSelectScreen
-        branches={[{ id: 'default', name: 'Main Branch' }]}
-        onSelect={(b) => {
-          setBranch(b);
-          setPhase('login');
-        }}
-        storeName={storeName}
-        onChangeStore={canChangeStore ? goToTenant : undefined}
-      />
-    );
-  }
-  if (phase === 'login' || !isAuthenticated) {
-    return (
-      <PinLoginScreen
-        baseURL={API_BASE_URL}
-        branchId={branchId!}
-        onSuccess={() => {
-          setAuthenticated(true);
-          setPhase('ready');
-        }}
-        allowPassword
-        storeName={storeName}
-        branchName={branchName}
-        onBack={goToBranch}
-        onChangeStore={canChangeStore ? goToTenant : undefined}
-      />
-    );
-  }
-
-  return (
-    <AppNavigator
-      api={api}
-      branchId={branchId!}
-      onLogout={async () => {
-        await logout(API_BASE_URL);
-        reset();
-        setPhase('login');
-      }}
-    />
-  );
+  return <AppNavigator api={api} branchId={branchId} onLogout={() => void signOut()} />;
 }
 
-const styles = StyleSheet.create({ container: { flex: 1, backgroundColor: '#fff' } });
+// No camera module ships in this app yet, so a pairing code is typed here, not scanned.
+export function App() {
+  return (
+    <StaffShell app="admin" baseURL={API_BASE_URL} allowPassword>
+      {(session) => <Admin session={session} />}
+    </StaffShell>
+  );
+}

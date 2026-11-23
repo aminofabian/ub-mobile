@@ -6,3 +6,5 @@ export * from './screens/TenantEntryScreen';
 export * from './screens/PinLoginScreen';
 export * from './screens/BranchSelectScreen';
 export * from './screens/WhiteLabelErrorScreen';
+export { StaffShell, type StaffSession, type StaffShellProps } from './screens/StaffShell';
+export type { PairScannerProps, PairScannerRenderer } from './screens/PairScreen';

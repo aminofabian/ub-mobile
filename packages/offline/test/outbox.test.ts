@@ -32,6 +32,7 @@ import {
   subscribeOutbox,
   summarizeOutbox,
 } from '../src/index';
+import { EXPORT_ERROR_LIMIT, EXPORT_UNREADABLE_LIMIT, clipText } from '../src/outbox';
 
 type Handle = { calls: Array<{ url: string; method: string; headers: Record<string, string>; body?: unknown }>; restore(): void };
 let net: Handle | null = null;
@@ -136,6 +137,59 @@ test('a forgotten shop takes no new sales, but the ones it still holds can be re
   await assert.rejects(outboxFor(ACME.tenantId).enqueue(sale('a2')), /no longer on this phone/);
   assert.deepEqual(ids(await outboxFor(ACME.tenantId).pending()), ['a1']);
   assert.deepEqual(JSON.parse(await exportOutbox(ACME.tenantId)).items.map((i: { id: string }) => i.id), ['a1']);
+});
+
+test('an export keeps what the server said about a sale short, and leaves the sale itself whole', async () => {
+  serve(shops());
+  await open('acme');
+  await outbox.enqueue(sale('a1'));
+  await outbox.enqueue(sale('a2'));
+  await outbox.markRetry('a1', 'x'.repeat(EXPORT_ERROR_LIMIT * 10));
+  await outbox.markRetry('a2', 'Shift required');
+
+  const exported = JSON.parse(await exportOutbox());
+  const [a1, a2] = exported.items;
+  assert.equal(a1.id, 'a1');
+  assert.deepEqual(a1.body, { n: 'a1' }, 'the sale is not touched');
+  assert.equal(a1.idempotencyKey, 'key-a1');
+  assert.equal(a1.lastError.startsWith('x'.repeat(EXPORT_ERROR_LIMIT)), true);
+  assert.match(a1.lastError, /\.\.\. \(2700 more characters not copied\)$/);
+  assert.equal(a1.lastError.length < EXPORT_ERROR_LIMIT + 60, true, 'a web page of error is not carried');
+  assert.equal(a2.lastError, 'Shift required', 'a short answer is kept as it was');
+  // What is on the phone is not shortened, only the copy.
+  assert.equal((await outbox.pending())[0].lastError?.length, EXPORT_ERROR_LIMIT * 10);
+});
+
+test('an export keeps a damaged queue short too, so one message can carry it', async () => {
+  serve(shops());
+  await open('acme');
+  asyncStore.__store.set(K.outboxKey(ACME.tenantId), 'not json {' + 'y'.repeat(EXPORT_UNREADABLE_LIMIT * 2));
+  await outbox.enqueue(sale('a1'));
+  const exported = JSON.parse(await exportOutbox());
+  assert.equal(exported.unreadable.startsWith('not json {yyy'), true);
+  assert.match(exported.unreadable, /more characters not copied\)$/);
+  assert.equal(exported.unreadable.length < EXPORT_UNREADABLE_LIMIT + 60, true);
+  assert.equal(
+    asyncStore.__store.get(K.unreadableOutboxKey(ACME.tenantId))?.length,
+    'not json {'.length + EXPORT_UNREADABLE_LIMIT * 2,
+    'the phone still holds all of it',
+  );
+});
+
+test('clipText cuts by characters, never through an emoji, and says how much it left out', () => {
+  assert.equal(clipText('short', 10), 'short');
+  assert.equal(clipText('exactly10!', 10), 'exactly10!');
+  assert.equal(clipText('abcdefghijk', 10), 'abcdefghij... (1 more character not copied)');
+  assert.equal(clipText('abcdefghijkl', 10), 'abcdefghij... (2 more characters not copied)');
+  const hearts = '😀'.repeat(20);
+  assert.equal(hearts.length, 40, 'forty UTF-16 units');
+  assert.equal(clipText(hearts, 40), hearts, 'twenty characters are under a limit of forty');
+  assert.equal(clipText(hearts, 30), hearts, 'forty UTF-16 units, but only twenty characters, are under a limit of thirty');
+  assert.equal(clipText(hearts, 20), hearts, 'exactly the limit, counted in characters');
+  assert.equal(clipText(hearts, 19), `${'😀'.repeat(19)}... (1 more character not copied)`);
+  assert.equal(clipText(hearts, 10).startsWith('😀'.repeat(10)), true);
+  assert.equal(clipText(hearts, 10).includes('\uFFFD'), false);
+  assert.equal(clipText('', 5), '');
 });
 
 test('queuing the same sale twice keeps one copy', async () => {

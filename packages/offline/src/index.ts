@@ -4,6 +4,7 @@ import { summarizeOutbox } from './outbox';
 export * from './outbox';
 export * from './sync';
 export * from './replay';
+export * from './replay-failure';
 export * from './cache';
 export * from './schema-version';
 export { createSyncEngine } from './sync';

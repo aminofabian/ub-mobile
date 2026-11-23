@@ -1,6 +1,7 @@
 import { getActiveTenantId, loadStoreById, type ApiClient } from '@kiosk/core';
 import { outboxFor, type Outbox, type OutboxItem } from './outbox';
 import { replayItem } from './replay';
+import { REFUSED, classifyReplayFailure } from './replay-failure';
 
 export interface SyncEngineOptions {
   api: ApiClient;
@@ -43,6 +44,8 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
 
   async function processItem(queue: Outbox, client: ApiClient, item: OutboxItem): Promise<void> {
     if (item.retries >= maxRetries) return;
+    // A sale the server refused outright stays where it is until a person looks at it: asking again cannot change the answer.
+    if (item.conflictType === REFUSED) return;
 
     try {
       await replayItem(client, item);
@@ -50,15 +53,29 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
       onSynced?.(item);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Sync failed';
-      const isConflict = message.includes('409') || message.includes('conflict');
-      if (isConflict) {
-        await queue.update(item.id, { conflictType: 'sync_conflict', lastError: message });
-        onConflict?.(item);
-      } else {
-        await queue.markRetry(item.id, message);
-        if (item.retries + 1 === maxRetries) {
-          onNeedsAttention?.({ ...item, retries: item.retries + 1, lastError: message });
-        }
+      // What the failure means is read from its status (see replay-failure.ts), never from the words of the message.
+      switch (classifyReplayFailure(error)) {
+        case 'conflict':
+          await queue.update(item.id, { conflictType: 'sync_conflict', lastError: message });
+          onConflict?.(item);
+          break;
+        case 'refused':
+          await queue.update(item.id, { conflictType: REFUSED, lastError: message });
+          onNeedsAttention?.({ ...item, conflictType: REFUSED, lastError: message });
+          break;
+        case 'setup':
+          // Waiting for a step, not failing: no attempt used, and nothing written again while the answer is the same.
+          if (item.lastError !== message) await queue.update(item.id, { lastError: message });
+          break;
+        case 'wait':
+          // Nothing is wrong with the sale, so nothing is recorded against it.
+          break;
+        case 'broken':
+          await queue.markRetry(item.id, message);
+          if (item.retries + 1 === maxRetries) {
+            onNeedsAttention?.({ ...item, retries: item.retries + 1, lastError: message });
+          }
+          break;
       }
     }
   }

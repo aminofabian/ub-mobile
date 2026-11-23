@@ -110,3 +110,5 @@ const styles = StyleSheet.create({
     marginTop: 48,
   },
 });
+
+export { QrScanner, type QrScannerProps } from './qr-scanner';

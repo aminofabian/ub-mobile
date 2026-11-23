@@ -12,6 +12,16 @@ export interface TenantContext {
   /** Lifecycle status from the server (ACTIVE, SUSPENDED, INACTIVE). Absent on contexts saved before Phase 0b. */
   status?: string;
   storefrontEnabled?: boolean;
+  /**
+   * The shop's formats as the server names them, for example `['mini-mart']` or `['restaurant', 'lodging']`
+   * (plan §5.6). Absent until the server sends it, which is not the same as an empty list.
+   */
+  storeTypes?: string[];
+  /**
+   * What the apps may offer in this shop, worked out by the server (plan §5.6). A name that is missing is
+   * unknown, not false: only an explicit `false` takes something away.
+   */
+  capabilities?: Record<string, boolean>;
   /** ISO time the server last confirmed this shop. */
   fetchedAt?: string;
 }

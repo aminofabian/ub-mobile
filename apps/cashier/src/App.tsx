@@ -1,69 +1,45 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
-import {
-  createApiClient,
-  getEmbeddedTenantSlug,
-  getTenantDisplayName,
-  logout,
-  fetchBranches,
-  type TenantContext,
-} from '@kiosk/core';
-import {
-  TenantEntryScreen,
-  PinLoginScreen,
-  BranchSelectScreen,
-  WhiteLabelErrorScreen,
-  useAuthStore,
-  useStaffBoot,
-  leaveStore,
-} from '@kiosk/staff';
-import { createSyncEngine } from '@kiosk/offline';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Share } from 'react-native';
+import { QrScanner } from '@kiosk/barcode';
+import { StaffShell, useAuthStore, type PairScannerRenderer, type StaffSession } from '@kiosk/staff';
+import { createSyncEngine, exportOutbox } from '@kiosk/offline';
 import { createRealtimeClient } from '@kiosk/realtime';
 import { AppNavigator } from './navigation/AppNavigator';
 import { API_BASE_URL } from './lib/config';
+import { cartOwnerKey } from './lib/cart-owner';
+import { confirmExport } from './lib/confirm-export';
+import { usePosStore } from './store/pos-store';
 
-export function App() {
-  const [branches, setBranches] = useState<{ id: string; name: string; code?: string }[]>([]);
-  const { tenant, setTenant, branchId, branchName, setBranch, isAuthenticated, setAuthenticated, reset } =
-    useAuthStore();
-  const { phase, setPhase, bootError, retry } = useStaffBoot(API_BASE_URL, setTenant);
-  const canChangeStore = !getEmbeddedTenantSlug();
-  const goToTenant = async () => {
-    if (!canChangeStore) return;
-    // Sales that were never sent are asked about first; leaving without confirming changes nothing.
-    if (!(await leaveStore(tenant?.displayName))) return;
-    reset();
-    setBranches([]);
-    setPhase('tenant');
-  };
-  const goToBranch = () => {
-    setBranch(null);
-    setPhase('branch');
-  };
-  const storeName = tenant?.displayName ?? getTenantDisplayName();
-  const appTitle = storeName ? `${storeName} Cashier` : 'Kiosk Ke Cashier';
+// Drawn only when the person chooses to scan a pairing QR: the camera is asked for then, not at start.
+const renderScanner: PairScannerRenderer = (props) => <QrScanner {...props} />;
 
-  const api = useMemo(
-    () =>
-      createApiClient({
-        baseURL: API_BASE_URL,
-        onAuthFailed: () => {
-          setAuthenticated(false);
-          setPhase('login');
-        },
-      }),
-    [setAuthenticated, setPhase]
-  );
+/** Hands the sales that were never sent to the share sheet, as text the person can keep or send to support. */
+async function exportUnsent(): Promise<void> {
+  // The copy can be sent to any app on the phone, so the person is told what it holds first.
+  if (!(await confirmExport())) return;
+  const text = await exportOutbox(useAuthStore.getState().tenant?.businessId);
+  await Share.share({ title: 'Unsent sales', message: text });
+}
+
+/** The till itself: sends queued sales and listens for live updates while a person is signed in. */
+function Till({ session }: { session: StaffSession }) {
+  const { api, tenant, branchId, shiftsDisabled, user, signOut } = session;
+
+  // The phone is shared, and the cart lives in memory for as long as the app runs. Before any screen reads it, drop
+  // whatever someone else (or another branch) left; the same person coming back keeps the sale they were ringing.
+  const owner = cartOwnerKey({ shop: tenant.slug, branchId, userId: user.id });
+  useState(() => usePosStore.getState().claim(owner));
+  useEffect(() => {
+    usePosStore.getState().claim(owner);
+  }, [owner]);
+
+  // Signing out on purpose leaves nothing behind. Choosing to stay signed in (when asked about unsent sales) leaves
+  // the cart alone.
+  const leave = useCallback(async () => {
+    if (await signOut()) usePosStore.getState().release();
+  }, [signOut]);
 
   useEffect(() => {
-    if (phase !== 'branch' || branches.length) return;
-    void fetchBranches(API_BASE_URL)
-      .then(setBranches)
-      .catch(() => setBranches([{ id: 'default', name: 'Main Branch' }]));
-  }, [phase, branches.length]);
-
-  useEffect(() => {
-    if (!isAuthenticated) return;
     const sync = createSyncEngine({ api });
     sync.start();
     const realtime = createRealtimeClient(API_BASE_URL, api);
@@ -72,75 +48,30 @@ export function App() {
       sync.stop();
       realtime.disconnect();
     };
-  }, [api, isAuthenticated]);
+  }, [api]);
 
-  const onTenantResolved = (t: TenantContext) => {
-    setTenant(t);
-    setPhase('branch');
-  };
-
-  const onBranchSelected = (branch: { id: string; name: string }) => {
-    setBranch(branch);
-    setPhase('login');
-  };
-
-  const onLoginSuccess = (fetchedBranches?: { id: string; name: string; code?: string }[]) => {
-    setAuthenticated(true);
-    if (fetchedBranches?.length) setBranches(fetchedBranches);
-    setPhase('ready');
-  };
-
-  const handleLogout = async () => {
-    await logout(API_BASE_URL);
-    reset();
-    setPhase('login');
-  };
-
-  if (phase === 'loading') return <View style={styles.container} />;
-
-  if (phase === 'error' && bootError) {
-    return <WhiteLabelErrorScreen message={bootError} onRetry={retry} />;
-  }
-
-  if (phase === 'tenant') {
-    return (
-      <TenantEntryScreen
-        baseURL={API_BASE_URL}
-        appTitle={appTitle}
-        onTenantResolved={onTenantResolved}
-      />
-    );
-  }
-
-  if (phase === 'branch' && !branchId) {
-    return (
-      <BranchSelectScreen
-        branches={branches.length ? branches : [{ id: 'default', name: 'Main Branch' }]}
-        onSelect={onBranchSelected}
-        storeName={storeName}
-        onChangeStore={canChangeStore ? goToTenant : undefined}
-      />
-    );
-  }
-
-  if (phase === 'login' || !isAuthenticated) {
-    return (
-      <PinLoginScreen
-        baseURL={API_BASE_URL}
-        branchId={branchId!}
-        onSuccess={onLoginSuccess}
-        allowPassword
-        storeName={storeName}
-        branchName={branchName}
-        onBack={goToBranch}
-        onChangeStore={canChangeStore ? goToTenant : undefined}
-      />
-    );
-  }
-
-  return <AppNavigator api={api} tenant={tenant!} branchId={branchId!} onLogout={handleLogout} />;
+  return (
+    <AppNavigator
+      api={api}
+      tenant={tenant}
+      branchId={branchId}
+      shiftsDisabled={shiftsDisabled}
+      onLogout={() => void leave()}
+    />
+  );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-});
+export function App() {
+  return (
+    <StaffShell
+      app="cashier"
+      baseURL={API_BASE_URL}
+      allowPassword
+      isTill
+      exportUnsent={exportUnsent}
+      renderScanner={renderScanner}
+    >
+      {(session) => <Till session={session} />}
+    </StaffShell>
+  );
+}

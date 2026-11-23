@@ -4,6 +4,8 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Button, Card, Text, theme } from '@kiosk/ui';
 import type { ApiClient } from '@kiosk/core';
 import { needsAttention, outbox, replayItem, subscribeOutbox, type OutboxItem } from '@kiosk/offline';
+import { describeQueuedItem } from '../lib/sale-summary';
+import { formatWhen } from '../lib/when';
 import type { CashierStackParamList } from '../navigation/AppNavigator';
 
 type Props = NativeStackScreenProps<CashierStackParamList, 'Conflicts'> & {
@@ -68,12 +70,12 @@ export function ConflictResolutionScreen({ api }: Props) {
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => {
           const needsAPerson = needsAttention(item);
+          const what = describeQueuedItem(item);
           return (
             <Card style={styles.card}>
-              <Text variant="body">
-                {item.method} {item.path}
-              </Text>
-              <Text variant="caption">{new Date(item.createdAt).toLocaleString()}</Text>
+              <Text variant="body">{what.title}</Text>
+              {what.detail ? <Text variant="caption">{what.detail}</Text> : null}
+              <Text variant="caption">{formatWhen(item.createdAt)}</Text>
               <Text variant="caption" style={needsAPerson ? styles.needsAttention : undefined}>
                 {needsAPerson
                   ? 'Needs attention'

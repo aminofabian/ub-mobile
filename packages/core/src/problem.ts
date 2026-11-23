@@ -4,6 +4,10 @@ export type ProblemResponse = {
   status: number;
   detail?: string;
   code?: string;
+  /** For a `setup_required` answer: what has to be set up first (branch, shift, till, dispensing). */
+  requirement?: string;
+  /** Narrows `requirement` (for a branch: none, pick or assign). */
+  hint?: string;
 };
 
 const GENERIC_PROBLEM_TITLES = new Set([
@@ -34,8 +38,18 @@ export function parseProblem(payload: unknown): ProblemResponse | null {
     typeof record.status === 'number' && Number.isFinite(record.status) ? record.status : 500;
   const detail = typeof record.detail === 'string' ? record.detail : undefined;
   const code = typeof record.code === 'string' ? record.code : undefined;
+  const requirement = typeof record.requirement === 'string' ? record.requirement : undefined;
+  const hint = typeof record.hint === 'string' ? record.hint : undefined;
 
-  return { type, title, status, detail, code };
+  return {
+    type,
+    title,
+    status,
+    detail,
+    code,
+    ...(requirement !== undefined ? { requirement } : {}),
+    ...(hint !== undefined ? { hint } : {}),
+  };
 }
 
 export function formatApiProblemMessage(payload: unknown): string {
@@ -54,15 +68,63 @@ export function formatApiProblemMessage(payload: unknown): string {
   return title.length > 0 ? title : 'Request failed';
 }
 
-export async function readApiErrorMessage(response: Response): Promise<string> {
+/**
+ * An error the server answered, with what it said kept: the HTTP status and the machine-readable
+ * `code`, `requirement` and `hint`. The message is the same sentence the app showed before this type
+ * existed, so anything that only reads `message` is unchanged. Code that has to decide something
+ * reads `code`, never the English.
+ */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code?: string;
+  readonly requirement?: string;
+  readonly hint?: string;
+
+  constructor(
+    message: string,
+    info: { status: number; code?: string; requirement?: string; hint?: string }
+  ) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = info.status;
+    if (info.code !== undefined) this.code = info.code;
+    if (info.requirement !== undefined) this.requirement = info.requirement;
+    if (info.hint !== undefined) this.hint = info.hint;
+  }
+}
+
+/** True for an `ApiError`, including one made by another copy of this module. */
+export function isApiError(error: unknown): error is ApiError {
+  if (error instanceof ApiError) {
+    return true;
+  }
+  return (
+    error instanceof Error &&
+    error.name === 'ApiError' &&
+    typeof (error as { status?: unknown }).status === 'number'
+  );
+}
+
+export async function readApiError(response: Response): Promise<ApiError> {
   const text = await response.text().catch(() => '');
   if (!text) {
-    return `Request failed (${response.status})`;
+    return new ApiError(`Request failed (${response.status})`, { status: response.status });
   }
 
   try {
-    return formatApiProblemMessage(JSON.parse(text) as unknown);
+    const payload = JSON.parse(text) as unknown;
+    const problem = parseProblem(payload);
+    return new ApiError(formatApiProblemMessage(payload), {
+      status: response.status,
+      code: problem?.code,
+      requirement: problem?.requirement,
+      hint: problem?.hint,
+    });
   } catch {
-    return text;
+    return new ApiError(text, { status: response.status });
   }
+}
+
+export async function readApiErrorMessage(response: Response): Promise<string> {
+  return (await readApiError(response)).message;
 }

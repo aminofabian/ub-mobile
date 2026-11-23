@@ -64,7 +64,7 @@ export function offlineNetwork() {
   ]);
 }
 
-function toResponse({ status = 200, body = {}, headers = {} }) {
+function toResponse({ status = 200, body = {}, headers = {}, invalidJson = false }) {
   const lower = Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), String(v)]));
   return {
     ok: status >= 200 && status < 300,
@@ -74,7 +74,10 @@ function toResponse({ status = 200, body = {}, headers = {} }) {
       get: (name) => lower[name.toLowerCase()] ?? null,
       getSetCookie: () => [],
     },
-    json: async () => body,
-    text: async () => JSON.stringify(body),
+    json: async () => {
+      if (invalidJson) throw new SyntaxError('Unexpected token < in JSON at position 0');
+      return body;
+    },
+    text: async () => (invalidJson ? '<html>sign in to the wifi</html>' : JSON.stringify(body)),
   };
 }

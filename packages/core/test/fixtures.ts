@@ -65,3 +65,19 @@ export function mobileUrl(slug: string): string {
 export function hostUrl(host: string): string {
   return `${API}/api/v1/public/host/resolve?host=${encodeURIComponent(host)}`;
 }
+
+/** GET /api/v1/public/shops/search?q= */
+export function searchUrl(query: string): string {
+  return `${API}/api/v1/public/shops/search?q=${encodeURIComponent(query)}`;
+}
+
+/** GET /api/v1/public/shops/by-code/{code} */
+export function codeUrl(code: string): string {
+  return `${API}/api/v1/public/shops/by-code/${encodeURIComponent(code)}`;
+}
+
+/** GET /api/v1/platform/mobile-schema-version */
+export const PLATFORM_URL = `${API}/api/v1/platform/mobile-schema-version`;
+
+/** What the server answers today, verbatim from MobileSchemaVersionController. */
+export const PLATFORM_TODAY = { schemaVersion: 1, minAppVersion: '0.0.1', breakingChangeAt: '2099-01-01T00:00:00Z' };

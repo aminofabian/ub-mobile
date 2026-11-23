@@ -9,6 +9,10 @@ interface BranchSelectScreenProps {
   onSelect: (branch: BranchOption) => void;
   storeName?: string | null;
   onChangeStore?: () => void;
+  /** The heading. Defaults to "Select branch". */
+  title?: string;
+  /** The label of the way out at the top. Defaults to "Change store"; after sign-in it is "Sign out". */
+  backLabel?: string;
 }
 
 export function BranchSelectScreen({
@@ -16,14 +20,16 @@ export function BranchSelectScreen({
   onSelect,
   storeName,
   onChangeStore,
+  title = 'Select branch',
+  backLabel = 'Change store',
 }: BranchSelectScreenProps) {
   return (
     <View style={styles.container}>
       <AuthBackBar
         onBack={onChangeStore}
-        backLabel="Change store"
+        backLabel={backLabel}
       />
-      <Text variant="h1">Select branch</Text>
+      <Text variant="h1">{title}</Text>
       {storeName ? (
         <Text variant="muted" style={styles.store}>
           {storeName}
