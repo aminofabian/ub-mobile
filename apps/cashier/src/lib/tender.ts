@@ -8,8 +8,8 @@ import { formatMoney, fromCents } from './money';
  *    extra is credited to that customer's wallet, not handed back as change. So each payment is sent at its exact
  *    share, and the notes the customer actually handed over travel separately as `cashReceived`.
  *  - An M-Pesa payment is the tender `mpesa_manual`, with the M-Pesa receipt code as its reference. The server checks
- *    the code against the prompt it sent and refuses an amount more than a shilling away from what was charged. A
- *    prompt charges whole shillings, so an M-Pesa share is always whole shillings.
+ *    the amount (within a shilling) only when it knows the code, from a paid prompt of this shop or a till payment; a
+ *    code it does not know is accepted. A prompt charges whole shillings, so an M-Pesa share is whole shillings.
  */
 
 export type Tender =

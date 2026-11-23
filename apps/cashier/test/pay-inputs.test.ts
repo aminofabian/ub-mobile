@@ -39,10 +39,23 @@ test('cash with notes handed over carries them for the change', () => {
   assert.deepEqual(result.tenders, [{ kind: 'cash', cents: 45050, handedCents: 100000 }]);
 });
 
-test('notes that are not an amount are refused, in any mode', () => {
-  for (const mode of ['cash', 'mpesa', 'split', 'credit'] as const) {
+test('notes that are not an amount are refused where the customer pays cash', () => {
+  for (const mode of ['cash', 'split'] as const) {
     assert.match(refusal({ mode, handedText: '12,50', mpesaText: '100' }), /cash handed over/);
   }
+});
+
+test('what is left in the cash box is not read for credit or M-Pesa, where that box is hidden', () => {
+  for (const mode of ['credit', 'mpesa'] as const) {
+    const result = shares({ mode, handedText: '12,50', mpesaText: '100', code: CODE });
+    assert.equal(result.ok, true, mode);
+  }
+  // And it changes nothing in what they take.
+  assert.deepEqual(shares({ mode: 'credit', handedText: 'abc' }).tenders, [{ kind: 'credit', cents: 45050 }]);
+  assert.deepEqual(shares({ mode: 'mpesa', handedText: 'abc', code: CODE }).tenders, [
+    { kind: 'mpesa', cents: 45000, code: CODE },
+    { kind: 'cash', cents: 50 },
+  ]);
 });
 
 test('credit takes the whole bill', () => {

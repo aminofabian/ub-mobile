@@ -4,9 +4,12 @@ import {
   REASON_MIN_LENGTH,
   SHOW_EXPECTED_BEFORE_COUNT,
   VARIANCE_TOLERANCE_CENTS,
+  NOTE_RECOUNTS,
   describeVariance,
+  needsReason,
   parseOpeningFloat,
   planClose,
+  recountNote,
   suggestedFloat,
   unsentAtClose,
 } from '../src/lib/shift-cash';
@@ -142,4 +145,43 @@ test('closing with sales still on the phone is warned about, with how many', () 
 
 test('the expected cash is not shown before the count, unless the owner switches that on', () => {
   assert.equal(SHOW_EXPECTED_BEFORE_COUNT, false);
+});
+
+test('a difference needs a reason once it is more than the cent the server ignores, on either side', () => {
+  for (const cents of [0, 1, -1]) assert.equal(needsReason(cents), false, String(cents));
+  for (const cents of [2, -2, 50, -50000]) assert.equal(needsReason(cents), true, String(cents));
+  assert.equal(needsReason(VARIANCE_TOLERANCE_CENTS), false);
+  assert.equal(needsReason(VARIANCE_TOLERANCE_CENTS + 1), true);
+});
+
+test('the reason box stays for as long as the difference needs one, however much of the reason has been typed', () => {
+  // The screen shows the box by `needsReason`, not by the step: once three characters are typed the step is "ready".
+  const typing = (reasonText: string) => planClose({ expected: 100, countedText: '90', takenOutText: '0', reasonText });
+  assert.equal(typing('').step, 'reason');
+  assert.equal(typing('sh').step, 'reason');
+  const ready = typing('sho');
+  assert.equal(ready.step, 'ready');
+  assert.equal(ready.step !== 'invalid' && needsReason(ready.varianceCents), true, 'still needs one, so the box must not go');
+});
+
+test('a recount after the expected cash was shown is written on the closed shift, and only when the count changed', () => {
+  assert.equal(NOTE_RECOUNTS, true);
+  assert.equal(recountNote(null, 10000), undefined, 'no first count');
+  assert.equal(recountNote(undefined, 10000), undefined);
+  assert.equal(recountNote(10000, 10000), undefined, 'counted the same again');
+  assert.equal(recountNote(9000, 10000), 'Counted 90.00 first, then 100.00 after seeing the expected cash.');
+  const changed = planClose({ expected: 100, countedText: '100', takenOutText: '0', reasonText: '', firstCountedCents: 9000 });
+  assert.equal(changed.step === 'ready' && changed.body.notes, 'Counted 90.00 first, then 100.00 after seeing the expected cash.');
+  const same = planClose({ expected: 100, countedText: '100', takenOutText: '0', reasonText: '', firstCountedCents: 10000 });
+  assert.equal(same.step === 'ready' && 'notes' in same.body, false);
+  const none = planClose({ expected: 100, countedText: '100', takenOutText: '0', reasonText: '' });
+  assert.equal(none.step === 'ready' && 'notes' in none.body, false);
+});
+
+test('the recount note names the first count and the final one, not the expected cash', () => {
+  // Expected 100.00, first counted 90.00, then 95.00 after seeing it: still short by 5.00, with a reason.
+  const plan = planClose({ expected: 100, countedText: '95', takenOutText: '0', reasonText: 'two coins dropped', firstCountedCents: 9000 });
+  assert.equal(plan.step, 'ready');
+  assert.equal(plan.step === 'ready' && plan.body.notes, 'Counted 90.00 first, then 95.00 after seeing the expected cash.');
+  assert.equal(plan.step === 'ready' && plan.body.varianceReason, 'two coins dropped');
 });

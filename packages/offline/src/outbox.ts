@@ -152,6 +152,40 @@ async function resolveId(target: string | undefined): Promise<string | null> {
 }
 
 // ---------------------------------------------------------------------------------------------
+// A request that is on its way right now
+// ---------------------------------------------------------------------------------------------
+
+/** How long a request counts as being sent right now. Past this the sync engine may send it as well. */
+export const SENDING_LEASE_MS = 60_000;
+
+const sending = new Map<string, number>();
+
+/**
+ * Says that a queued request is being sent right now, by the screen that made it. The sync engine leaves it alone until
+ * the returned release is called or the lease runs out: a timer tick must not send a sale a second time while the first
+ * request is still on its way, because the second one may be the one the server turns down as a duplicate.
+ */
+export function holdWhileSending(id: string, now: () => number = Date.now): () => void {
+  const until = now() + SENDING_LEASE_MS;
+  sending.set(id, until);
+  return () => {
+    // Only this lease: a newer one for the same request is not ended by an older release.
+    if (sending.get(id) === until) sending.delete(id);
+  };
+}
+
+/** Whether a request is being sent right now (see `holdWhileSending`). */
+export function isBeingSent(id: string, now: () => number = Date.now): boolean {
+  const until = sending.get(id);
+  if (until === undefined) return false;
+  if (now() >= until) {
+    sending.delete(id);
+    return false;
+  }
+  return true;
+}
+
+// ---------------------------------------------------------------------------------------------
 // Changes and who hears about them
 // ---------------------------------------------------------------------------------------------
 

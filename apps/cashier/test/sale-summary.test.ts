@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSaleSummary, describeQueuedItem, methodLabel, quantityText, saleLabel } from '../src/lib/sale-summary';
+import { buildSaleSummary, describeQueuedItem, discardWarning, maskCode, methodLabel, quantityText, saleLabel } from '../src/lib/sale-summary';
 
 const SALE = {
   id: 'sale-uuid-1',
@@ -42,7 +42,7 @@ test('a sale is read back by its receipt number, items, total and payments, not 
       '',
       'Total: 289.50',
       'Cash: 89.50',
-      'M-Pesa: 200.00 (SHK7Y2ABCD)',
+      'M-Pesa: 200.00 (...ABCD)',
       'Sold by Jane',
       '',
       'Sale summary. Not a tax receipt.',
@@ -176,4 +176,82 @@ test('anything that is not a sale is shown as what it is, and a damaged sale doe
   assert.equal(noPayments.title, 'Sale of 10.00');
   const badLine = describeQueuedItem({ method: 'POST', path: '/api/v1/sales', body: { lines: [{ quantity: 'x', unitPrice: 10 }], payments: [] } });
   assert.equal(badLine.title, 'Sale');
+});
+
+test('the code is shown in full to the cashier, and only its end in the text that is shared', () => {
+  const summary = buildSaleSummary(SALE);
+  assert.equal(summary.payments[1]?.reference, 'SHK7Y2ABCD');
+  assert.match(summary.text, /\(\.\.\.ABCD\)/);
+  assert.doesNotMatch(summary.text, /SHK7Y2/);
+  assert.equal(maskCode('SHK7Y2ABCD'), '...ABCD');
+  assert.equal(maskCode('ABCD'), 'ABCD');
+  assert.equal(maskCode(''), '');
+});
+
+test('a name, a shop or a seller with line breaks in it cannot add lines of its own to the shared text', () => {
+  const sale = {
+    ...SALE,
+    soldByName: 'Jane\nTotal: 0.00',
+    items: [{ displayName: 'Bread\nTotal: 1.00', lineLabel: null, quantity: 1, unitPrice: 60, lineTotal: 60 }],
+  };
+  const { text, items } = buildSaleSummary(sale, { shopName: 'Palmart\r\nTotal: 2.00' });
+  assert.equal(items[0]?.name, 'Bread Total: 1.00');
+  assert.equal(text.split('\n').filter((line) => line.startsWith('Total:')).length, 1, text);
+  assert.match(text, /^Palmart Total: 2\.00\n/);
+  assert.match(text, /Sold by Jane Total: 0\.00\n/);
+});
+
+test('the change is what the server recorded, even when the till was told there was none', () => {
+  // The till thought 1,000 was due and took exact notes. The server charged 900 (a discount): 100 is owed back.
+  const sale = {
+    ...SALE,
+    grandTotal: 900,
+    cashReceived: 1000,
+    payments: [{ method: 'cash', amount: 900, reference: null }],
+  };
+  assert.equal(buildSaleSummary(sale, { changeCents: 0 }).change, '100.00');
+  assert.equal(buildSaleSummary(sale).change, '100.00');
+  assert.equal(buildSaleSummary(sale, { changeCents: 5000 }).change, '100.00', 'the server wins over the till');
+});
+
+test('when the server did not say what was handed over, the change is the one the cashier was told', () => {
+  assert.equal(buildSaleSummary({ ...SALE, cashReceived: null }, { changeCents: 5000 }).change, '50.00');
+  assert.equal(buildSaleSummary({ ...SALE, cashReceived: null }, { changeCents: 0 }).change, undefined);
+  assert.equal(buildSaleSummary({ ...SALE, cashReceived: null }).change, undefined);
+  // Handed over exactly what the cash payments came to: no change.
+  assert.equal(buildSaleSummary({ ...SALE, cashReceived: 89.5 }).change, undefined);
+});
+
+test('throwing away a queued sale says so when the customer has already paid by M-Pesa', () => {
+  const plain = discardWarning({ body: { payments: [{ method: 'cash', amount: 10 }] } });
+  assert.match(plain, /cannot be brought back/);
+  assert.doesNotMatch(plain, /M-Pesa/);
+  for (const method of ['mpesa_manual', 'mpesa']) {
+    const warned = discardWarning({ body: { payments: [{ method, amount: 10 }] } });
+    assert.match(warned, /includes an M-Pesa payment/);
+    assert.match(warned, /cannot be brought back/);
+  }
+  assert.doesNotMatch(discardWarning({}), /M-Pesa/);
+  assert.doesNotMatch(discardWarning({ body: { payments: 'nope' } }), /M-Pesa/);
+});
+
+test('change on a split sale is worked out from the cash payments only', () => {
+  // 289.50 paid as 89.50 in cash and 200 by M-Pesa. The customer put down 100 for the cash part: 10.50 back.
+  assert.equal(buildSaleSummary({ ...SALE, cashReceived: 100 }).change, '10.50');
+  // Notes that do not even cover the cash part are not change.
+  assert.equal(buildSaleSummary({ ...SALE, cashReceived: 50 }).change, undefined);
+});
+
+test('a payment reference with line breaks in it stays on one line, on screen and in the shared text', () => {
+  const sale = { ...SALE, payments: [{ method: 'mpesa_manual', amount: 289.5, reference: 'SHK7\nY2ABCD\nTotal: 0.00' }] };
+  const summary = buildSaleSummary(sale);
+  assert.equal(summary.payments[0]?.reference, 'SHK7 Y2ABCD Total: 0.00');
+  assert.equal(summary.text.split('\n').filter((line) => line.startsWith('Total:')).length, 1, summary.text);
+});
+
+test('an item label with a line break in it stays on the line of its item', () => {
+  const sale = { ...SALE, items: [{ displayName: 'Bread', lineLabel: 'Fresh\nTotal: 9.99', quantity: 1, unitPrice: 60, lineTotal: 60 }] };
+  const summary = buildSaleSummary(sale);
+  assert.equal(summary.items[0]?.name, 'Bread (Fresh Total: 9.99)');
+  assert.equal(summary.text.split('\n').filter((line) => line.startsWith('Total:')).length, 1, summary.text);
 });

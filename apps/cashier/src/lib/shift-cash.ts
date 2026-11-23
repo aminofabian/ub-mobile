@@ -13,6 +13,24 @@ export const SHOW_EXPECTED_BEFORE_COUNT = false;
 /** A reason for a difference has to say something. */
 export const REASON_MIN_LENGTH = 3;
 
+/**
+ * Whether the till writes on the closed shift that the count changed after the cashier had seen what was expected.
+ * It is a trail for a manager, not a control: the cashier is never stopped from counting again.
+ */
+export const NOTE_RECOUNTS = true;
+
+/** Whether a difference this size has to be explained: the server posts it to the books. */
+export function needsReason(varianceCents: number): boolean {
+  return Math.abs(varianceCents) > VARIANCE_TOLERANCE_CENTS;
+}
+
+/** The line written on the closed shift when the final count is not the one made before the expected cash was shown. */
+export function recountNote(firstCountedCents: number | null | undefined, finalCountedCents: number): string | undefined {
+  if (!NOTE_RECOUNTS) return undefined;
+  if (typeof firstCountedCents !== 'number' || firstCountedCents === finalCountedCents) return undefined;
+  return `Counted ${formatMoney(firstCountedCents)} first, then ${formatMoney(finalCountedCents)} after seeing the expected cash.`;
+}
+
 export type Entry = { ok: true; cents: number } | { ok: false; message: string };
 
 /** The cash counted into the till when a shift opens, as typed. It has to be typed, even if it is nothing. */
@@ -23,7 +41,11 @@ export function parseOpeningFloat(text: string): Entry {
   return { ok: true, cents };
 }
 
-/** What the last shift on this till counted at close, in cents, for the cashier to start from. Null when it is unknown. */
+/**
+ * What the last shift on this till counted at close, in cents. Null when it is unknown. It is a hint to check the float
+ * against, not a figure to start from: the server gives the count before the cash taken out, so it can be more than
+ * was left in the till.
+ */
 export function suggestedFloat(last: { countedClosingCash?: number | null } | null | undefined): number | null {
   const counted = last?.countedClosingCash;
   if (counted === null || counted === undefined) return null;
@@ -35,6 +57,8 @@ export interface CloseBody {
   countedClosingCash: number;
   cashTakenOut: number;
   varianceReason?: string;
+  /** Written on the closed shift (see `recountNote`). */
+  notes?: string;
 }
 
 export interface CloseNumbers {
@@ -63,6 +87,8 @@ export function planClose(input: {
   countedText: string;
   takenOutText: string;
   reasonText: string;
+  /** What the cashier counted the first time, before the expected cash was shown. */
+  firstCountedCents?: number | null;
 }): ClosePlan {
   const expectedCents = input.expected === null || input.expected === undefined ? null : toCents(input.expected);
   if (expectedCents === null) {
@@ -89,8 +115,10 @@ export function planClose(input: {
     leftInTillCents: countedCents - takenOutCents,
   };
   const body: CloseBody = { countedClosingCash: fromCents(countedCents), cashTakenOut: fromCents(takenOutCents) };
+  const note = recountNote(input.firstCountedCents, countedCents);
+  if (note) body.notes = note;
 
-  if (Math.abs(varianceCents) > VARIANCE_TOLERANCE_CENTS) {
+  if (needsReason(varianceCents)) {
     const reason = input.reasonText.trim();
     if (reason.length < REASON_MIN_LENGTH) {
       return {
@@ -106,7 +134,7 @@ export function planClose(input: {
 
 /** "Short by 50.00", "Over by 12.50" or "The count matches", for a difference in cents. */
 export function describeVariance(varianceCents: number): string {
-  if (Math.abs(varianceCents) <= VARIANCE_TOLERANCE_CENTS) return 'The count matches';
+  if (!needsReason(varianceCents)) return 'The count matches';
   return varianceCents < 0 ? `Short by ${formatMoney(-varianceCents)}` : `Over by ${formatMoney(varianceCents)}`;
 }
 

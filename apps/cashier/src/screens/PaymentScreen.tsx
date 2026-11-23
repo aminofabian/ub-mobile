@@ -3,16 +3,28 @@ import { ActivityIndicator, Alert, ScrollView, StyleSheet, TextInput, TouchableO
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Button, Card, Text, theme } from '@kiosk/ui';
 import { initiateStkPush, waitForStk } from '@kiosk/payments';
-import { outbox } from '@kiosk/offline';
+import { REFUSED, holdWhileSending, outbox } from '@kiosk/offline';
 import { generateIdempotencyKey } from '@kiosk/core';
 import type { ApiClient, SetupContext } from '@kiosk/core';
 import { createSale, ensureCustomerByPhone, findCustomerByPhone } from '../api/pos-api';
+import { describeLookupFailure } from '../lib/lookup-failure';
 import { formatMoney, fromCents, totalCents as basketTotal } from '../lib/money';
 import { checkCash, sharesFor, type PayMode } from '../lib/pay-inputs';
 import { normalizeKenyanPhone } from '../lib/phone';
 import { describeQueuedSale } from '../lib/queued-sale-notice';
-import { buildSaleBody, createKeyKeeper, describeSaleRefusal, saveThenSend } from '../lib/sale-flow';
+import {
+  buildSaleBody,
+  createKeyKeeper,
+  customerKey,
+  describeKeptRefusal,
+  describeSaleRefusal,
+  describeTotalMismatch,
+  leaveGuard,
+  saveThenSend,
+  totalMismatch,
+} from '../lib/sale-flow';
 import { saleLabel } from '../lib/sale-summary';
+import { serverWords } from '../lib/server-words';
 import { PUSH_TIMEOUT_MS, PushTimedOut, describePushFailure, describeStkOutcome } from '../lib/stk-step';
 import { cashSuggestions, describePlanProblem, mpesaCodeLooksOdd, normalizeMpesaCode, planPayments } from '../lib/tender';
 import { withTimeout } from '../lib/with-timeout';
@@ -70,8 +82,11 @@ export function PaymentScreen({ navigation, api, branchId, setupContext }: Props
   // One key per sale on this screen. The same sale is always sent under it, however often it is tried.
   const keyFor = useRef(createKeyKeeper(generateIdempotencyKey)).current;
   const waiting = useRef<AbortController | null>(null);
-  // Whose sale it was on the first try. A sale that could not be saved or sent is tried again with the same customer.
-  const attempt = useRef<{ customerId: string | null } | null>(null);
+  // Whose sale it is, worked out once and kept, so that trying a sale again is the same sale. `who` is what decided it
+  // (the way of paying, the number, the credit customer): when that changes the customer is worked out again.
+  const attempt = useRef<{ who: string; customerId: string | null } | null>(null);
+  // The sale is being saved on the phone and sent. The screen cannot be left until the answer is in.
+  const saving = useRef(false);
   const finished = useRef(false);
   const mounted = useRef(true);
   // The customer's M-Pesa prompt was paid and confirmed. A refusal after that must never lead to another prompt.
@@ -99,12 +114,19 @@ export function PaymentScreen({ navigation, api, branchId, setupContext }: Props
     stk.stage === 'unconfirmed' ||
     stk.stage === 'maybe_sent' ||
     stk.stage === 'code_needed' ||
+    stk.stage === 'wrong_amount' ||
     stk.stage === 'paid';
 
   useEffect(() => {
     return navigation.addListener('beforeRemove', (event) => {
-      if (finished.current || !holdsMoney) return;
+      const verdict = leaveGuard({ finished: finished.current, saving: saving.current, holdsMoney });
+      if (verdict === 'allow') return;
       event.preventDefault();
+      if (verdict === 'wait') {
+        // The sale is on its way. Leaving now would lose its answer, and ringing it up again would record it twice.
+        Alert.alert('Saving the sale', 'The sale is being saved. Wait a moment, then go back if you need to.');
+        return;
+      }
       Alert.alert(
         'A payment is in progress',
         "Leaving now can leave the customer's M-Pesa payment without a sale. Stay and finish it, or leave anyway.",
@@ -159,48 +181,103 @@ export function PaymentScreen({ navigation, api, branchId, setupContext }: Props
     }
 
     busyRef.current = true;
+    saving.current = true;
     setBusy(true);
     try {
-      if (!attempt.current) {
+      // Who the sale is for is worked out once and kept, so that trying the same sale again is the same sale. It is
+      // worked out again when what decided it changes (the way of paying, the number, the credit customer): a customer
+      // found for one way of paying is never carried into another.
+      const who = customerKey({
+        mode: now.mode,
+        phone: normalizeKenyanPhone(now.phone),
+        creditCustomerId: now.customer?.id ?? null,
+      });
+      let mine = attempt.current;
+      if (!mine || mine.who !== who) {
         const customerId =
           now.mode === 'credit' ? (now.customer?.id ?? null) : now.mode === 'cash' ? null : await linkByPhone(now.phone);
-        attempt.current = { customerId };
+        mine = { who, customerId };
+        attempt.current = mine;
       }
       const body = buildSaleBody({
         branchId,
         cart: now.cart,
         payments: plan.payments,
         cashReceived: plan.cashReceived,
-        customerId: attempt.current.customerId,
+        customerId: mine.customerId,
         soldAt: new Date(),
       });
       const key = keyFor(body);
       const result = await saveThenSend({
         save: () =>
           outbox.enqueue({ id: key, method: 'POST', path: '/api/v1/sales', body, idempotencyKey: key, label: saleLabel(now.cart) }),
-        send: () => createSale(api, body, key),
+        send: () => {
+          // The sync engine leaves this sale alone while this request is on its way, however long that takes.
+          const release = holdWhileSending(key);
+          const request = createSale(api, body, key);
+          request.then(release, release);
+          return request;
+        },
         forget: () => outbox.remove(key),
+        // A customer who has paid by M-Pesa has paid: the sale is kept for a manager even if the server turns it down.
+        keepRefused: mpesaPaid.current,
+        park: (error) =>
+          outbox.update(key, {
+            conflictType: REFUSED,
+            lastError: serverWords(error instanceof Error ? error.message : '') || 'The server did not accept this sale.',
+          }),
       });
+
+      // The cart is only cleared if it is still the one that was sold, and the screen is only steered if it is still here.
+      const clearIfSame = () => {
+        if (usePosStore.getState().cart === now.cart) clearCart();
+      };
+      const steer = (go: () => void) => {
+        if (mounted.current) go();
+      };
 
       if (result.kind === 'sent') {
         finished.current = true;
         setLastSale(result.sale);
-        clearCart();
-        navigation.replace('Receipt', { changeCents: plan.changeCents, soldAt: body.clientSoldAt });
+        clearIfSame();
+        const toReceipt = () =>
+          steer(() => navigation.replace('Receipt', { changeCents: plan.changeCents, soldAt: body.clientSoldAt }));
+        // The server may price a sale differently from the till (an active discount): the cashier is told before the
+        // receipt, because the customer may be owed money back.
+        const mismatch = totalMismatch(now.total, result.sale.grandTotal);
+        if (mismatch) {
+          const notice = describeTotalMismatch(now.total, mismatch);
+          Alert.alert(notice.title, notice.body, [{ text: 'OK', onPress: toReceipt }], { cancelable: false });
+        } else {
+          toReceipt();
+        }
       } else if (result.kind === 'saved') {
         // The sale is kept, so the person is told what happened and never to ring it up again: a second ring would be
         // recorded as a second sale once the first one is sent.
         const notice = describeQueuedSale(result.error, setupContext);
         finished.current = true;
-        clearCart();
+        clearIfSame();
         Alert.alert(notice.title, notice.body, [
-          ...(notice.action === 'open_shift' ? [{ text: 'Open shift', onPress: () => navigation.navigate('Shift') }] : []),
-          { text: 'OK', onPress: () => navigation.navigate('Pos') },
+          ...(notice.action === 'open_shift'
+            ? [{ text: 'Open shift', onPress: () => steer(() => navigation.navigate('Shift')) }]
+            : []),
+          { text: 'OK', onPress: () => steer(() => navigation.navigate('Pos')) },
         ]);
       } else if (result.kind === 'refused') {
-        // Nothing was recorded and nothing is kept. The basket stays, so the cashier can put it right and try again.
         attempt.current = null;
-        say('Sale not taken', describeSaleRefusal(result.error, { mpesaPaid: mpesaPaid.current }));
+        if (result.kept) {
+          // The customer has paid and the sale is parked on the phone for a manager: the cart is done with, and must not
+          // be rung up again, because that would be a second sale with the same M-Pesa payment.
+          const notice = describeKeptRefusal(result.error);
+          finished.current = true;
+          clearIfSame();
+          Alert.alert(notice.title, notice.body, [{ text: 'OK', onPress: () => steer(() => navigation.navigate('Pos')) }], {
+            cancelable: false,
+          });
+        } else {
+          // Nothing was recorded and nothing is kept. The basket stays, so the cashier can put it right and try again.
+          say('Sale not taken', describeSaleRefusal(result.error, { mpesaPaid: mpesaPaid.current }));
+        }
       } else {
         say(
           'Sale not saved',
@@ -209,6 +286,7 @@ export function PaymentScreen({ navigation, api, branchId, setupContext }: Props
       }
     } finally {
       busyRef.current = false;
+      saving.current = false;
       if (mounted.current) setBusy(false);
     }
   };
@@ -283,7 +361,8 @@ export function PaymentScreen({ navigation, api, branchId, setupContext }: Props
         return;
       }
       if (!sent.accepted || !sent.checkoutRequestId) {
-        setStk({ stage: 'failed', message: sent.message ? `The prompt was not sent: ${sent.message}` : 'The prompt was not sent.' });
+        const said = serverWords(sent.message);
+        setStk({ stage: 'failed', message: said ? `The prompt was not sent: ${said}` : 'The prompt was not sent.' });
         return;
       }
       await waitForPayment(sent.checkoutRequestId, chosen.mpesaCents, now.mode === 'mpesa' && chosen.cashCents === 0);
@@ -310,10 +389,12 @@ export function PaymentScreen({ navigation, api, branchId, setupContext }: Props
 
   const stopWaiting = () => waiting.current?.abort();
 
-  const startOver = () =>
+  const startOver = (cause: 'unpaid' | 'wrong_amount' = 'unpaid') =>
     Alert.alert(
       'Start the M-Pesa payment again?',
-      'If the customer pays the first prompt after this, that money will not be matched to a sale. Only do this once you are sure they did not pay.',
+      cause === 'wrong_amount'
+        ? 'The customer has already paid M-Pesa a different amount. That money will not be matched to this sale: your manager has to sort it out. Only start again once they know.'
+        : 'If the customer pays the first prompt after this, that money will not be matched to a sale. Only do this once you are sure they did not pay.',
       [
         { text: 'Keep waiting', style: 'cancel' },
         { text: 'Start again', style: 'destructive', onPress: () => setStk({ stage: 'idle' }) },
@@ -334,8 +415,9 @@ export function PaymentScreen({ navigation, api, branchId, setupContext }: Props
       else if (match?.kind === 'several')
         say('More than one customer', 'Two or more customers have this number, so the till cannot tell who owes. Sort it out on the web first.');
       else say('No customer found', 'There is no customer with that number. Add them on the web first, then try again.');
-    } catch {
-      say("Couldn't look them up", 'Check the connection and try again.');
+    } catch (error) {
+      const notice = describeLookupFailure(error);
+      say(notice.title, notice.body);
     } finally {
       busyRef.current = false;
       if (mounted.current) setBusy(false);
@@ -455,7 +537,7 @@ export function PaymentScreen({ navigation, api, branchId, setupContext }: Props
               value={phone}
               onChangeText={setPhone}
               keyboardType="phone-pad"
-              editable={!prompting}
+              editable={!modeLocked}
               accessibilityLabel="Customer's M-Pesa number"
             />
           )}
@@ -472,17 +554,20 @@ export function PaymentScreen({ navigation, api, branchId, setupContext }: Props
             <View>
               <Text variant="body" style={styles.warn}>{stk.message}</Text>
               <Button title="Check again" onPress={() => void checkAgain()} disabled={busy} style={styles.gap} />
-              <Button title="Customer did not pay" variant="secondary" onPress={startOver} style={styles.gap} />
+              <Button title="Customer did not pay" variant="secondary" onPress={() => startOver()} style={styles.gap} />
             </View>
           ) : null}
           {stk.stage === 'maybe_sent' ? (
             <View>
               <Text variant="body" style={styles.warn}>{stk.message}</Text>
-              <Button title="No prompt arrived: start again" variant="secondary" onPress={startOver} style={styles.gap} />
+              <Button title="No prompt arrived: start again" variant="secondary" onPress={() => startOver()} style={styles.gap} />
             </View>
           ) : null}
           {stk.stage === 'failed' || stk.stage === 'wrong_amount' || stk.stage === 'code_needed' ? (
             <Text variant="body" style={styles.warn}>{stk.message}</Text>
+          ) : null}
+          {stk.stage === 'wrong_amount' ? (
+            <Button title="Start the payment again" variant="secondary" onPress={() => startOver('wrong_amount')} style={styles.gap} />
           ) : null}
 
           {canPrompt ? (
@@ -551,6 +636,7 @@ export function PaymentScreen({ navigation, api, branchId, setupContext }: Props
         disabled={
           busy ||
           prompting ||
+          stk.stage === 'wrong_amount' ||
           (mpesaMode && !paidCode && manualCode.length < 6) ||
           (mode === 'credit' && !customer) ||
           cash?.kind === 'short' ||

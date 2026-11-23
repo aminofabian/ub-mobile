@@ -35,7 +35,9 @@ export function sharesFor(inputs: PayInputs): Shares {
   const { mode, totalCents, code } = inputs;
   if (!Number.isSafeInteger(totalCents) || totalCents <= 0) return no('There is nothing to pay yet.');
 
-  const handed = readHanded(inputs.handedText);
+  // The notes handed over only matter where the customer pays cash. What is left in that box when the person moves to
+  // credit or to M-Pesa is not read: it is hidden there, and an error about a hidden box cannot be put right.
+  const handed = mode === 'cash' || mode === 'split' ? readHanded(inputs.handedText) : undefined;
   if (handed === null) return no('Enter the cash handed over as an amount, like 1,000 or 1000.50.');
   const handedFor = (cents: number) => (handed === undefined || cents <= 0 ? {} : { handedCents: handed });
 

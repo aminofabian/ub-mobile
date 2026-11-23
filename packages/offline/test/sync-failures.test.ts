@@ -6,7 +6,7 @@ import { ACME, API, BOBS, PALMART, mobileBody, mobileUrl } from '../../core/test
 import { configureStorage } from '../../core/src/storage';
 import * as K from '../../core/src/storage-keys';
 import { createApiClient, openStore } from '@kiosk/core';
-import { createSyncEngine, needsAttention, outbox, retryStuck, summarizeOutbox } from '../src/index';
+import { createSyncEngine, holdWhileSending, needsAttention, outbox, retryStuck, summarizeOutbox } from '../src/index';
 
 type Handle = { calls: Array<{ url: string; method: string }>; restore(): void };
 let net: Handle | null = null;
@@ -193,6 +193,42 @@ test('a refused sale goes back in play when a person says so', async () => {
 
   accept = true;
   assert.equal(await retryStuck(), 1);
+  await engine.sync();
+  assert.deepEqual(queued(), []);
+});
+
+test('a sale the screen is sending right now is left alone, and sent by the engine once the screen is done', async () => {
+  const server = salesServer(() => ({ status: 201, body: { ok: true } }));
+  serve([...shops(), server.route]);
+  await openAcme();
+  await outbox.enqueue(sale('a1'));
+  const engine = createSyncEngine({ api: createApiClient({ baseURL: API }) });
+
+  const release = holdWhileSending('a1');
+  await passes(engine, 3);
+  assert.equal(server.asked(), 0, 'a second request would race the first');
+  assert.equal(queued().length, 1);
+
+  release();
+  await engine.sync();
+  assert.equal(server.asked(), 1);
+  assert.deepEqual(queued(), []);
+});
+
+test('a gateway error is not an attempt, so a deploy that takes minutes does not park the sales', async () => {
+  let up = false;
+  const server = salesServer(() => (up ? { status: 201, body: { ok: true } } : { status: 503, body: { title: 'Service Unavailable' } }));
+  serve([...shops(), server.route]);
+  await openAcme();
+  await outbox.enqueue(sale('a1'));
+  const engine = createSyncEngine({ api: createApiClient({ baseURL: API }), maxRetries: 2 });
+
+  await passes(engine, 6);
+  assert.equal(server.asked(), 6, 'asked at every pass: it never gave up');
+  assert.equal(queued()[0]?.retries, 0);
+  assert.deepEqual(await summarizeOutbox(), { total: 1, needsAttention: 0 });
+
+  up = true;
   await engine.sync();
   assert.deepEqual(queued(), []);
 });

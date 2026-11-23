@@ -449,8 +449,8 @@ test('forgetting a shop forgets who signed in at it and that the phone was a til
   assert.deepEqual((await loadKnownStaff(BOBS.tenantId)).map((p) => p.name), ['Bea'], 'the other shop is untouched');
 });
 
-test('both new fields are per-shop plain fields like the rest', () => {
-  for (const field of ['knownStaff', 'tillSeen'] as const) {
+test('the staff-app fields are per-shop plain fields like the rest', () => {
+  for (const field of ['knownStaff', 'tillSeen', 'heldBaskets'] as const) {
     assert.ok((K.PLAIN_FIELDS as readonly string[]).includes(field), field);
     assert.notEqual(K.plainKey(ACME.tenantId, field), K.plainKey(BOBS.tenantId, field));
   }

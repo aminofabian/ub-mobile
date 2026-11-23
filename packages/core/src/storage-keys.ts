@@ -45,6 +45,8 @@ export const PLAIN_FIELDS = [
   'knownStaff',
   /** Staff apps: the branch this phone was last seen registered as a till for. Lets the app say "removed", not "never registered". */
   'tillSeen',
+  /** Cashier: the sales its people have put on hold at this shop, until they come back for them (a day at most). */
+  'heldBaskets',
 ] as const;
 
 export type SecureField = (typeof SECURE_FIELDS)[number];

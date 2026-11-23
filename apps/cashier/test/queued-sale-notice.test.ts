@@ -67,7 +67,7 @@ test('a switched-off shop, a busy server, a refusal and no connection each say w
   for (const status of [500, 502, 503, 408, 429]) {
     assert.match(describeQueuedSale(server(status)).body, /couldn't take the sale just now[\s\S]*when the server is back/, String(status));
   }
-  for (const status of [400, 401, 403, 404, 409, 422]) {
+  for (const status of [400, 403, 404, 409, 422]) {
     assert.match(describeQueuedSale(server(status)).body, /did not accept this sale[\s\S]*ask your manager/i, String(status));
   }
   for (const offline of [new TypeError('Network request failed'), Object.assign(new Error('Aborted'), { name: 'AbortError' }), 'boom', undefined]) {
@@ -89,4 +89,12 @@ test('nothing shown is a status number, a code or a placeholder', () => {
     const { title, body } = describeQueuedSale(error);
     assert.doesNotMatch(`${title} ${body}`, /\b[45]\d\d\b|setup_required|undefined|null|\[object/i, `${title} ${body}`);
   }
+});
+
+test('a session that ended says to sign in again, not that the server refused the sale', () => {
+  const notice = describeQueuedSale(server(401));
+  assert.match(notice.title, /Sign in again/);
+  assert.match(notice.body, /sign-in has ended/);
+  assert.match(notice.body, /Do not ring it up again\./);
+  assert.doesNotMatch(notice.body, /did not accept|ask your manager/i);
 });

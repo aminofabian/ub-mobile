@@ -130,6 +130,36 @@ test('stopping the wait stops the checks at once', async () => {
   assert.equal(asked.length, 2);
 });
 
+test('a check that never comes back is given up on, and the next one can still pay', async () => {
+  let asked = 0;
+  const api = {
+    get: (): Promise<StkStatusResponse> => {
+      asked += 1;
+      return asked === 1 ? new Promise<StkStatusResponse>(() => undefined) : Promise.resolve(PAID);
+    },
+  } as unknown as ApiClient;
+  const outcome = await waitForStk(api, 'ws_CO_1', { intervalMs: 1, timeoutMs: 5_000, pollTimeoutMs: 20 });
+  assert.equal(outcome.kind, 'paid');
+  assert.equal(asked, 2);
+});
+
+test('checks that all hang end as no connection when the time is up, not as a payment that failed', async () => {
+  const api = { get: () => new Promise<StkStatusResponse>(() => undefined) } as unknown as ApiClient;
+  const outcome = await waitForStk(api, 'ws_CO_1', { intervalMs: 1, timeoutMs: 120, pollTimeoutMs: 15 });
+  assert.deepEqual(outcome, { kind: 'unknown', checkoutRequestId: 'ws_CO_1', reason: 'no_connection' });
+});
+
+test('stopping the wait works while a check is hanging, without waiting for it', async () => {
+  const controller = new AbortController();
+  const api = { get: () => new Promise<StkStatusResponse>(() => undefined) } as unknown as ApiClient;
+  const started = Date.now();
+  const pending = waitForStk(api, 'ws_CO_1', { intervalMs: 1, timeoutMs: 60_000, pollTimeoutMs: 60_000, signal: controller.signal });
+  setTimeout(() => controller.abort(), 15);
+  const outcome = await pending;
+  assert.deepEqual(outcome, { kind: 'unknown', checkoutRequestId: 'ws_CO_1', reason: 'cancelled' });
+  assert.ok(Date.now() - started < 5_000, 'it did not wait for the check');
+});
+
 test('a wait that was stopped before it started asks nothing', async () => {
   const controller = new AbortController();
   controller.abort();

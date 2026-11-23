@@ -1,5 +1,8 @@
 import { isApiError } from '@kiosk/core';
 import { classifyReplayFailure } from '@kiosk/offline';
+import { formatMoney, toCents } from './money';
+import type { PayMode } from './pay-inputs';
+import { serverWords } from './server-words';
 import type { SalePayment } from './tender';
 import { withTimeout } from './with-timeout';
 
@@ -70,8 +73,11 @@ export type SaleSend<Sale> =
   | { kind: 'sent'; sale: Sale }
   /** It is saved on this phone and will be sent. `error` is why it was not sent now. */
   | { kind: 'saved'; error: unknown }
-  /** The server looked at it and said no. It was not recorded and is not kept: the cart still holds the sale. */
-  | { kind: 'refused'; error: unknown }
+  /**
+   * The server looked at it and said no. Normally it was not recorded and is not kept: the cart still holds the sale.
+   * `kept`: its copy stays on the phone, parked for a manager, because money has already been taken for it.
+   */
+  | { kind: 'refused'; error: unknown; kept: boolean }
   /** It could not be sent and could not be saved either: it exists nowhere but in the cart. */
   | { kind: 'lost'; error: unknown };
 
@@ -87,7 +93,8 @@ export function isSaleRefusal(error: unknown): boolean {
 
 /** What to tell the cashier when the server refused a sale. */
 export function describeSaleRefusal(error: unknown, options: { mpesaPaid?: boolean } = {}): string {
-  const reason = isApiError(error) && error.message.trim() ? `: ${error.message.trim()}` : '.';
+  const said = isApiError(error) ? serverWords(error.message) : '';
+  const reason = said ? `: ${said}` : '.';
   const head = `The server did not accept this sale${reason}`;
   const ending = options.mpesaPaid
     ? 'The customer has already paid by M-Pesa, so do not send another prompt. Ask your manager.'
@@ -105,7 +112,9 @@ export function describeSaleRefusal(error: unknown, options: { mpesaPaid?: boole
  *  - `forget` takes it out of the queue once the server has it, or has turned it down for good.
  *
  * If saving fails, it still tries the server: a phone with a broken queue and a working connection can sell. Only when
- * neither works is the sale `lost`. A sale the server refused is `refused`. In both, the cart must not be cleared.
+ * neither works is the sale `lost`. A sale the server refused is `refused`. In both, the cart must not be cleared,
+ * unless the refused sale was `kept` (`keepRefused`: the customer's money has been taken, so the phone's copy is the only
+ * record that the sale happened and is parked for a manager, not thrown away).
  */
 export async function saveThenSend<Sale>(options: {
   save: () => Promise<void>;
@@ -114,8 +123,12 @@ export async function saveThenSend<Sale>(options: {
   timeoutMs?: number;
   /** Whether the error is the server turning the sale down for good. Defaults to `isSaleRefusal`. */
   refused?: (error: unknown) => boolean;
+  /** Keep the phone's copy of a refused sale instead of forgetting it. */
+  keepRefused?: boolean;
+  /** Marks the kept copy as one a person has to look at. Without it the sync engine marks it on its next pass. */
+  park?: (error: unknown) => Promise<void>;
 }): Promise<SaleSend<Sale>> {
-  const { save, send, forget, timeoutMs = SALE_SEND_TIMEOUT_MS, refused = isSaleRefusal } = options;
+  const { save, send, forget, timeoutMs = SALE_SEND_TIMEOUT_MS, refused = isSaleRefusal, keepRefused = false, park } = options;
 
   let saved = true;
   try {
@@ -133,10 +146,79 @@ export async function saveThenSend<Sale>(options: {
     return { kind: 'sent', sale };
   } catch (error) {
     if (refused(error)) {
+      if (saved && keepRefused) {
+        // The customer has paid, so this copy may be the only record that the sale happened. It stays, parked.
+        await park?.(error).catch(() => undefined);
+        return { kind: 'refused', error, kept: true };
+      }
       // The copy on the phone would only come back as a sale nobody can send. The cart still holds the real one.
       if (saved) await forget().catch(() => undefined);
-      return { kind: 'refused', error };
+      return { kind: 'refused', error, kept: false };
     }
     return saved ? { kind: 'saved', error } : { kind: 'lost', error };
   }
+}
+
+/**
+ * What decides who a sale is for, apart from the basket. The customer behind an M-Pesa number is looked up once per
+ * try and then kept, so that trying again is the same sale under the same key. It is kept only for as long as what
+ * decided it stays the same: another way of paying, another number or another credit customer is looked up again, so
+ * a customer chosen for one way of paying is never carried into another.
+ */
+export function customerKey(input: { mode: PayMode; phone: string | null; creditCustomerId: string | null }): string {
+  switch (input.mode) {
+    case 'cash':
+      return 'cash';
+    case 'credit':
+      return `credit:${input.creditCustomerId ?? ''}`;
+    default:
+      return `phone:${input.phone ?? ''}`;
+  }
+}
+
+/**
+ * What happens when the person tries to leave the Payment screen.
+ *  - `allow`: nothing is in play, or the sale is done.
+ *  - `wait`: the sale is being saved and sent. Leaving would hand its answer to a screen that is gone, and ringing the
+ *    sale up again would record it twice, so it is not an option until the answer is in.
+ *  - `ask`: an M-Pesa payment may be out. Leaving can leave the customer's money without a sale, so it is a choice.
+ */
+export function leaveGuard(state: { finished: boolean; saving: boolean; holdsMoney: boolean }): 'allow' | 'wait' | 'ask' {
+  if (state.finished) return 'allow';
+  if (state.saving) return 'wait';
+  return state.holdsMoney ? 'ask' : 'allow';
+}
+
+/** What to tell the cashier when the server turned down a sale the customer had already paid for by M-Pesa. */
+export function describeKeptRefusal(error: unknown): { title: string; body: string } {
+  const said = (isApiError(error) ? serverWords(error.message) : '').replace(/[.\s]+$/, '');
+  return {
+    title: 'Paid by M-Pesa, sale not accepted',
+    body: `The customer has paid by M-Pesa, but the server did not accept the sale${said ? `: ${said}` : ''}. The sale is kept on this phone, under Unsent sales, for your manager to look at. Do not ring it up again.`,
+  };
+}
+
+/**
+ * The server priced a sale differently from the till (an active discount, a price that changed): by how much, in cents.
+ * Null when they agree, or when the server did not say. The till sends the shelf price and the server may charge less.
+ */
+export function totalMismatch(tillCents: number, serverTotal: unknown): { serverCents: number; owedBackCents: number } | null {
+  if (typeof serverTotal !== 'number') return null;
+  const serverCents = toCents(serverTotal);
+  if (serverCents === null || serverCents === tillCents) return null;
+  return { serverCents, owedBackCents: tillCents - serverCents };
+}
+
+/** What to tell the cashier when the server's total is not the till's. The sale is recorded; this is about the money. */
+export function describeTotalMismatch(tillCents: number, mismatch: { serverCents: number; owedBackCents: number }): { title: string; body: string } {
+  if (mismatch.owedBackCents > 0) {
+    return {
+      title: 'The sale came to less',
+      body: `The server priced this sale at ${formatMoney(mismatch.serverCents)}, not the ${formatMoney(tillCents)} shown here (a discount or a price change). The customer was asked for ${formatMoney(tillCents)}, so ${formatMoney(mismatch.owedBackCents)} is owed back. Give it back from the drawer if they paid cash, or ask your manager if they paid another way.`,
+    };
+  }
+  return {
+    title: 'The sale came to more',
+    body: `The server priced this sale at ${formatMoney(mismatch.serverCents)}, which is ${formatMoney(-mismatch.owedBackCents)} more than the ${formatMoney(tillCents)} shown here. The customer still owes the difference: ask your manager.`,
+  };
 }

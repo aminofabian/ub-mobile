@@ -138,6 +138,7 @@ async function readLegacy(store: KeyValueStore): Promise<LegacyData> {
     // Staff-app fields: the original layout never held them.
     knownStaff: null,
     tillSeen: null,
+    heldBaskets: null,
   };
   const outboxRaw = await store.get(LEGACY_PLAIN.outbox);
 

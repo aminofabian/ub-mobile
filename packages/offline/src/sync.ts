@@ -1,5 +1,5 @@
 import { getActiveTenantId, loadStoreById, type ApiClient } from '@kiosk/core';
-import { outboxFor, type Outbox, type OutboxItem } from './outbox';
+import { isBeingSent, outboxFor, type Outbox, type OutboxItem } from './outbox';
 import { replayItem } from './replay';
 import { REFUSED, classifyReplayFailure } from './replay-failure';
 
@@ -43,6 +43,8 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
   }
 
   async function processItem(queue: Outbox, client: ApiClient, item: OutboxItem): Promise<void> {
+    // A sale the screen is sending this very moment is its own to finish: a second request would race the first.
+    if (isBeingSent(item.id)) return;
     if (item.retries >= maxRetries) return;
     // A sale the server refused outright stays where it is until a person looks at it: asking again cannot change the answer.
     if (item.conflictType === REFUSED) return;

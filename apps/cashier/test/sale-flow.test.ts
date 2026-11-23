@@ -6,9 +6,14 @@ import {
   SaleTimedOut,
   buildSaleBody,
   createKeyKeeper,
+  customerKey,
+  describeKeptRefusal,
   describeSaleRefusal,
+  describeTotalMismatch,
   isSaleRefusal,
+  leaveGuard,
   saveThenSend,
+  totalMismatch,
 } from '../src/lib/sale-flow';
 
 const CART = [
@@ -266,7 +271,7 @@ test('a refused sale is not kept, and the cart is left for the cashier to fix', 
   const r = recorder();
   const refusal = server(400, 'Payments must cover the amount due');
   const result = await saveThenSend({ ...r, send: async () => { throw refusal; } });
-  assert.deepEqual(result, { kind: 'refused', error: refusal });
+  assert.deepEqual(result, { kind: 'refused', error: refusal, kept: false });
   assert.deepEqual(r.events, ['save', 'forget'], 'the saved copy is taken out again');
 });
 
@@ -278,7 +283,7 @@ test('a refusal when the sale could not be saved needs nothing taken out', async
     send: async () => { throw refusal; },
     forget: async () => void events.push('forget'),
   });
-  assert.deepEqual(result, { kind: 'refused', error: refusal });
+  assert.deepEqual(result, { kind: 'refused', error: refusal, kept: false });
   assert.deepEqual(events, []);
 });
 
@@ -289,7 +294,7 @@ test('a refusal is still a refusal when the saved copy cannot be taken out', asy
     send: async () => { throw refusal; },
     forget: async () => { throw new Error('storage is full'); },
   });
-  assert.deepEqual(result, { kind: 'refused', error: refusal });
+  assert.deepEqual(result, { kind: 'refused', error: refusal, kept: false });
 });
 
 test('everything else that goes wrong keeps the sale', async () => {
@@ -321,4 +326,143 @@ test('a refusal after the customer paid by M-Pesa never says to send another pro
   assert.match(text, /M-Pesa code not found/);
   assert.match(text, /already paid by M-Pesa, so do not send another prompt\. Ask your manager\.$/);
   assert.doesNotMatch(text, /try again/i);
+});
+
+test('who a sale is for is looked up again when what decided it changes, and only then', () => {
+  const cash = customerKey({ mode: 'cash', phone: '254712345678', creditCustomerId: 'c-1' });
+  assert.equal(customerKey({ mode: 'cash', phone: null, creditCustomerId: null }), cash, 'a cash sale has no customer, whatever was typed');
+
+  const byNumber = customerKey({ mode: 'mpesa', phone: '254712345678', creditCustomerId: null });
+  assert.equal(
+    customerKey({ mode: 'split', phone: '254712345678', creditCustomerId: 'c-1' }),
+    byNumber,
+    'the same number is the same customer by M-Pesa or in a split'
+  );
+  assert.notEqual(customerKey({ mode: 'mpesa', phone: '254712345679', creditCustomerId: null }), byNumber, 'another number');
+  assert.notEqual(customerKey({ mode: 'mpesa', phone: null, creditCustomerId: null }), byNumber, 'no number');
+
+  const credit = customerKey({ mode: 'credit', phone: '254712345678', creditCustomerId: 'c-1' });
+  assert.notEqual(credit, byNumber, 'a credit customer is not the one behind an M-Pesa number');
+  assert.notEqual(credit, cash);
+  assert.notEqual(customerKey({ mode: 'credit', phone: null, creditCustomerId: 'c-2' }), credit, 'another credit customer');
+  assert.equal(customerKey({ mode: 'credit', phone: '254799999999', creditCustomerId: 'c-1' }), credit, 'the number typed for M-Pesa does not matter to credit');
+});
+
+test('a refused sale whose customer has already paid by M-Pesa is kept, parked for a manager, and not forgotten', async () => {
+  const events: string[] = [];
+  const refusal = server(400, 'Payments must cover the amount due');
+  const result = await saveThenSend({
+    save: async () => void events.push('save'),
+    send: async () => { throw refusal; },
+    forget: async () => void events.push('forget'),
+    keepRefused: true,
+    park: async (error) => void events.push(error === refusal ? 'park' : 'park?'),
+  });
+  assert.deepEqual(result, { kind: 'refused', error: refusal, kept: true });
+  assert.deepEqual(events, ['save', 'park'], 'the copy stays, and is marked for a person');
+});
+
+test('a kept refusal is still kept when it cannot be marked: the sync engine marks it on its next pass', async () => {
+  const events: string[] = [];
+  const result = await saveThenSend({
+    save: async () => void events.push('save'),
+    send: async () => { throw server(400); },
+    forget: async () => void events.push('forget'),
+    keepRefused: true,
+    park: async () => { throw new Error('storage is full'); },
+  });
+  assert.equal(result.kind === 'refused' && result.kept, true);
+  assert.deepEqual(events, ['save'], 'nothing is thrown away');
+});
+
+test('there is nothing to keep when the sale could not be saved in the first place', async () => {
+  const events: string[] = [];
+  const result = await saveThenSend({
+    save: async () => { throw new Error('storage is full'); },
+    send: async () => { throw server(400); },
+    forget: async () => void events.push('forget'),
+    keepRefused: true,
+    park: async () => void events.push('park'),
+  });
+  assert.equal(result.kind === 'refused' && result.kept, false);
+  assert.deepEqual(events, []);
+});
+
+test('keeping is only for a refusal: a sale that is sent, or saved for later, behaves as before', async () => {
+  const sent = await saveThenSend({ save: async () => undefined, send: async () => ({ id: 's' }), forget: async () => undefined, keepRefused: true });
+  assert.equal(sent.kind, 'sent');
+  const saved = await saveThenSend({ save: async () => undefined, send: async () => { throw server(503); }, forget: async () => undefined, keepRefused: true });
+  assert.equal(saved.kind, 'saved');
+});
+
+test('the Payment screen cannot be left while a sale is being saved, and asks before a payment in play is left', () => {
+  const state = (over: Partial<Parameters<typeof leaveGuard>[0]>) => ({ finished: false, saving: false, holdsMoney: false, ...over });
+  assert.equal(leaveGuard(state({})), 'allow');
+  assert.equal(leaveGuard(state({ saving: true })), 'wait');
+  assert.equal(leaveGuard(state({ holdsMoney: true })), 'ask');
+  assert.equal(leaveGuard(state({ saving: true, holdsMoney: true })), 'wait', 'saving comes first: there is no leaving a sale half-sent');
+  // Once the sale is done the screen replaces itself, and nothing stands in the way.
+  assert.equal(leaveGuard(state({ finished: true, saving: true, holdsMoney: true })), 'allow');
+});
+
+test('what a kept refusal tells the cashier: the customer paid, the sale is kept, do not ring it up again', () => {
+  const notice = describeKeptRefusal(server(400, 'Out of stock: Milk'));
+  assert.match(notice.title, /Paid by M-Pesa/);
+  assert.match(notice.body, /customer has paid by M-Pesa/);
+  assert.match(notice.body, /Out of stock: Milk\. The sale is kept on this phone, under Unsent sales/);
+  assert.match(notice.body, /Do not ring it up again\./);
+  // A server that sent a web page, or nothing, is not quoted.
+  for (const message of ['<html><body>Forbidden</body></html>', '']) {
+    const plain = describeKeptRefusal(new ApiError(message, { status: 403, foreign: true }));
+    assert.doesNotMatch(plain.body, /</);
+    assert.match(plain.body, /did not accept the sale\. The sale is kept/);
+  }
+});
+
+test('the words of a refusal are shown on one line, cut to length, and never as a web page', () => {
+  const long = describeSaleRefusal(server(400, `Line 1\n\nLine 2 ${'x'.repeat(400)}`));
+  assert.doesNotMatch(long, /\n\n/);
+  assert.ok(long.length < 400, String(long.length));
+  const page = describeSaleRefusal(new ApiError('<!DOCTYPE html><html>Blocked</html>', { status: 403, foreign: true }));
+  assert.doesNotMatch(page, /</);
+  assert.match(page, /^The server did not accept this sale\. Nothing was recorded/);
+});
+
+test('a total the server priced differently from the till is noticed, whichever way it differs', () => {
+  assert.equal(totalMismatch(100000, 1000), null, 'the same');
+  assert.equal(totalMismatch(100000, 1000.004), null, 'the same to the cent');
+  assert.equal(totalMismatch(100000, undefined), null, 'the server did not say');
+  assert.equal(totalMismatch(100000, '1000'), null);
+  assert.equal(totalMismatch(100000, Number.NaN), null);
+  assert.deepEqual(totalMismatch(100000, 900), { serverCents: 90000, owedBackCents: 10000 });
+  assert.deepEqual(totalMismatch(100000, 1050.5), { serverCents: 105050, owedBackCents: -5050 });
+});
+
+test('the notice for a different total says how much is owed back, or still owed, and to whom to turn', () => {
+  const less = describeTotalMismatch(100000, { serverCents: 90000, owedBackCents: 10000 });
+  assert.equal(less.title, 'The sale came to less');
+  assert.match(less.body, /priced this sale at 900\.00, not the 1,000\.00 shown here/);
+  assert.match(less.body, /100\.00 is owed back/);
+  assert.match(less.body, /ask your manager if they paid another way/);
+  const more = describeTotalMismatch(100000, { serverCents: 105050, owedBackCents: -5050 });
+  assert.equal(more.title, 'The sale came to more');
+  assert.match(more.body, /which is 50\.50 more than the 1,000\.00/);
+  assert.match(more.body, /still owes the difference/);
+});
+
+test('a reason that already ends in a full stop does not get a second one', () => {
+  assert.match(describeKeptRefusal(server(400, 'Out of stock.')).body, /accept the sale: Out of stock\. The sale is kept/);
+  assert.doesNotMatch(describeKeptRefusal(server(400, 'Out of stock...')).body, /\.\.\./);
+});
+
+test('a refusal with no reason of its own, or a reason that is a page, is told in the till\'s own words, with one full stop', () => {
+  for (const message of ['', '<html>Blocked</html>']) {
+    const text = describeSaleRefusal(new ApiError(message, { status: 403, foreign: true }));
+    assert.equal(text, 'The server did not accept this sale. Nothing was recorded. Check the payment and try again.');
+  }
+  assert.equal(
+    describeSaleRefusal(server(400, 'Out of stock: Milk')),
+    'The server did not accept this sale: Out of stock: Milk. Nothing was recorded. Check the payment and try again.'
+  );
+  assert.match(describeSaleRefusal(server(400, 'No credit left'), { mpesaPaid: true }), /already paid by M-Pesa, so do not send another prompt/);
 });

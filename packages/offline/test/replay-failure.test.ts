@@ -29,9 +29,28 @@ test('a step that has to be done first is a setup wait, whatever status carries 
 });
 
 test('a server error counts as an attempt', () => {
-  for (const status of [500, 502, 503, 504]) {
+  for (const status of [500, 501, 505, 507, 599]) {
     assert.equal(classifyReplayFailure(server(status)), 'broken', String(status));
   }
+});
+
+test('a gateway with nothing behind it is a wait, not an attempt: that is what a deploy looks like from outside', () => {
+  for (const status of [502, 503, 504, 520, 521, 522, 523, 524]) {
+    assert.equal(classifyReplayFailure(server(status)), 'wait', String(status));
+  }
+  assert.equal(classifyReplayFailure(server(519)), 'broken');
+  assert.equal(classifyReplayFailure(server(525)), 'broken');
+});
+
+test('a 4xx that is not the app\'s own answer is an attempt, not a refusal: a block can lift, and a person hears if it does not', () => {
+  const foreign = (status: number) => new ApiError('<html>Blocked</html>', { status, foreign: true });
+  for (const status of [400, 403, 404, 407, 413, 422]) {
+    assert.equal(classifyReplayFailure(foreign(status)), 'broken', String(status));
+    assert.equal(classifyReplayFailure(server(status)), 'refused', `${status} written by the app`);
+  }
+  // The statuses that already mean "wait" or "conflict" keep meaning that, whoever sent them.
+  for (const status of [401, 408, 423, 429]) assert.equal(classifyReplayFailure(foreign(status)), 'wait', String(status));
+  assert.equal(classifyReplayFailure(foreign(409)), 'conflict');
 });
 
 test('a 409 is a conflict, and the words of the message do not matter', () => {

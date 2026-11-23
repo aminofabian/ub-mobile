@@ -1,3 +1,4 @@
+import { cleanDisplayText } from '@kiosk/core';
 import { formatMoney, lineCents, toCents, totalCents } from './money';
 import { formatWhen } from './when';
 
@@ -58,6 +59,11 @@ export function quantityText(quantity: number): string {
   return Number.isFinite(quantity) ? String(Number(quantity.toFixed(3))) : '?';
 }
 
+/** A code for sharing: the end of it is enough for the customer to find it in their own message. */
+export function maskCode(code: string): string {
+  return code.length > 4 ? `...${code.slice(-4)}` : code;
+}
+
 const money = (amount: number | null | undefined): string => {
   const cents = amount === null || amount === undefined ? null : toCents(amount);
   return cents === null ? '—' : formatMoney(cents);
@@ -70,8 +76,9 @@ export function buildSaleSummary(
   const heading = typeof sale.receiptNo === 'number' ? `Sale #${sale.receiptNo}` : 'Sale';
 
   const items = (sale.items ?? []).map((line) => {
-    const display = line.displayName?.trim() ?? '';
-    const label = line.lineLabel?.trim() ?? '';
+    // Names come from the server and end up in a shared text: one line each, so a name cannot add lines of its own.
+    const display = cleanDisplayText(line.displayName, 80);
+    const label = cleanDisplayText(line.lineLabel, 80);
     const name = display && label && display !== label ? `${display} (${label})` : display || label || 'Item';
     const quantity = typeof line.quantity === 'number' ? line.quantity : NaN;
     const unit = typeof line.unitPrice === 'number' ? line.unitPrice : NaN;
@@ -86,33 +93,36 @@ export function buildSaleSummary(
   const payments = (sale.payments ?? []).map((payment) => ({
     label: methodLabel(payment.method),
     amount: money(payment.amount),
-    ...(payment.reference ? { reference: payment.reference } : {}),
+    ...(cleanDisplayText(payment.reference, 40) ? { reference: cleanDisplayText(payment.reference, 40) } : {}),
   }));
 
+  // The change is what the server recorded: the notes handed over, less the cash that went into the sale. It is right
+  // even when the server priced the sale differently from the till. Only when the server's record does not say is it the
+  // change the cashier was told at the till.
   let changeCents: number | null = null;
-  if (typeof options.changeCents === 'number') {
-    changeCents = options.changeCents > 0 ? options.changeCents : null;
-  } else if (typeof sale.cashReceived === 'number') {
-    const received = toCents(sale.cashReceived);
+  const received = typeof sale.cashReceived === 'number' ? toCents(sale.cashReceived) : null;
+  if (received !== null && (sale.payments ?? []).length > 0) {
     const cashTaken = (sale.payments ?? [])
       .filter((payment) => payment.method === 'cash')
       .reduce((sum, payment) => sum + (typeof payment.amount === 'number' ? (toCents(payment.amount) ?? 0) : 0), 0);
-    changeCents = received !== null && received > cashTaken ? received - cashTaken : null;
+    changeCents = received > cashTaken ? received - cashTaken : null;
+  } else if (typeof options.changeCents === 'number') {
+    changeCents = options.changeCents > 0 ? options.changeCents : null;
   }
 
   const total = money(sale.grandTotal);
   const change = changeCents === null ? undefined : formatMoney(changeCents);
-  const soldBy = sale.soldByName?.trim() || undefined;
+  const soldBy = cleanDisplayText(sale.soldByName, 60) || undefined;
   const when = options.soldAt === undefined ? null : formatWhen(options.soldAt);
 
   const lines: (string | null)[] = [
-    options.shopName?.trim() || null,
+    cleanDisplayText(options.shopName, 80) || null,
     [heading, when].filter((part) => part !== null).join(', '),
     '',
     ...items.map((item) => `${item.name}: ${item.detail} = ${item.total}`),
     '',
     `Total: ${total}`,
-    ...payments.map((payment) => `${payment.label}: ${payment.amount}${payment.reference ? ` (${payment.reference})` : ''}`),
+    ...payments.map((payment) => `${payment.label}: ${payment.amount}${payment.reference ? ` (${maskCode(payment.reference)})` : ''}`),
     change ? `Change: ${change}` : null,
     soldBy ? `Sold by ${soldBy}` : null,
     '',
@@ -136,6 +146,20 @@ export function saleLabel(cart: { name: string; quantity: number }[], show = 3, 
   const rest = cart.length - named.length;
   const label = rest > 0 ? `${named.join(', ')}, +${rest} more` : named.join(', ');
   return label.length > maxLength ? `${label.slice(0, maxLength - 1)}…` : label;
+}
+
+/**
+ * What to say before a queued sale is thrown away. A sale that includes an M-Pesa payment says so: the customer's money
+ * is already with the shop, and without the sale nothing on this phone records that.
+ */
+export function discardWarning(item: { body?: unknown }): string {
+  const body = item.body as { payments?: unknown } | null | undefined;
+  const mpesa =
+    Array.isArray(body?.payments) &&
+    (body.payments as { method?: string }[]).some((payment) => payment.method === 'mpesa_manual' || payment.method === 'mpesa');
+  return mpesa
+    ? "This sale includes an M-Pesa payment, so the customer has already paid. If it is discarded nothing records that the sale happened. It will not be sent to the server, and it cannot be brought back."
+    : 'It will not be sent to the server, and it cannot be brought back.';
 }
 
 /** What an unsent request is, in words. A sale reads as a sale; anything else falls back to what it is. */

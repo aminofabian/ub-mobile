@@ -1,6 +1,7 @@
 import { isApiError } from '@kiosk/core';
 import type { StkOutcome } from '@kiosk/payments';
 import { formatMoney, toCents } from './money';
+import { serverWords } from './server-words';
 import { isMpesaCode, normalizeMpesaCode } from './tender';
 
 /** The server accepts an M-Pesa payment up to a shilling away from what the prompt charged. */
@@ -37,13 +38,15 @@ export function describeStkOutcome(outcome: StkOutcome, expectedCents: number): 
       }
       return { step: 'paid', code: normalizeMpesaCode(outcome.receiptCode) };
     }
-    case 'failed':
+    case 'failed': {
+      const said = serverWords(outcome.reason);
       return {
         step: 'failed',
-        message: outcome.reason
-          ? `M-Pesa said: ${outcome.reason}. You can send the prompt again, or take another way of paying.`
+        message: said
+          ? `M-Pesa said: ${said}. You can send the prompt again, or take another way of paying.`
           : 'The payment did not go through. You can send the prompt again, or take another way of paying.',
       };
+    }
     case 'unknown':
       switch (outcome.reason) {
         case 'no_connection':
@@ -89,7 +92,7 @@ export type PushFailure =
 
 export function describePushFailure(error: unknown): PushFailure {
   if (isApiError(error) && error.status >= 400 && error.status < 500 && error.status !== 408) {
-    const reason = error.message.trim();
+    const reason = serverWords(error.message);
     return {
       sent: 'no',
       message: reason ? `The prompt was not sent: ${reason}` : 'The prompt was not sent.',

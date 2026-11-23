@@ -636,6 +636,24 @@ test('a request with no shop carries no session and no till id', async () => {
   assert.equal(headers['X-Tenant-Id'], undefined);
 });
 
+test('a PUT is sent as a PUT, with its body and the shop\'s session, and carries a key only when asked to', async () => {
+  const handle = serve([...allShops(), [ping, { status: 200, body: { ok: true } }]]);
+  await open('acme');
+  await storeTokens({ accessToken: 'A-access', refreshToken: 'A-refresh' });
+  const api = createApiClient({ baseURL: API });
+
+  assert.deepEqual(await api.put('/api/v1/ping', { weighed: true }), { ok: true });
+  await api.put('/api/v1/ping', { weighed: false }, { idempotent: true });
+  const [plain, keyed] = pings(handle);
+  assert.equal(plain?.method, 'PUT');
+  assert.deepEqual(JSON.parse(String(plain?.body)), { weighed: true });
+  assert.equal(plain?.headers['Authorization'], 'Bearer A-access');
+  assert.equal(plain?.headers['X-Tenant-Id'], ACME.tenantId);
+  assert.equal(plain?.headers['Idempotency-Key'], undefined);
+  assert.equal(keyed?.method, 'PUT');
+  assert.ok(keyed?.headers['Idempotency-Key'], 'an idempotent PUT carries a key');
+});
+
 test('a 401 refreshes the session of the shop the request was for and retries once, with the same idempotency key', async () => {
   let attempts = 0;
   const handle = serve([

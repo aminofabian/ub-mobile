@@ -1,10 +1,11 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, View, FlatList, Alert } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Button, Card, Text, theme } from '@kiosk/ui';
 import type { ApiClient } from '@kiosk/core';
 import { needsAttention, outbox, replayItem, subscribeOutbox, type OutboxItem } from '@kiosk/offline';
-import { describeQueuedItem } from '../lib/sale-summary';
+import { describeQueuedItem, discardWarning } from '../lib/sale-summary';
+import { serverWords } from '../lib/server-words';
 import { formatWhen } from '../lib/when';
 import type { CashierStackParamList } from '../navigation/AppNavigator';
 
@@ -15,6 +16,8 @@ type Props = NativeStackScreenProps<CashierStackParamList, 'Conflicts'> & {
 /** Every sale on this phone that has not reached the server, for the store that is open. */
 export function ConflictResolutionScreen({ api }: Props) {
   const [items, setItems] = useState<OutboxItem[]>([]);
+  // One send at a time for each sale: a second tap while the first is on its way would send it twice.
+  const sending = useRef(new Set<string>());
 
   const load = useCallback(async () => {
     const pending = await outbox.pending();
@@ -30,7 +33,7 @@ export function ConflictResolutionScreen({ api }: Props) {
   }, [load]);
 
   const discard = (item: OutboxItem) => {
-    Alert.alert('Discard this sale?', 'It will not be sent to the server, and it cannot be brought back.', [
+    Alert.alert('Discard this sale?', discardWarning(item), [
       { text: 'Keep it', style: 'cancel' },
       {
         text: 'Discard',
@@ -43,13 +46,17 @@ export function ConflictResolutionScreen({ api }: Props) {
   };
 
   const sendNow = async (item: OutboxItem) => {
+    if (sending.current.has(item.id)) return;
+    sending.current.add(item.id);
     try {
       await replayItem(api, item);
       await outbox.remove(item.id);
       Alert.alert('Sent', 'It reached the server.');
       void load();
     } catch (e) {
-      Alert.alert('Still not sent', e instanceof Error ? e.message : 'The server did not accept it.');
+      Alert.alert('Still not sent', (e instanceof Error ? serverWords(e.message) : '') || 'The server did not accept it.');
+    } finally {
+      sending.current.delete(item.id);
     }
   };
 
@@ -83,7 +90,7 @@ export function ConflictResolutionScreen({ api }: Props) {
                     ? `Waiting to send, tried ${item.retries} ${item.retries === 1 ? 'time' : 'times'}`
                     : 'Waiting to send'}
               </Text>
-              {needsAPerson && item.lastError ? <Text variant="muted">{item.lastError}</Text> : null}
+              {needsAPerson && serverWords(item.lastError) ? <Text variant="muted">{serverWords(item.lastError)}</Text> : null}
               <View style={styles.actions}>
                 <Button title="Send now" onPress={() => sendNow(item)} />
                 {needsAPerson ? <Button title="Discard" variant="danger" onPress={() => discard(item)} /> : null}

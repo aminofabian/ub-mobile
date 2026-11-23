@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Share } from 'react-native';
 import { QrScanner } from '@kiosk/barcode';
 import { StaffShell, useAuthStore, type PairScannerRenderer, type StaffSession } from '@kiosk/staff';
@@ -7,6 +7,7 @@ import { createRealtimeClient } from '@kiosk/realtime';
 import { AppNavigator } from './navigation/AppNavigator';
 import { API_BASE_URL } from './lib/config';
 import { cartOwnerKey } from './lib/cart-owner';
+import type { TillPerson } from './lib/till-person';
 import { confirmExport } from './lib/confirm-export';
 import { usePosStore } from './store/pos-store';
 
@@ -24,6 +25,10 @@ async function exportUnsent(): Promise<void> {
 /** The till itself: sends queued sales and listens for live updates while a person is signed in. */
 function Till({ session }: { session: StaffSession }) {
   const { api, tenant, branchId, shiftsDisabled, user, signOut } = session;
+  const person = useMemo<TillPerson>(
+    () => ({ userId: user.id, name: user.name, permissions: user.permissions }),
+    [user.id, user.name, user.permissions]
+  );
 
   // The phone is shared, and the cart lives in memory for as long as the app runs. Before any screen reads it, drop
   // whatever someone else (or another branch) left; the same person coming back keeps the sale they were ringing.
@@ -55,6 +60,7 @@ function Till({ session }: { session: StaffSession }) {
       api={api}
       tenant={tenant}
       branchId={branchId}
+      person={person}
       shiftsDisabled={shiftsDisabled}
       onLogout={() => void leave()}
     />

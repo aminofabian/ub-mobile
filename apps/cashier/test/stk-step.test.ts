@@ -110,3 +110,12 @@ test('a prompt that got no clear answer may have been sent, and the cashier is t
 test('the till waits longer for a prompt than for a sale, because the server clears the number first', () => {
   assert.equal(PUSH_TIMEOUT_MS, 45_000);
 });
+
+test('what M-Pesa or the server says is shown on one line and never as a web page', () => {
+  const said = describeStkOutcome({ kind: 'failed', checkoutRequestId: 'ws_CO_1', reason: 'The customer\ncancelled the request' }, 45000);
+  assert.equal(said.step === 'failed' && said.message.startsWith('M-Pesa said: The customer cancelled the request.'), true);
+  const page = describeStkOutcome({ kind: 'failed', checkoutRequestId: 'ws_CO_1', reason: '<html>Bad gateway</html>' }, 45000);
+  assert.equal(page.step === 'failed' && /^The payment did not go through\./.test(page.message), true);
+  assert.equal(describePushFailure(new ApiError('<html>Forbidden</html>', { status: 403, foreign: true })).message, 'The prompt was not sent.');
+  assert.equal(describePushFailure(new ApiError('Invalid\nnumber', { status: 400 })).message, 'The prompt was not sent: Invalid number');
+});

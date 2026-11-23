@@ -104,6 +104,8 @@ export type StkOutcome =
 export interface WaitForStkOptions {
   intervalMs?: number;
   timeoutMs?: number;
+  /** How long one status check may take before it is given up on (the next one may do better). */
+  pollTimeoutMs?: number;
   /** Stops the wait at once, wherever it is. */
   signal?: AbortSignal;
   /** For tests. */
@@ -127,23 +129,49 @@ function sleepFor(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
+/** One status check, given up on when it takes too long or the caller stops the wait, whichever comes first. */
+function checkWithin<T>(run: () => Promise<T>, ms: number, signal?: AbortSignal): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let over = false;
+    const finish = (settle: () => void) => {
+      if (over) return;
+      over = true;
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+      settle();
+    };
+    const onAbort = () => finish(() => reject(new Error('The wait was stopped.')));
+    const timer = setTimeout(() => finish(() => reject(new Error('The check took too long.'))), ms);
+    signal?.addEventListener('abort', onAbort);
+    if (signal?.aborted) {
+      onAbort();
+      return;
+    }
+    run().then(
+      (value) => finish(() => resolve(value)),
+      (error) => finish(() => reject(error))
+    );
+  });
+}
+
 /**
  * Asks for the payment's status until the customer has paid, M-Pesa says it failed, the time runs out or the caller
- * stops it. A check that cannot be made (no connection, a server error) is only skipped: one bad moment does not end
- * the wait, because the customer may be entering their PIN right then.
+ * stops it. A check that cannot be made (no connection, a server error, no answer in time) is only skipped: one bad
+ * moment does not end the wait, because the customer may be entering their PIN right then. A check that never comes
+ * back cannot hold the wait either, and stopping the wait does not have to wait for it.
  */
 export async function waitForStk(
   api: ApiClient,
   checkoutRequestId: string,
   options: WaitForStkOptions = {}
 ): Promise<StkOutcome> {
-  const { intervalMs = 3000, timeoutMs = 90_000, signal, sleep = sleepFor, now = Date.now } = options;
+  const { intervalMs = 3000, timeoutMs = 90_000, pollTimeoutMs = 10_000, signal, sleep = sleepFor, now = Date.now } = options;
   const started = now();
   let answered = false;
 
   while (!signal?.aborted) {
     try {
-      const status = await pollStkStatus(api, checkoutRequestId);
+      const status = await checkWithin(() => pollStkStatus(api, checkoutRequestId), pollTimeoutMs, signal);
       answered = true;
       if (status.status === 'completed') {
         return {

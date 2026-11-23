@@ -52,6 +52,12 @@ export function describeQueuedSale(error: unknown, context: SetupContext = {}): 
   }
 
   if (isApiError(error)) {
+    if (error.status === 401) {
+      return {
+        title: 'Sale saved. Sign in again to send it',
+        body: `Your sign-in has ended. ${KEPT} It is sent on its own once you have signed in again. ${ONCE}`,
+      };
+    }
     if (error.status === 423) {
       return {
         title: 'The shop is switched off',

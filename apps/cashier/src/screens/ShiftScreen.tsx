@@ -8,10 +8,12 @@ import { formatMoney, toCents } from '../lib/money';
 import {
   SHOW_EXPECTED_BEFORE_COUNT,
   describeVariance,
+  needsReason,
   parseOpeningFloat,
   planClose,
   suggestedFloat,
   unsentAtClose,
+  type ClosePlan,
 } from '../lib/shift-cash';
 import { formatWhen } from '../lib/when';
 import { usePosStore } from '../store/pos-store';
@@ -41,6 +43,10 @@ export function ShiftScreen({ navigation, api, branchId, tenantName, shiftsDisab
   const [check, setCheck] = useState<Check>('loading');
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
+  // The shift as the server last said it. State is only read on the next render; a step that has just asked needs it now.
+  const latestShift = useRef<{ expectedClosingCash?: number | null } | null>(null);
+  // What the cashier counted before the expected cash was shown, so a closed shift can say if the count was changed after.
+  const firstCount = useRef<number | null>(null);
 
   const [floatText, setFloatText] = useState('');
   const [lastCounted, setLastCounted] = useState<number | null>(null);
@@ -55,24 +61,32 @@ export function ShiftScreen({ navigation, api, branchId, tenantName, shiftsDisab
     setBusy(on);
   };
 
-  /** Asks the server whether a shift is open. A failed check says nothing about the shift, so it changes nothing. */
-  const refreshShift = useCallback(async (): Promise<Check> => {
-    setCheck('loading');
-    try {
-      const shift = await fetchCurrentShift(api, branchId);
-      setShift(shift);
-      setCheck('open');
-      return 'open';
-    } catch (error) {
-      if (isApiError(error) && error.status === 404) {
-        setShift(null);
-        setCheck('none');
-        return 'none';
+  /**
+   * Asks the server whether a shift is open. A failed check says nothing about the shift, so it changes nothing.
+   * `quiet` keeps the screen as it is while it asks (no "Checking..."), for a check made in the middle of closing.
+   */
+  const refreshShift = useCallback(
+    async (quiet = false): Promise<Check> => {
+      if (!quiet) setCheck('loading');
+      try {
+        const shift = await fetchCurrentShift(api, branchId);
+        latestShift.current = shift;
+        setShift(shift);
+        setCheck('open');
+        return 'open';
+      } catch (error) {
+        if (isApiError(error) && error.status === 404) {
+          latestShift.current = null;
+          setShift(null);
+          setCheck('none');
+          return 'none';
+        }
+        setCheck('unknown');
+        return 'unknown';
       }
-      setCheck('unknown');
-      return 'unknown';
-    }
-  }, [api, branchId, setShift]);
+    },
+    [api, branchId, setShift]
+  );
 
   React.useEffect(() => {
     if (!shiftsDisabled) void refreshShift();
@@ -123,27 +137,86 @@ export function ShiftScreen({ navigation, api, branchId, tenantName, shiftsDisab
 
   const expectedCash = currentShift?.expectedClosingCash;
 
-  const review = () => {
-    const plan = planClose({ expected: expectedCash, countedText, takenOutText, reasonText: '' });
-    if (plan.step === 'invalid') {
-      Alert.alert('Close the shift', plan.message);
-      return;
+  /**
+   * What the till expects, read now. It moves with every cash sale and payout, so the figure from when this screen
+   * opened is not the one to count against.
+   */
+  const readExpectedNow = async (): Promise<
+    { ok: true; expected: number | null | undefined } | { ok: false; message: string }
+  > => {
+    const seen = await refreshShift(true);
+    if (seen === 'open') return { ok: true, expected: latestShift.current?.expectedClosingCash };
+    if (seen === 'none') {
+      setClosing('idle');
+      firstCount.current = null;
+      return { ok: false, message: 'This shift is already closed.' };
     }
-    setClosing('review');
+    return { ok: false, message: "Couldn't read what the till expects just now. Check the connection and try again." };
+  };
+
+  const review = async () => {
+    if (busyRef.current) return;
+    hold(true);
+    try {
+      const now = await readExpectedNow();
+      if (!now.ok) {
+        Alert.alert('Close the shift', now.message);
+        return;
+      }
+      const plan = planClose({ expected: now.expected, countedText, takenOutText, reasonText: '' });
+      if (plan.step === 'invalid') {
+        Alert.alert('Close the shift', plan.message);
+        return;
+      }
+      // The first count is kept, so the closed shift can say if it was changed after the expected cash was shown.
+      if (firstCount.current === null) firstCount.current = plan.countedCents;
+      setClosing('review');
+    } finally {
+      hold(false);
+    }
   };
 
   const handleCloseShift = async () => {
     if (busyRef.current || !currentShift?.id) return;
-    const plan = planClose({ expected: expectedCash, countedText, takenOutText, reasonText });
+    const shiftId = currentShift.id;
+    const shown = closePlan && closePlan.step !== 'invalid' ? closePlan.expectedCents : null;
+
+    // What the till expects may have moved since the difference was shown (another sale, a payout). It is read again,
+    // and if it moved the difference is shown again, not closed on a figure the cashier has not seen.
+    hold(true);
+    let plan: ClosePlan | null = null;
+    try {
+      const now = await readExpectedNow();
+      if (!now.ok) {
+        Alert.alert('Close the shift', now.message);
+        return;
+      }
+      plan = planClose({
+        expected: now.expected,
+        countedText,
+        takenOutText,
+        reasonText,
+        firstCountedCents: firstCount.current,
+      });
+    } finally {
+      hold(false);
+    }
+    if (!plan) return;
     if (plan.step === 'invalid') {
       Alert.alert('Close the shift', plan.message);
+      return;
+    }
+    if (shown !== null && plan.expectedCents !== shown) {
+      Alert.alert(
+        'The expected cash changed',
+        'A sale or a payout was recorded while you were counting. The difference on the screen is updated: look at it again before you close.'
+      );
       return;
     }
     if (plan.step === 'reason') {
       Alert.alert('Say why', plan.message);
       return;
     }
-    const shiftId = currentShift.id;
 
     const go = async () => {
       hold(true);
@@ -152,6 +225,7 @@ export function ShiftScreen({ navigation, api, branchId, tenantName, shiftsDisab
         setShift(null);
         setCheck('none');
         setClosing('idle');
+        firstCount.current = null;
         setCountedText('');
         setTakenOutText('');
         setReasonText('');
@@ -166,6 +240,7 @@ export function ShiftScreen({ navigation, api, branchId, tenantName, shiftsDisab
         // It may have closed and the answer been lost: look before reporting a failure.
         if ((await refreshShift()) === 'none') {
           setClosing('idle');
+          firstCount.current = null;
           Alert.alert('Shift closed', 'This shift is already closed.');
         } else {
           const failure = describeFailure(e, { title: 'Error', body: 'Could not close shift' }, setupContext);
@@ -228,6 +303,11 @@ export function ShiftScreen({ navigation, api, branchId, tenantName, shiftsDisab
             <Card style={styles.card}>
               <Text variant="h2">Open a shift</Text>
               <Text variant="muted">Count the cash in the till and type it.</Text>
+              {lastCounted !== null ? (
+                <Text variant="muted">
+                  The last shift counted {formatMoney(lastCounted)} when it closed, before any cash was taken out.
+                </Text>
+              ) : null}
               <TextInput
                 value={floatText}
                 onChangeText={setFloatText}
@@ -238,16 +318,6 @@ export function ShiftScreen({ navigation, api, branchId, tenantName, shiftsDisab
                 accessibilityLabel="Cash in the till now"
               />
               <View style={styles.chips}>
-                {lastCounted !== null ? (
-                  <TouchableOpacity
-                    style={styles.chip}
-                    onPress={() => setFloatText(String(lastCounted / 100))}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Use ${formatMoney(lastCounted)}, what the last shift counted`}
-                  >
-                    <Text variant="caption">Last shift counted {formatMoney(lastCounted)}</Text>
-                  </TouchableOpacity>
-                ) : null}
                 <TouchableOpacity
                   style={styles.chip}
                   onPress={() => setFloatText('0')}
@@ -316,19 +386,27 @@ export function ShiftScreen({ navigation, api, branchId, tenantName, shiftsDisab
                       <Text variant="caption">Nothing taken out</Text>
                     </TouchableOpacity>
                   </View>
-                  <Button title="Review" onPress={review} style={styles.action} />
-                  <Button title="Cancel" variant="secondary" onPress={() => setClosing('idle')} style={styles.action} />
+                  <Button title="Review" onPress={() => void review()} disabled={busy} style={styles.action} />
+                  <Button
+                    title="Cancel"
+                    variant="secondary"
+                    onPress={() => {
+                      firstCount.current = null;
+                      setClosing('idle');
+                    }}
+                    style={styles.action}
+                  />
                 </>
               ) : closePlan && closePlan.step !== 'invalid' ? (
                 <>
                   <Text variant="body">Expected: {formatMoney(closePlan.expectedCents)}</Text>
                   <Text variant="body">Counted: {formatMoney(closePlan.countedCents)}</Text>
-                  <Text variant="h2" style={closePlan.step === 'reason' ? styles.warn : undefined}>
+                  <Text variant="h2" style={needsReason(closePlan.varianceCents) ? styles.warn : undefined}>
                     {describeVariance(closePlan.varianceCents)}
                   </Text>
                   <Text variant="body">Taken out: {formatMoney(closePlan.takenOutCents)}</Text>
                   <Text variant="body">Stays in the till: {formatMoney(closePlan.leftInTillCents)}</Text>
-                  {closePlan.step === 'reason' ? (
+                  {needsReason(closePlan.varianceCents) ? (
                     <TextInput
                       value={reasonText}
                       onChangeText={setReasonText}

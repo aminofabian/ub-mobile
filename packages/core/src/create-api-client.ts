@@ -16,6 +16,7 @@ export interface ApiClient {
   forTenant?(tenantId: string): ApiClient;
   get<T>(path: string): Promise<T>;
   post<T>(path: string, body?: unknown, options?: IdempotencyOptions): Promise<T>;
+  put<T>(path: string, body?: unknown, options?: IdempotencyOptions): Promise<T>;
   patch<T>(path: string, body?: unknown, options?: IdempotencyOptions): Promise<T>;
   delete<T>(path: string, options?: IdempotencyOptions): Promise<T>;
 }
@@ -110,6 +111,8 @@ export function createApiClient(options: CreateApiClientOptions): ApiClient {
     get: <T>(path: string) => request<T>('GET', path),
     post: <T>(path: string, body?: unknown, opts?: IdempotencyOptions) =>
       request<T>('POST', path, body, { ...opts }),
+    put: <T>(path: string, body?: unknown, opts?: IdempotencyOptions) =>
+      request<T>('PUT', path, body, { ...opts }),
     patch: <T>(path: string, body?: unknown, opts?: IdempotencyOptions) =>
       request<T>('PATCH', path, body, { ...opts }),
     delete: <T>(path: string, opts?: IdempotencyOptions) =>

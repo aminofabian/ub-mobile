@@ -79,10 +79,16 @@ export class ApiError extends Error {
   readonly code?: string;
   readonly requirement?: string;
   readonly hint?: string;
+  /**
+   * Set when the answer was not the app's own: a web page or nothing at all, which is what a firewall, a proxy or a
+   * login page in the way sends. Absent for anything the app wrote. Code that has to decide whether the server really
+   * turned a request down reads this, never the words.
+   */
+  readonly foreign?: true;
 
   constructor(
     message: string,
-    info: { status: number; code?: string; requirement?: string; hint?: string }
+    info: { status: number; code?: string; requirement?: string; hint?: string; foreign?: boolean }
   ) {
     super(message);
     this.name = 'ApiError';
@@ -90,6 +96,7 @@ export class ApiError extends Error {
     if (info.code !== undefined) this.code = info.code;
     if (info.requirement !== undefined) this.requirement = info.requirement;
     if (info.hint !== undefined) this.hint = info.hint;
+    if (info.foreign) this.foreign = true;
   }
 }
 
@@ -108,7 +115,7 @@ export function isApiError(error: unknown): error is ApiError {
 export async function readApiError(response: Response): Promise<ApiError> {
   const text = await response.text().catch(() => '');
   if (!text) {
-    return new ApiError(`Request failed (${response.status})`, { status: response.status });
+    return new ApiError(`Request failed (${response.status})`, { status: response.status, foreign: true });
   }
 
   try {
@@ -121,7 +128,7 @@ export async function readApiError(response: Response): Promise<ApiError> {
       hint: problem?.hint,
     });
   } catch {
-    return new ApiError(text, { status: response.status });
+    return new ApiError(text, { status: response.status, foreign: true });
   }
 }
 

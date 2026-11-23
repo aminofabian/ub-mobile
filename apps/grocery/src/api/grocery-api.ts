@@ -29,10 +29,11 @@ export async function searchItems(
   if (options.barcode) params.push(`barcode=${encodeURIComponent(options.barcode)}`);
   if (options.itemTypeId) params.push(`itemTypeId=${encodeURIComponent(options.itemTypeId)}`);
   const query = params.length ? `?${params.join('&')}` : '';
-  const response = await api.get<{ items?: GroceryItem[] } | GroceryItem[]>(
+  // The server answers with a Spring page: the rows are in `content`.
+  const response = await api.get<{ content?: GroceryItem[]; items?: GroceryItem[] } | GroceryItem[]>(
     `/api/v1/items${query}`
   );
-  return Array.isArray(response) ? response : (response.items ?? []);
+  return Array.isArray(response) ? response : (response.content ?? response.items ?? []);
 }
 
 export async function createInvoice(
