@@ -19,7 +19,31 @@ export interface CartItem extends Sellable {
   barcode?: string;
   sellingPrice: number;
   stockOnHand?: number;
+  /** A photo of the product for the grid tile, when the shop has one (an HTTPS URL). */
+  imageUrl?: string | null;
+  /**
+   * A family parent that only groups its sizes/variants — it is not sold itself. Tapping it opens the
+   * size picker rather than adding to the basket. Its price/stock on the tile stand for the family.
+   */
+  variantParent?: true;
 }
+
+/**
+ * What makes a basket line a service: which one, who did it, and what was chosen on it (see `service-sale`). A service
+ * is sold with no product behind it, so the sale names these in place of an item.
+ */
+export interface ServiceTag {
+  serviceId: string;
+  /** The staff profile the server records as having done the work: not the cashier. */
+  performerId: string;
+  /** Who it was, as the till says it. */
+  performerName: string;
+  /** What was chosen on it (a length, an extra): the ids the service gave them, in the order the service lists them. */
+  optionIds: string[];
+}
+
+/** A service line's `itemId` starts with this. No product's id does: it only keeps one line per service, person, choice and price. */
+export const SERVICE_ID_PREFIX = 'svc:';
 
 export interface CartLine {
   itemId: string;
@@ -32,6 +56,8 @@ export interface CartLine {
   weighed?: true;
   /** The shelf price this line was changed from. Present only while the price on the line is not the shelf price. */
   shelfPrice?: number;
+  /** Present when the line is a service and not a product: its `itemId` is then made up, and is no product's. */
+  service?: ServiceTag;
 }
 
 /** The most of one item that taps can add: a slipped finger, not a sale. */
@@ -117,6 +143,29 @@ export function removeLine(cart: readonly CartLine[], itemId: string): CartLine[
   return cart.filter((line) => line.itemId !== itemId);
 }
 
+/**
+ * Switch a line between selling by the unit and selling by weight, after the shop's record of the
+ * product has been changed to match. Going to weight, the number already on the line becomes a weight
+ * in kilograms (the cashier re-weighs it next); going to units, it is rounded to whole units, at
+ * least one. A service line never changes. Returns the cart unchanged when the line is already how it
+ * is asked to be, or is not there.
+ */
+export function setLineWeighed(cart: readonly CartLine[], itemId: string, weighed: boolean): CartLine[] {
+  const at = indexOfLine(cart, itemId);
+  const line = cart[at];
+  if (!line || line.service) return cart as CartLine[];
+  const already = line.weighed === true;
+  if (already === weighed) return cart as CartLine[];
+  if (weighed) {
+    return replaceAt(cart, at, { ...line, weighed: true });
+  }
+  // Weighed → units: a part-kilo becomes at least one whole unit.
+  const units = Math.max(1, Math.min(MAX_UNITS, Math.round(line.quantity)));
+  const next: CartLine = { ...line, quantity: units };
+  delete next.weighed;
+  return replaceAt(cart, at, next);
+}
+
 /** A weighed line as the item to weigh again: what it is called, its price per kilogram as it stands, sold in kg. */
 export function weighedItemOf(line: CartLine): CartItem {
   return { id: line.itemId, name: line.name, sellingPrice: line.unitPrice, weighed: true, unitType: 'kg' };
@@ -130,6 +179,7 @@ export function onShelfPrice(line: CartLine, shelfPrice: number): CartLine {
     quantity: line.quantity,
     unitPrice: shelfPrice,
     ...(line.weighed ? { weighed: true as const } : {}),
+    ...(line.service ? { service: line.service } : {}),
   };
 }
 
@@ -140,7 +190,9 @@ export function onShelfPrice(line: CartLine, shelfPrice: number): CartLine {
 export function setLinePrice(cart: readonly CartLine[], itemId: string, cents: number): CartLine[] | null {
   const at = indexOfLine(cart, itemId);
   const line = cart[at];
-  if (!line || !Number.isSafeInteger(cents) || cents <= 0) return null;
+  // A service is sold at the price the shop lists for it (or the one typed when it was added): the server refuses any
+  // other, so the till does not offer to change it. Take the line out and add it again.
+  if (!line || line.service || !Number.isSafeInteger(cents) || cents <= 0) return null;
   const shelf = line.shelfPrice ?? line.unitPrice;
   if (cents === toCents(shelf)) return replaceAt(cart, at, onShelfPrice(line, shelf));
   return replaceAt(cart, at, { ...line, unitPrice: fromCents(cents), shelfPrice: shelf });
@@ -149,6 +201,18 @@ export function setLinePrice(cart: readonly CartLine[], itemId: string, cents: n
 /** Whether the price on the line is not the shelf price. */
 export function priceChanged(line: CartLine): boolean {
   return line.shelfPrice !== undefined && toCents(line.shelfPrice) !== toCents(line.unitPrice);
+}
+
+/** The lines whose price was set by hand: not the shelf price. */
+export function handPriced(cart: readonly CartLine[]): CartLine[] {
+  return cart.filter(priceChanged);
+}
+
+/** The basket with every price that was set by hand put back to the shelf price. Anyone may do this. */
+export function backToShelf(cart: readonly CartLine[]): CartLine[] {
+  return cart.map((line) =>
+    priceChanged(line) && line.shelfPrice !== undefined ? onShelfPrice(line, line.shelfPrice) : line
+  );
 }
 
 /** One line's total in cents. Null when its quantity or price cannot be counted. */

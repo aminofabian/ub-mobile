@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Kiosk Ke Cashier",
+    "name": "KIOSK CASHIER",
     "slug": "kiosk-cashier",
-    "version": "0.0.1",
+    "version": "0.0.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -26,7 +26,32 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": ["expo-secure-store"],
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Kiosk to use your camera to scan barcodes and a pairing QR code.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": false,
+          "modes": ["peripheral", "central"],
+          "bluetoothAlwaysPermission": "Allow Kiosk to connect to your Bluetooth receipt printer."
+        }
+      ]
+    ],
     "extra": {
       "apiBaseURL": "https://api.kiosk.ke"
     }

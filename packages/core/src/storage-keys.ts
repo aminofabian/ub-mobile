@@ -47,6 +47,26 @@ export const PLAIN_FIELDS = [
   'tillSeen',
   /** Cashier: the sales its people have put on hold at this shop, until they come back for them (a day at most). */
   'heldBaskets',
+  /** Cashier: a copy of the shop's price list for the till's branch, so the till can find and sell products with no connection. */
+  'catalog',
+  /** Cashier: what the shop last said its till may do (the shop's feature flags), for a till that starts with no connection. */
+  'shopFlags',
+  /** Cashier: a short record, for a manager, of what the till could not put right by itself (sales thrown away, repriced, sent by someone else). */
+  'tillLog',
+  /** Cashier: the Bluetooth receipt printer this till is paired with (id, name, paper width), so it reconnects without a fresh scan. */
+  'savedPrinter',
+  /** Cashier: a tally of which products this till reaches for most, to lead the grid with best-sellers. */
+  'topSellers',
+  /** Cashier: this till's shift-progress stats (sales counted this shift, clean-close streak), for the shift gamification cues. */
+  'shiftPulse',
+  /** Grocery: the sale being rung up at the counter, kept until it is sent forward or cleared (a day at most). */
+  'groceryBasket',
+  /** Grocery: the sales sent forward to the cashier that the server has not yet confirmed, with the keys that make resending them safe. */
+  'groceryForwards',
+  /** Grocery and Stock: the write-offs being listed, and the one write-off that was sent and not yet confirmed, so a closed app cannot lose track of it. */
+  'spoils',
+  /** Stock: the stock take being counted, with the counts typed so far, so counting goes on with no connection. */
+  'stockTake',
 ] as const;
 
 export type SecureField = (typeof SECURE_FIELDS)[number];

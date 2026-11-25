@@ -15,8 +15,26 @@ export interface QueuedSaleNotice {
 
 const KEPT = 'The sale is saved on this phone, under Unsent sales.';
 const ONCE = 'Do not ring it up again.';
+const TYPED =
+  "The M-Pesa code was typed in and nothing has checked it yet: keep the customer's M-Pesa message until the shop has.";
 
-export function describeQueuedSale(error: unknown, context: SetupContext = {}): QueuedSaleNotice {
+/**
+ * `typedCode`: the sale was paid by M-Pesa with a code the cashier typed in, so nothing has checked that the money
+ * arrived. It is said wherever the sale is described as saved, because the sale goes to the shop on that word alone.
+ */
+export function describeQueuedSale(
+  error: unknown,
+  context: SetupContext = {},
+  options: { typedCode?: boolean } = {}
+): QueuedSaleNotice {
+  const notice = describe(error, context);
+  if (options.typedCode && notice.body.endsWith(ONCE)) {
+    return { ...notice, body: `${notice.body.slice(0, -ONCE.length)}${TYPED} ${ONCE}` };
+  }
+  return notice;
+}
+
+function describe(error: unknown, context: SetupContext): QueuedSaleNotice {
   const needed = asSetupRequired(error);
   if (needed) {
     switch (needed.requirement) {

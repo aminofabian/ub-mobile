@@ -1,7 +1,9 @@
 import React from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
-import { Button, Card, Text, theme } from '@kiosk/ui';
+import { Button, Card, FONT, Text, theme } from '@kiosk/ui';
 import { lineWords, type CartLine } from '../lib/cart';
+import { describeServiceLine } from '../lib/service-sale';
+import { checkoutWords } from '../lib/service-words';
 import { formatMoney } from '../lib/money';
 
 interface CartPanelProps {
@@ -13,6 +15,8 @@ interface CartPanelProps {
   /** The held baskets have been read, so a basket can be held. */
   canHold: boolean;
   heldCount: number;
+  /** The till is looking at the shop for services that changed before it goes to payment: Checkout waits. */
+  checking: boolean;
   onUnits: (itemId: string, quantity: number) => void;
   onReweigh: (line: CartLine) => void;
   onPrice: (line: CartLine) => void;
@@ -28,6 +32,7 @@ export function CartPanel({
   mayChangePrice,
   canHold,
   heldCount,
+  checking,
   onUnits,
   onReweigh,
   onPrice,
@@ -38,10 +43,18 @@ export function CartPanel({
 }: CartPanelProps) {
   return (
     <Card style={styles.cart}>
-      <Text variant="h2">Basket ({cart.length})</Text>
+      <View style={styles.header}>
+        <Text style={styles.heading}>Basket</Text>
+        {cart.length > 0 ? (
+          <View style={styles.countPill}>
+            <Text style={styles.countText}>{cart.length}</Text>
+          </View>
+        ) : null}
+      </View>
       <ScrollView style={styles.lines} keyboardShouldPersistTaps="handled">
         {cart.map((line) => {
           const words = lineWords(line);
+          const doneBy = describeServiceLine(line);
           return (
             <View key={line.itemId} style={styles.line}>
               <View style={styles.lineTop}>
@@ -53,6 +66,7 @@ export function CartPanel({
               <Text variant="muted">
                 {words.quantity} x {words.price}
               </Text>
+              {doneBy ? <Text variant="muted">{doneBy}</Text> : null}
               {words.was ? (
                 <Text variant="caption" style={styles.changed}>
                   Price changed (shelf price {words.was})
@@ -67,14 +81,19 @@ export function CartPanel({
                     <Button title="+" variant="secondary" onPress={() => onUnits(line.itemId, line.quantity + 1)} style={styles.step} />
                   </>
                 )}
-                {mayChangePrice ? <Button title="Price" variant="secondary" onPress={() => onPrice(line)} style={styles.small} /> : null}
+                {mayChangePrice && !line.service ? <Button title="Price" variant="secondary" onPress={() => onPrice(line)} style={styles.small} /> : null}
                 <Button title="Remove" variant="danger" onPress={() => onRemove(line.itemId)} style={styles.small} />
               </View>
             </View>
           );
         })}
       </ScrollView>
-      <Text variant="h2">Total: {totalCents === null ? '-' : formatMoney(totalCents)}</Text>
+      <View style={styles.totalRow}>
+        <Text variant="caption" style={styles.totalLabel}>
+          {cart.length === 1 ? '1 item' : `${cart.length} items`}
+        </Text>
+        <Text style={styles.totalValue}>{totalCents === null ? '—' : formatMoney(totalCents)}</Text>
+      </View>
       {totalCents === null ? (
         <Text variant="caption" style={styles.problem}>
           A line in the basket cannot be counted. Remove it, or change its price.
@@ -89,7 +108,12 @@ export function CartPanel({
           disabled={!canHold}
           style={styles.action}
         />
-        <Button title="Checkout" onPress={onCheckout} disabled={cart.length === 0 || totalCents === null} style={styles.checkout} />
+        <Button
+          title={checkoutWords(checking)}
+          onPress={onCheckout}
+          disabled={checking || cart.length === 0 || totalCents === null}
+          style={styles.checkout}
+        />
       </View>
     </Card>
   );
@@ -97,6 +121,28 @@ export function CartPanel({
 
 const styles = StyleSheet.create({
   cart: { margin: theme.spacing.md, maxHeight: '55%' },
+  header: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, marginBottom: theme.spacing.xs },
+  heading: { fontFamily: FONT.bold, fontSize: 18, letterSpacing: -0.3, color: theme.colors.text },
+  countPill: {
+    minWidth: 24,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: 2,
+    borderRadius: 999,
+    backgroundColor: theme.colors.surfaceSunken,
+    alignItems: 'center',
+  },
+  countText: { fontFamily: FONT.semibold, fontSize: 13, color: theme.colors.textMuted },
+  totalRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    marginTop: theme.spacing.sm,
+    paddingTop: theme.spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+  },
+  totalLabel: { color: theme.colors.textMuted },
+  totalValue: { fontFamily: FONT.bold, fontSize: 24, letterSpacing: -0.5, color: theme.colors.text },
   lines: { flexGrow: 0 },
   line: { paddingVertical: theme.spacing.sm, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
   lineTop: { flexDirection: 'row', justifyContent: 'space-between', gap: theme.spacing.sm },

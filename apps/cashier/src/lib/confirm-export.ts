@@ -4,7 +4,7 @@ export const EXPORT_QUESTION = 'Share unsent sales?';
 
 /** What the copy holds and who it is for. It goes to a share sheet, which can send it to any app on the phone. */
 export const EXPORT_WARNING =
-  'This makes a text copy of the sales saved on this phone that were not sent: what was sold, how it was paid and any M-Pesa codes. Share it only with your manager or Kiosk support.';
+  'This makes a text copy of the sales saved on this phone that were not sent: what was sold, how it was paid, the full M-Pesa codes, the customers the sales are for and the key each sale is sent under. Share it only with your manager or Kiosk support.';
 
 /** Asks before the copy is made. Backing out of the question is "no". */
 export function confirmExport(): Promise<boolean> {

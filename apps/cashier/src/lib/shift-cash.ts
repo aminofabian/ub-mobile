@@ -142,5 +142,5 @@ export function describeVariance(varianceCents: number): string {
 export function unsentAtClose(unsent: number): string | null {
   if (!Number.isInteger(unsent) || unsent <= 0) return null;
   const these = unsent === 1 ? '1 sale is' : `${unsent} sales are`;
-  return `${these} still on this phone and not sent. Cash from them is not in the expected cash yet, and a closed shift can no longer take them. Send them first if you can.`;
+  return `${these} still on this phone and not sent. Cash from them is not in the expected cash yet. When they are sent later they are recorded in whichever shift is open then, under whoever is signed in then. Send them first if you can.`;
 }

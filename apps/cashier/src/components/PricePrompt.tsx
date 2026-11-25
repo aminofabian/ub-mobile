@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Button, Text, theme } from '@kiosk/ui';
+import { MART } from '@kiosk/staff';
 import { priceChanged, type CartLine } from '../lib/cart';
 import { formatMoney, toCents } from '../lib/money';
 import { checkPriceEntry, describePriceChange } from '../lib/price-entry';
@@ -9,20 +11,25 @@ import { Prompt } from './Prompt';
 interface PricePromptProps {
   /** The line whose price is being changed. Null while the prompt is closed. */
   line: CartLine | null;
+  /** Whether this till may write the shelf price for the whole shop (not just this sale). */
+  canSetShelf?: boolean;
   onCancel: () => void;
-  /** Answers with words when the price cannot be taken, and null once it has been. */
-  onConfirm: (cents: number) => string | null;
+  /** Answers with words when the price cannot be taken, and null once it has been. `alsoShelf` asks
+   * to make the new price the shop's shelf price too. */
+  onConfirm: (cents: number, alsoShelf: boolean) => string | null;
   /** Puts the line back on the shelf price. */
   onUseShelf: () => void;
 }
 
-export function PricePrompt({ line, onCancel, onConfirm, onUseShelf }: PricePromptProps) {
+export function PricePrompt({ line, canSetShelf, onCancel, onConfirm, onUseShelf }: PricePromptProps) {
   const [text, setText] = useState('');
   const [refused, setRefused] = useState<string | null>(null);
+  const [alsoShelf, setAlsoShelf] = useState(false);
 
   useEffect(() => {
     setText('');
     setRefused(null);
+    setAlsoShelf(false);
   }, [line?.itemId]);
 
   const shelfCents = line ? toCents(line.shelfPrice ?? line.unitPrice) : null;
@@ -32,7 +39,7 @@ export function PricePrompt({ line, onCancel, onConfirm, onUseShelf }: PriceProm
 
   const confirm = () => {
     if (!entry.ok) return;
-    setRefused(onConfirm(entry.cents));
+    setRefused(onConfirm(entry.cents, alsoShelf && canSetShelf === true));
   };
 
   return (
@@ -74,6 +81,23 @@ export function PricePrompt({ line, onCancel, onConfirm, onUseShelf }: PriceProm
               {refused}
             </Text>
           ) : null}
+          {canSetShelf && entry.ok ? (
+            <Pressable
+              onPress={() => setAlsoShelf((v) => !v)}
+              style={styles.shelfToggle}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: alsoShelf }}
+            >
+              <Ionicons
+                name={alsoShelf ? 'checkbox' : 'square-outline'}
+                size={20}
+                color={alsoShelf ? MART.fallbackPrimary : MART.inkMuted}
+              />
+              <Text variant="body" style={styles.shelfLabel}>
+                Also update the shelf price for the whole shop
+              </Text>
+            </Pressable>
+          ) : null}
           <View style={styles.buttons}>
             <Button title="Cancel" variant="secondary" onPress={onCancel} style={styles.button} />
             <Button title="Change price" onPress={confirm} disabled={!entry.ok} style={styles.button} />
@@ -96,6 +120,8 @@ const styles = StyleSheet.create({
     fontSize: 24,
   },
   problem: { color: theme.colors.danger },
+  shelfToggle: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, paddingVertical: theme.spacing.xs },
+  shelfLabel: { flex: 1 },
   buttons: { flexDirection: 'row', gap: theme.spacing.sm, marginTop: theme.spacing.sm },
   button: { flex: 1 },
 });

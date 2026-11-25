@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import {
   addUnit,
   addWeight,
+  backToShelf,
   cartCents,
   removeLine,
   setLinePrice,
@@ -11,6 +12,8 @@ import {
   type CartLine,
 } from '../lib/cart';
 import { keepsCart } from '../lib/cart-owner';
+import { addService, type ServiceBook } from '../lib/service-sale';
+import { keepMarksFor, markAdded, type PhonePrices } from '../lib/phone-prices';
 import {
   dropBasket,
   emptyBook,
@@ -44,6 +47,8 @@ interface PosState {
   owner: string | null;
   items: Item[];
   cart: CartLine[];
+  /** Lines of the cart priced from the list saved on the phone: when that list was made, by item (see `phone-prices`). */
+  phoneAsOf: PhonePrices;
   currentShift: Shift | null;
   lastSale: Sale | null;
   /** What the shop lets a till do (its feature flags). Read again whenever the till opens. */
@@ -55,12 +60,17 @@ interface PosState {
   holds: HoldBook;
   /** The shop the books above were read for. Null until they have been read: nothing may be held before then. */
   holdsFor: string | null;
+  /** What the shop last listed as services and staff, kept while the app runs so that the list opens when the shop does not answer. */
+  serviceBook: ServiceBook | null;
   setItems: (items: Item[]) => void;
   setFlags: (flags: ShopFlags) => void;
-  /** One more of an item sold by the unit. False when it cannot be. */
-  addToCart: (item: Item) => boolean;
+  /** One more of an item sold by the unit. False when it cannot be. `phoneAsOf`: the item's price is from the phone's list, made at that time. */
+  addToCart: (item: Item, phoneAsOf?: number | null) => boolean;
   /** A weighing (thousandths of a kilogram) of an item sold by weight, added to what is already there. False when it cannot be. */
-  addWeighed: (item: Item, thousandths: number) => boolean;
+  addWeighed: (item: Item, thousandths: number, phoneAsOf?: number | null) => boolean;
+  /** A service line (see `planService`), added to the basket. False when it cannot be. */
+  addServiceLine: (line: CartLine) => boolean;
+  setServiceBook: (book: ServiceBook | null) => void;
   /** Weighs a line again. The new weight replaces the old. */
   reweigh: (itemId: string, thousandths: number) => boolean;
   updateQuantity: (itemId: string, quantity: number) => void;
@@ -72,6 +82,8 @@ interface PosState {
   replaceCart: (lines: CartLine[]) => void;
   setShift: (shift: Shift | null) => void;
   setLastSale: (sale: Sale | null) => void;
+  /** Puts every price that was set by hand back to the shelf price. */
+  putBackShelfPrices: () => void;
   /** The baskets read from the phone, for this shop. */
   loadHolds: (book: HoldBook, shop: string) => void;
   /** Puts the basket aside. The cart is emptied only when it was held. */
@@ -90,31 +102,42 @@ interface PosState {
 }
 
 /** What is held for a person at the till. The shop's item list is cleared too: it was loaded for one branch. */
-const NOTHING_HELD = { items: [], cart: [], currentShift: null, lastSale: null, flags: {} };
+const NOTHING_HELD = { items: [], cart: [], phoneAsOf: {}, currentShift: null, lastSale: null, flags: {}, serviceBook: null };
 
 export const usePosStore = create<PosState>((set, get) => ({
   owner: null,
   items: [],
   cart: [],
+  phoneAsOf: {},
   currentShift: null,
   lastSale: null,
   flags: {},
   holds: emptyBook(),
   holdsFor: null,
+  serviceBook: null,
   setItems: (items) => set({ items }),
   setFlags: (flags) => set({ flags }),
-  addToCart: (item) => {
-    const cart = addUnit(get().cart, item);
+  addToCart: (item, phoneAsOf = null) => {
+    const before = get().cart;
+    const cart = addUnit(before, item);
     if (!cart) return false;
+    set({ cart, phoneAsOf: markAdded(get().phoneAsOf, before, item.id, phoneAsOf) });
+    return true;
+  },
+  addWeighed: (item, thousandths, phoneAsOf = null) => {
+    const before = get().cart;
+    const cart = addWeight(before, item, thousandths);
+    if (!cart) return false;
+    set({ cart, phoneAsOf: markAdded(get().phoneAsOf, before, item.id, phoneAsOf) });
+    return true;
+  },
+  addServiceLine: (line) => {
+    const cart = addService(get().cart, line);
+    if (!cart || !line.service) return false;
     set({ cart });
     return true;
   },
-  addWeighed: (item, thousandths) => {
-    const cart = addWeight(get().cart, item, thousandths);
-    if (!cart) return false;
-    set({ cart });
-    return true;
-  },
+  setServiceBook: (serviceBook) => set({ serviceBook }),
   reweigh: (itemId, thousandths) => {
     const cart = setWeight(get().cart, itemId, thousandths);
     if (!cart) return false;
@@ -123,7 +146,7 @@ export const usePosStore = create<PosState>((set, get) => ({
   },
   updateQuantity: (itemId, quantity) => {
     const cart = setUnits(get().cart, itemId, quantity);
-    if (cart) set({ cart });
+    if (cart) set({ cart, phoneAsOf: keepMarksFor(cart, get().phoneAsOf) });
   },
   changePrice: (itemId, cents) => {
     const cart = setLinePrice(get().cart, itemId, cents);
@@ -131,20 +154,25 @@ export const usePosStore = create<PosState>((set, get) => ({
     set({ cart });
     return true;
   },
-  removeFromCart: (itemId) => set({ cart: removeLine(get().cart, itemId) }),
-  clearCart: () => set({ cart: [] }),
-  replaceCart: (cart) => set({ cart }),
+  removeFromCart: (itemId) => {
+    const cart = removeLine(get().cart, itemId);
+    set({ cart, phoneAsOf: keepMarksFor(cart, get().phoneAsOf) });
+  },
+  clearCart: () => set({ cart: [], phoneAsOf: {} }),
+  // A basket that is brought back has been checked against the shop, or said it could not be: it carries no marks.
+  replaceCart: (cart) => set({ cart, phoneAsOf: {} }),
   setShift: (currentShift) => set({ currentShift }),
   setLastSale: (lastSale) => set({ lastSale }),
+  putBackShelfPrices: () => set({ cart: backToShelf(get().cart) }),
   loadHolds: (holds, holdsFor) => set({ holds, holdsFor }),
   holdCurrent: (who, now, id) => {
     const result = holdCart(get().holds, get().cart, who, now, id);
-    if (result.ok) set({ holds: result.book, cart: [] });
+    if (result.ok) set({ holds: result.book, cart: [], phoneAsOf: {} });
     return result;
   },
   recallHold: (id, who, now, parkedId) => {
     const recalled = recallBasket(get().holds, get().cart, id, who, now, parkedId);
-    if (recalled) set({ holds: recalled.book, cart: recalled.lines });
+    if (recalled) set({ holds: recalled.book, cart: recalled.lines, phoneAsOf: {} });
     return recalled;
   },
   discardHold: (id, who) => set({ holds: dropBasket(get().holds, id, who) }),

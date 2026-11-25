@@ -58,8 +58,26 @@ export function buildRealtimeSocketUrl(
   return `${origin}${pathPart}?ticket=${encodeURIComponent(ticket)}`;
 }
 
-export function createRealtimeClient(baseURL: string, api?: ApiClient): RealtimeClient {
+/**
+ * Channels this client mints a ticket for and subscribes to on open. The server only fans a
+ * frame out to a session that has both been granted the channel (the ticket) and sent an explicit
+ * `subscribe` for it, so the two lists must agree. A caller that needs more — a till watching the
+ * `grocery` channel for counter-invoice frames — passes its own list via {@link RealtimeClientOptions}.
+ */
+export const DEFAULT_REALTIME_CHANNELS = ['notifications', 'pos', 'storefront'] as const;
+
+export interface RealtimeClientOptions {
+  /** Which channels to request and subscribe to. Defaults to {@link DEFAULT_REALTIME_CHANNELS}. */
+  channels?: readonly string[];
+}
+
+export function createRealtimeClient(
+  baseURL: string,
+  api?: ApiClient,
+  options?: RealtimeClientOptions,
+): RealtimeClient {
   const client = api ?? createApiClient({ baseURL });
+  const channels = options?.channels ?? DEFAULT_REALTIME_CHANNELS;
   let ws: WebSocket | null = null;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let reconnectAttempt = 0;
@@ -79,8 +97,18 @@ export function createRealtimeClient(baseURL: string, api?: ApiClient): Realtime
 
   async function mintTicket(): Promise<TicketResponse> {
     return client.post<TicketResponse>('/api/v1/realtime/tickets', {
-      channels: ['notifications', 'pos', 'storefront'],
+      channels: [...channels],
     });
+  }
+
+  function send(frame: Record<string, unknown>) {
+    if (ws && ws.readyState === 1 /* OPEN */) {
+      try {
+        ws.send(JSON.stringify(frame));
+      } catch {
+        // A socket that drops mid-send will reconnect; the subscribe replays on the next open.
+      }
+    }
   }
 
   function scheduleReconnect() {
@@ -103,14 +131,31 @@ export function createRealtimeClient(baseURL: string, api?: ApiClient): Realtime
 
       ws.onopen = () => {
         reconnectAttempt = 0;
+        // The server fans a channel's frames out only to sessions that have asked for it. The ticket
+        // granted these channels; now claim each one, or nothing but user-targeted frames arrives.
+        for (const channel of channels) {
+          send({ op: 'subscribe', channel });
+        }
         emitConnection('open');
       };
 
       ws.onmessage = (event) => {
         try {
-          const data = JSON.parse(String(event.data)) as { type?: string; event?: string; payload?: unknown };
-          const type = data.type ?? data.event ?? 'message';
-          emitEvent(type, data.payload ?? data);
+          const frame = JSON.parse(String(event.data)) as {
+            type?: string;
+            event?: string;
+            payload?: unknown;
+            data?: unknown;
+          };
+          const type = frame.type ?? frame.event ?? 'message';
+          // The heartbeat keeps the socket alive: a ping unanswered for ~40s is closed by the server.
+          if (type === 'ping') {
+            send({ op: 'pong' });
+            return;
+          }
+          // Server frames carry the body in `data`; older shapes used `payload`. Fall back to the
+          // whole frame so a subscriber still gets something it can read.
+          emitEvent(type, frame.data ?? frame.payload ?? frame);
         } catch {
           emitEvent('message', event.data);
         }

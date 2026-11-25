@@ -32,6 +32,16 @@ export interface CreateApiClientOptions {
   onAuthFailed?: () => void;
 }
 
+/**
+ * The client pinned to one shop, for anything that can outlive a shop switch or a sign-out (a queue sending in the
+ * background): its requests keep going to that shop, with that shop's own session, whichever shop is active by then. A
+ * client that cannot be pinned is returned as it is.
+ */
+export function pinnedTo(api: ApiClient, tenantId: string): ApiClient {
+  if (api.tenantId === tenantId) return api;
+  return api.forTenant?.(tenantId) ?? api;
+}
+
 export function createApiClient(options: CreateApiClientOptions): ApiClient {
   async function resolveTenant(): Promise<TenantContext | null> {
     if (options.getTenant) {

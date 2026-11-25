@@ -63,8 +63,19 @@ function withoutFamily(option: string, family: string): string {
   return after.replace(SEPARATORS, '').trim();
 }
 
+function isWordCharacter(character: string | undefined): boolean {
+  return character !== undefined && /[\p{L}\p{N}]/u.test(character);
+}
+
+/** Whether `part` is in `text` as whole words: "2kg" is in "Rice 2kg" but not in "Rice 12kg", and "2" is not in "Pack of 12". */
 function contains(text: string, part: string): boolean {
-  return text.toLowerCase().includes(part.toLowerCase());
+  if (part === '') return true;
+  const hay = text.toLowerCase();
+  const needle = part.toLowerCase();
+  for (let at = hay.indexOf(needle); at !== -1; at = hay.indexOf(needle, at + 1)) {
+    if (!isWordCharacter(hay[at - 1]) && !isWordCharacter(hay[at + needle.length])) return true;
+  }
+  return false;
 }
 
 /** The words to show for a product at the till. Never empty. */

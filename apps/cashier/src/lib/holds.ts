@@ -1,4 +1,4 @@
-import { cartCents, MAX_UNITS, onShelfPrice, type CartItem, type CartLine } from './cart';
+import { cartCents, MAX_UNITS, onShelfPrice, SERVICE_ID_PREFIX, type CartItem, type CartLine } from './cart';
 import { formatMoney, toCents } from './money';
 import { howToSell, MAX_WEIGHT_THOUSANDTHS } from './weight';
 
@@ -36,7 +36,8 @@ export const HOLD_LIFETIME_MS = 24 * 60 * 60 * 1000;
 /** The most lines one basket may have. */
 export const MAX_HELD_LINES = 100;
 
-const MAX_TEXT = 200;
+/** The longest product name a basket line may carry. The server allows 500 characters, and what the till adds stays inside this. */
+const MAX_NAME = 600;
 const MAX_PRICE = 10_000_000;
 
 export function emptyBook(): HoldBook {
@@ -51,9 +52,12 @@ function validLine(raw: unknown): CartLine | null {
   if (!raw || typeof raw !== 'object') return null;
   const line = raw as Record<string, unknown>;
   const itemId = text(line.itemId, 64);
-  const name = text(line.name, MAX_TEXT);
+  const name = text(line.name, MAX_NAME);
   const { quantity, unitPrice, shelfPrice } = line;
   if (!itemId || !name) return null;
+  // A basket with a service in it is never put on hold (`holdCart`), so a line like this was not written by the till:
+  // read back it would be a product with an id nobody sells, and the sale would be refused after the customer paid.
+  if (itemId.startsWith(SERVICE_ID_PREFIX) || line.service !== undefined) return null;
   if (typeof quantity !== 'number' || !Number.isFinite(quantity) || quantity <= 0) return null;
   if (typeof unitPrice !== 'number' || !Number.isFinite(unitPrice) || unitPrice <= 0 || unitPrice > MAX_PRICE) return null;
   const weighed = line.weighed === true;
@@ -131,12 +135,14 @@ export function parseHoldBook(raw: string | null, now: number): ParsedBook {
       damaged += 1;
       continue;
     }
-    if (now - Date.parse(basket.heldAt) > HOLD_LIFETIME_MS) {
+    if (isExpired(basket, now)) {
       expired += 1;
       continue;
     }
     seen.add(basket.id);
-    kept.push(basket);
+    // A time ahead of the phone's clock (the clock was set back, or what is stored was edited) would never run out.
+    // The basket is kept, and its day counts from now.
+    kept.push(Date.parse(basket.heldAt) > now ? { ...basket, heldAt: new Date(now).toISOString() } : basket);
   }
   kept.sort((a, b) => Date.parse(b.heldAt) - Date.parse(a.heldAt));
   const perHolder = new Map<string, number>();
@@ -161,10 +167,24 @@ function isMine(basket: HeldBasket, who: Holder): boolean {
   return basket.branchId === who.branchId && basket.userId === who.userId;
 }
 
-/** The baskets this person holds at this branch, the most recent first. */
-export function basketsOf(book: HoldBook, who: Holder): HeldBasket[] {
+/** A basket is expired only when the clock plainly says it is a day old: a clock that cannot be read never expires one. */
+function isExpired(basket: HeldBasket, now: number): boolean {
+  return now - Date.parse(basket.heldAt) > HOLD_LIFETIME_MS;
+}
+
+/**
+ * The book without the baskets that have passed their day. A till that stays open for days never reads the phone again,
+ * so what was held must be counted out here as well as when it is read.
+ */
+export function withoutExpired(book: HoldBook, now: number): HoldBook {
+  const live = book.baskets.filter((basket) => !isExpired(basket, now));
+  return live.length === book.baskets.length ? book : { baskets: live };
+}
+
+/** The baskets this person holds at this branch that are still within their day, the most recent first. */
+export function basketsOf(book: HoldBook, who: Holder, now: number): HeldBasket[] {
   return book.baskets
-    .filter((basket) => isMine(basket, who))
+    .filter((basket) => isMine(basket, who) && !isExpired(basket, now))
     .sort((a, b) => Date.parse(b.heldAt) - Date.parse(a.heldAt));
 }
 
@@ -178,16 +198,20 @@ function freeLabel(mine: readonly HeldBasket[]): string {
 
 export type HoldResult =
   | { ok: true; book: HoldBook; basket: HeldBasket }
-  | { ok: false; reason: 'empty' | 'full' | 'big' };
+  | { ok: false; reason: 'empty' | 'full' | 'big' | 'unreadable' | 'service' };
 
 /**
- * Puts the basket aside. Nothing to hold, a basket too big to be read back from the phone, or a person already at
- * `MAX_HELD`, is refused and changes nothing.
+ * Puts the basket aside. Nothing to hold, a basket too big or too odd to be read back from the phone, or a person
+ * already at `MAX_HELD`, is refused and changes nothing.
  */
 export function holdCart(book: HoldBook, cart: readonly CartLine[], who: Holder, now: number, id: string): HoldResult {
   if (cart.length === 0) return { ok: false, reason: 'empty' };
+  // What was chosen on a service, and who did it, is not kept with a held basket: it would come back as a product.
+  if (cart.some((line) => line.service !== undefined)) return { ok: false, reason: 'service' };
   if (cart.length > MAX_HELD_LINES) return { ok: false, reason: 'big' };
-  const mine = basketsOf(book, who);
+  // What has run out is not counted against the person, and is not saved again.
+  const live = withoutExpired(book, now);
+  const mine = basketsOf(live, who, now);
   if (mine.length >= MAX_HELD) return { ok: false, reason: 'full' };
   const basket: HeldBasket = {
     id,
@@ -197,7 +221,12 @@ export function holdCart(book: HoldBook, cart: readonly CartLine[], who: Holder,
     heldAt: new Date(now).toISOString(),
     lines: cart.map((line) => ({ ...line })),
   };
-  return { ok: true, book: { baskets: [basket, ...book.baskets] }, basket };
+  // A basket the phone could not read back must not be put aside: it would be on hold until the app closes, and gone
+  // after, with nothing said. What is saved is read the way it will be read, and only a basket that survives is held.
+  if (parseHoldBook(serializeHoldBook({ baskets: [basket] }), now).book.baskets.length !== 1) {
+    return { ok: false, reason: 'unreadable' };
+  }
+  return { ok: true, book: { baskets: [basket, ...live.baskets] }, basket };
 }
 
 /** Throws one basket away. Only the person who held it can. */
@@ -216,7 +245,8 @@ export interface Recalled {
 
 /**
  * Picks a held basket up. A basket already being rung is put on hold first, so picking one up never throws a sale
- * away. Null when the basket is not there, is someone else's, or the basket in front of the cashier cannot be put aside.
+ * away. Null when the basket is not there, is someone else's, has run out, or the basket in front of the cashier cannot
+ * be put aside.
  */
 export function recallBasket(
   book: HoldBook,
@@ -226,7 +256,7 @@ export function recallBasket(
   now: number,
   parkedId: string
 ): Recalled | null {
-  const basket = book.baskets.find((candidate) => candidate.id === id && isMine(candidate, who));
+  const basket = book.baskets.find((candidate) => candidate.id === id && isMine(candidate, who) && !isExpired(candidate, now));
   if (!basket) return null;
   const without = dropBasket(book, id, who);
   if (cart.length === 0) return { book: without, lines: basket.lines.map((line) => ({ ...line })), basket, parked: null };

@@ -14,7 +14,11 @@ export interface ItemType {
   name: string;
 }
 
-/** The kinds of product the shop has (`GET /api/v1/item-types`): a bare list, or a page. Unreadable rows are left out. */
+/**
+ * The kinds of product the shop has (`GET /api/v1/item-types`): a bare list, or a page. The server calls what a kind
+ * is called its `label` (an older shape said `name`). A kind the owner has switched off is left out, and so is a row
+ * that is not readable.
+ */
 export function parseItemTypes(response: unknown): ItemType[] {
   const rows = Array.isArray(response)
     ? response
@@ -25,8 +29,9 @@ export function parseItemTypes(response: unknown): ItemType[] {
   for (const row of rows) {
     if (!row || typeof row !== 'object') continue;
     const record = row as Record<string, unknown>;
+    if (record.active === false) continue;
     const id = typeof record.id === 'string' ? record.id.trim() : '';
-    const name = cleanDisplayText(record.name, 60);
+    const name = cleanDisplayText(record.label ?? record.name, 60);
     if (id && id.length <= 64 && name) types.push({ id, name });
   }
   return types.sort((a, b) => a.name.localeCompare(b.name));
@@ -41,11 +46,13 @@ export interface ProductForm {
   /** How many are on the shelf now. Empty leaves it to the server, which starts a new product at 1. */
   stock: string;
   typeId: string | null;
+  /** The category it goes under. Optional; a product with no category still sells. */
+  categoryId: string | null;
   /** Sold by weight, in kilograms. */
   byWeight: boolean;
 }
 
-export const EMPTY_FORM: ProductForm = { name: '', price: '', cost: '', barcode: '', stock: '', typeId: null, byWeight: false };
+export const EMPTY_FORM: ProductForm = { name: '', price: '', cost: '', barcode: '', stock: '', typeId: null, categoryId: null, byWeight: false };
 
 /** The request the server takes to add a product at this till's branch (`POST /api/v1/pos/quick-items`). */
 export interface QuickCreateBody {
@@ -57,6 +64,7 @@ export interface QuickCreateBody {
   buyingPrice?: number;
   barcode?: string;
   initialStockQty?: number;
+  categoryId?: string;
 }
 
 export type ProductField = 'name' | 'type' | 'price' | 'cost' | 'barcode' | 'stock';
@@ -66,7 +74,10 @@ export type ProductCheck =
   | { ok: false; field: ProductField; words: string };
 
 const MAX_NAME_CHARACTERS = 120;
-const BARCODE = /^[A-Za-z0-9._-]{4,64}$/;
+/** What the server takes out of a barcode before it keeps it: spaces, dashes, dots and underscores. */
+const BARCODE_PUNCTUATION = /[\s\-._]/g;
+/** What is left must be digits: the server keeps no other kind of barcode, and drops one without saying so. */
+const BARCODE_DIGITS = /^\d{4,64}$/;
 const WHOLE_STOCK = /^\d{1,5}$/;
 
 /** Reads the form: the first thing wrong with it, in words for the cashier, or the request to send. */
@@ -90,9 +101,10 @@ export function checkProduct(form: ProductForm, branchId: string, types: readonl
     if (cost > 0) buyingPrice = fromCents(cost);
   }
 
-  const barcode = form.barcode.trim();
-  if (barcode !== '' && !BARCODE.test(barcode)) {
-    return { ok: false, field: 'barcode', words: 'A barcode is letters and digits, 4 to 64 of them, with no spaces.' };
+  // Sent as the server will keep it, so that what the till shows is what the shop has.
+  const barcode = form.barcode.replace(BARCODE_PUNCTUATION, '');
+  if (barcode !== '' && !BARCODE_DIGITS.test(barcode)) {
+    return { ok: false, field: 'barcode', words: 'A barcode is 4 to 64 digits. Spaces and dashes are left out.' };
   }
 
   let initialStockQty: number | undefined;
@@ -122,6 +134,7 @@ export function checkProduct(form: ProductForm, branchId: string, types: readonl
       ...(buyingPrice !== undefined ? { buyingPrice } : {}),
       ...(barcode !== '' ? { barcode } : {}),
       ...(initialStockQty !== undefined ? { initialStockQty } : {}),
+      ...(form.categoryId ? { categoryId: form.categoryId } : {}),
     },
   };
 }

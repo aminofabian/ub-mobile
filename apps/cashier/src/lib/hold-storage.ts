@@ -3,6 +3,11 @@ import { createHoldKeeper, type HoldKeeper } from './hold-keeper';
 
 const keepers = new Map<string, HoldKeeper>();
 
+/** Lets go of the keeper held in memory for a shop, when the phone is no longer a till there. */
+export function dropHoldKeeper(tenantId: string): void {
+  keepers.delete(tenantId);
+}
+
 /**
  * The one keeper of a shop's held baskets on this phone. Every screen shares it, so two saves never overlap and the
  * last one asked for is the last one written.

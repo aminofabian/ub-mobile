@@ -14,6 +14,13 @@ export const FLAG = {
   createProduct: 'pos.cashier_create_product',
   /** Cashiers may mark a product as sold by weight. On unless the owner turns it off. */
   weighedToggle: 'pos.cashier_weighed_toggle',
+  /** Cashiers may record a cash pay-out (drawout) from an open till. Off unless the owner turns it on. */
+  drawout: 'pos.cashier_drawout',
+  /**
+   * Not one of the server's settings: the till sets it itself from the formats the shop runs (see `parseShopFlags`), so
+   * that a till which starts with no connection still offers services.
+   */
+  sellsServices: 'kiosk.sells_services',
 } as const;
 
 /** The permissions the till reads. */
@@ -22,10 +29,37 @@ export const PERMISSION = {
   setPrice: 'pricing.sell_price.set',
   writeCatalog: 'catalog.items.write',
   readWebOrders: 'storefront.orders.read',
+  /** Void any sale: what lets a person throw away a paid sale that was never sent. */
+  voidAny: 'sales.void.any',
+  /** Void a sale the person rang up themselves. */
+  voidOwn: 'sales.void.own',
+  /** See customers' outstanding credit tabs and propose a repayment (which goes for approval). */
+  readCredits: 'credits.customers.read',
+  /** Sell airtime from the till. */
+  sellAirtime: 'airtime.sell',
+  /** Open a shift. */
+  openShift: 'shifts.open',
+  /** Close a shift. */
+  closeShift: 'shifts.close',
+  /** Read the shop's parked POS drafts. */
+  readDrafts: 'pos.drafts.read',
+  /** Park and clear POS drafts. */
+  writeDrafts: 'pos.drafts.write',
 } as const;
 
 const MAX_FLAGS = 200;
 const FLAG_NAME = /^[A-Za-z0-9_.:-]{1,80}$/;
+
+/** The real booleans with plain names among the first `max` entries of a map. A flag called `leave` is not read. */
+function booleans(raw: unknown, max: number, leave: string | null): Record<string, boolean> {
+  const flags: Record<string, boolean> = {};
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    for (const [name, value] of Object.entries(raw as Record<string, unknown>).slice(0, max)) {
+      if (typeof value === 'boolean' && FLAG_NAME.test(name) && name !== leave) flags[name] = value;
+    }
+  }
+  return flags;
+}
 
 /**
  * The shop's feature flags from `GET /api/v1/businesses/me`. Only real booleans with plain names are read: a flag the
@@ -33,13 +67,66 @@ const FLAG_NAME = /^[A-Za-z0-9_.:-]{1,80}$/;
  */
 export function parseShopFlags(body: unknown): ShopFlags {
   if (!body || typeof body !== 'object') return {};
-  const raw = (body as { featureFlags?: unknown }).featureFlags;
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
-  const flags: Record<string, boolean> = {};
-  for (const [name, value] of Object.entries(raw as Record<string, unknown>).slice(0, MAX_FLAGS)) {
-    if (typeof value === 'boolean' && FLAG_NAME.test(name)) flags[name] = value;
-  }
+  const { featureFlags: raw, profile, onboarding } = body as { featureFlags?: unknown; profile?: unknown; onboarding?: unknown };
+  // The mark for services is the till's own, and the server has no setting of that name: one that came under it would
+  // be believed either way, so it is not read.
+  const flags = booleans(raw, MAX_FLAGS, FLAG.sellsServices);
+  // A shop that runs a service format sells services. The record says so under `profile`, which the till reads here
+  // and keeps with the flags, so that it needs no second request.
+  if (runsServices(profile, onboarding)) flags[FLAG.sellsServices] = true;
   return flags;
+}
+
+/** The shop formats that sell services: the server's own list (ADR 0014), and how it decides a shop is one. */
+const SERVICE_FORMATS: readonly string[] = ['barbershop', 'salon', 'spa', 'nail-studio', 'beauty-parlour'];
+
+/** The formats a record names: its list of them, or the one the shop started with when it lists none. */
+function formatsIn(record: unknown): string[] {
+  if (!record || typeof record !== 'object') return [];
+  const { storeTypes, storeType } = record as { storeTypes?: unknown; storeType?: unknown };
+  const listed = Array.isArray(storeTypes) ? storeTypes.filter((format): format is string => typeof format === 'string' && format.trim() !== '') : [];
+  if (listed.length > 0) return listed;
+  return typeof storeType === 'string' && storeType.trim() !== '' ? [storeType] : [];
+}
+
+/**
+ * Whether any of the formats the shop runs sells services. The profile says which, and when it names none the answers
+ * given in the shop's setup do: the web and the server read them in that order too.
+ */
+function runsServices(profile: unknown, onboarding: unknown): boolean {
+  const answers = onboarding && typeof onboarding === 'object' ? (onboarding as { answers?: unknown }).answers : undefined;
+  const fromProfile = formatsIn(profile);
+  const formats = fromProfile.length > 0 ? fromProfile : formatsIn(answers);
+  return formats.some((format) => SERVICE_FORMATS.includes(format.trim().toLowerCase()));
+}
+
+/** How long what the shop last said is believed by a till that cannot ask again: a week. After that the till offers only what the person's own permissions allow. */
+export const STORED_FLAGS_LIFETIME_MS = 7 * 24 * 60 * 60_000;
+
+/** The settings as they are kept on the phone, with when the shop said them. */
+export function encodeStoredFlags(flags: ShopFlags, at: number): string {
+  return JSON.stringify({ v: 1, at: Math.trunc(at), flags });
+}
+
+/**
+ * What the phone kept of the shop's settings, for a till that starts with no connection. Believed only while it is
+ * recent and not from the future; anything that is not a plain true or false is left out, as when the shop sends it.
+ * Null when there is nothing to believe: the till then offers only what the person's own permissions allow.
+ */
+export function parseStoredFlags(text: string | null, now: number): ShopFlags | null {
+  if (!text) return null;
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const record = value as { v?: unknown; at?: unknown; flags?: unknown };
+  if (record.v !== 1 || typeof record.at !== 'number' || !Number.isFinite(record.at)) return null;
+  if (record.at > now || now - record.at > STORED_FLAGS_LIFETIME_MS) return null;
+  // What the phone kept is the till's own copy, the mark for services included: the shop's settings and then the mark.
+  return booleans(record.flags, MAX_FLAGS + 1, null);
 }
 
 function holds(permissions: readonly string[], key: string): boolean {
@@ -72,7 +159,42 @@ export function mayListWebOrders(permissions: readonly string[]): boolean {
   return holds(permissions, PERMISSION.readWebOrders);
 }
 
+/** Viewing customers' credit tabs and proposing a repayment needs the credits-read permission. */
+export function mayManageCredit(permissions: readonly string[]): boolean {
+  return holds(permissions, PERMISSION.readCredits);
+}
+
+/** Voiding a sale needs the right to void any sale, or to void one's own. */
+export function mayVoidSale(permissions: readonly string[]): boolean {
+  return holds(permissions, PERMISSION.voidAny) || holds(permissions, PERMISSION.voidOwn);
+}
+
+/** Selling airtime needs the airtime-sell permission. */
+export function maySellAirtime(permissions: readonly string[]): boolean {
+  return holds(permissions, PERMISSION.sellAirtime);
+}
+
+/** Parking and resuming POS drafts needs both read and write on drafts. */
+export function mayUseDrafts(permissions: readonly string[]): boolean {
+  return holds(permissions, PERMISSION.readDrafts) && holds(permissions, PERMISSION.writeDrafts);
+}
+
+/**
+ * Recording a cash pay-out from the till needs the right to work a shift AND the shop to have turned
+ * on cashier drawouts. (The server also checks a per-cashier access list; a refusal there is handled
+ * when the call is made.)
+ */
+export function mayDrawout(flags: ShopFlags, permissions: readonly string[]): boolean {
+  const worksShift = holds(permissions, PERMISSION.openShift) || holds(permissions, PERMISSION.closeShift);
+  return worksShift && flags[FLAG.drawout] === true;
+}
+
 /** Moving a paid web order along (confirm, ready, complete) is open to anyone who can sell, or see web orders. */
 export function mayAdvanceWebOrders(permissions: readonly string[]): boolean {
   return holds(permissions, PERMISSION.sell) || holds(permissions, PERMISSION.readWebOrders);
+}
+
+/** Selling services: the shop runs a service format, and this person may sell (the server's own condition for reading the list). */
+export function mayShowServices(flags: ShopFlags, permissions: readonly string[]): boolean {
+  return flags[FLAG.sellsServices] === true && holds(permissions, PERMISSION.sell);
 }

@@ -1,8 +1,8 @@
 import React from 'react';
-import { StyleSheet, Text, TouchableOpacity } from 'react-native';
+import { StyleSheet, Text } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { theme } from '@kiosk/ui';
+import { FONT, MART, PressableScale, RADIUS, SPACE, tint } from '@kiosk/staff';
 import { useUnsentSales } from '../hooks/useUnsentSales';
 import type { CashierStackParamList } from '../navigation/AppNavigator';
 
@@ -22,28 +22,30 @@ export function UnsentBadge() {
     stuck ? `, ${needsAttention} of them ${needsAttention === 1 ? 'needs' : 'need'} attention` : ''
   }. Open unsent sales.`;
   return (
-    <TouchableOpacity
+    <PressableScale
       onPress={() => navigation.navigate('Conflicts')}
+      hitSlop={6}
       accessibilityRole="button"
       accessibilityLabel={spoken}
       style={[styles.pill, stuck ? styles.stuck : styles.waiting]}
     >
       <Text style={[styles.text, stuck ? styles.stuckText : styles.waitingText]}>{label}</Text>
-    </TouchableOpacity>
+    </PressableScale>
   );
 }
 
 const styles = StyleSheet.create({
   pill: {
-    paddingVertical: theme.spacing.xs,
-    paddingHorizontal: theme.spacing.sm,
-    borderRadius: theme.borderRadius.xl,
-    minHeight: 32,
+    paddingVertical: SPACE.xs,
+    paddingHorizontal: SPACE.md,
+    borderRadius: RADIUS.pill,
+    minHeight: 34,
     justifyContent: 'center',
+    borderWidth: 1,
   },
-  waiting: { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border },
-  stuck: { backgroundColor: theme.colors.warning },
-  text: { fontSize: 13, fontWeight: '600' },
-  waitingText: { color: theme.colors.text },
-  stuckText: { color: '#212529' },
+  waiting: { backgroundColor: MART.paperElevated, borderColor: MART.borderStrong },
+  stuck: { backgroundColor: MART.warningSurface, borderColor: tint(MART.warning, 0.3) },
+  text: { fontSize: 12, fontFamily: FONT.semibold },
+  waitingText: { color: MART.ink },
+  stuckText: { color: MART.warning },
 });

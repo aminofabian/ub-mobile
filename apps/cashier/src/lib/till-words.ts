@@ -1,7 +1,13 @@
-import { isApiError } from '@kiosk/core';
-import { MAX_UNITS } from './cart';
+import { cleanDisplayText, isApiError } from '@kiosk/core';
+import { MAX_UNITS, type CartLine } from './cart';
 import { MAX_HELD, MAX_HELD_LINES, type HoldResult, type ParsedBook } from './holds';
 import { formatKg, MAX_WEIGHT_THOUSANDTHS } from './weight';
+
+/** A screen's title with the branch the till is at, so a person who works at several always sees where they are ringing. */
+export function titleAt(base: string, branchName: string | null | undefined): string {
+  const where = cleanDisplayText(branchName ?? '', 40);
+  return where ? `${base} · ${where}` : base;
+}
 
 /** What to tell the cashier when the products could not be loaded. */
 export function describeItemsFailure(error: unknown): string {
@@ -9,6 +15,43 @@ export function describeItemsFailure(error: unknown): string {
     return 'Your role is not allowed to look up products. Ask the owner to allow it.';
   }
   return 'Could not load products. Check the connection and try again.';
+}
+
+/**
+ * Said at the till when a price was set by hand and this person may not change prices. The server refuses such a sale,
+ * and says so only after the customer has paid: so the till says it first.
+ */
+export function describeHandPrices(lines: readonly CartLine[]): string {
+  const names = lines.slice(0, 3).map((line) => cleanDisplayText(line.name, 40) || 'An item');
+  const more = lines.length - names.length;
+  const list = more > 0 ? `${names.join(', ')} and ${more} more` : names.join(', ');
+  const plural = lines.length !== 1;
+  return `${list} ${plural ? 'have prices that were set by hand' : 'has a price that was set by hand'}, and you may not change prices here. Use the shelf ${plural ? 'prices' : 'price'}, or ask someone who may.`;
+}
+
+/** The button that answers `describeHandPrices`. */
+export const USE_SHELF_PRICES = 'Use shelf prices';
+
+/**
+ * What a barcode that no product has is called on screen: what was scanned may be anything a code can hold, so it is
+ * cleaned and cut. From the phone's own list, "no product" only means "not on the list saved here".
+ */
+export function describeNoBarcode(scanned: unknown, onPhone = false): string {
+  const code = cleanDisplayText(scanned, 40);
+  if (onPhone) {
+    return code
+      ? `The list saved on this phone has no product with the barcode ${code}. It may be a product added since.`
+      : 'The list saved on this phone has no product with that barcode. It may be a product added since.';
+  }
+  return code ? `No product has the barcode ${code}.` : 'No product has that barcode.';
+}
+
+/** What to tell the cashier when the pending grocery invoices could not be loaded, or one could not be paid. Never the server's own words. */
+export function describeInvoiceFailure(error: unknown, doing: 'load' | 'pay'): string {
+  if (isApiError(error) && error.status === 403) return 'Your role is not allowed to do that. Ask the owner to allow it.';
+  return doing === 'load'
+    ? 'Could not load the invoices. Check the connection and try again.'
+    : 'The invoice may not have been paid. Look at the list again before trying once more.';
 }
 
 /** Why a basket was not put on hold. Empty when it was. */
@@ -21,6 +64,10 @@ export function holdRefusalWords(result: HoldResult): string {
       return `A basket on hold can have ${MAX_HELD_LINES} items at most. Take some out, or finish this sale first.`;
     case 'empty':
       return 'Add something to the basket first.';
+    case 'unreadable':
+      return 'Something in this basket cannot be kept on this phone, so it cannot be put on hold. Finish this sale, or take out the last item you added.';
+    case 'service':
+      return 'A sale with a service in it cannot be put on hold. Finish this sale, or take the service out first.';
   }
 }
 
@@ -54,7 +101,7 @@ export const HOLDS_NOT_READ =
 
 /** Said when picking a basket up was refused. */
 export const RECALL_REFUSED =
-  `That basket could not be picked up. It may be gone, or you may already hold ${MAX_HELD} baskets: finish or throw one away first.`;
+  'That basket could not be picked up. It may have run out (a basket is kept for a day). If you are ringing a sale, it may be one that cannot be put aside: finish it first.';
 
 /** Why one more of a counted item, or more weight of a weighed one, was refused (the item itself can be sold). */
 export function describeAddRefusal(weighed: boolean): string {

@@ -151,7 +151,7 @@ export function WebOrdersScreen({ api, branchId, person }: Props) {
               {!order.paid ? <Text variant="caption">Not paid yet. Payment is taken online or by the owner.</Text> : null}
               <View style={styles.buttons}>
                 {order.phone ? (
-                  <Button title="Call" variant="secondary" onPress={() => void dial(order)} style={styles.button} />
+                  <Button title={`Call ${order.phone}`} variant="secondary" onPress={() => void dial(order)} style={styles.button} />
                 ) : null}
                 {step ? (
                   <Button

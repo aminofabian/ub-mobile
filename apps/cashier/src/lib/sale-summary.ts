@@ -17,6 +17,8 @@ export interface SummarySale {
   payments?: { method?: string | null; amount?: number | null; reference?: string | null }[] | null;
   items?: {
     itemId?: string | null;
+    /** What kind of line it is: `SERVICE` for a service. A product, and a line the server does not say, have none or another. */
+    lineKind?: string | null;
     displayName?: string | null;
     lineLabel?: string | null;
     quantity?: number | null;
@@ -69,6 +71,9 @@ const money = (amount: number | null | undefined): string => {
   return cents === null ? '—' : formatMoney(cents);
 };
 
+/** The most the server keeps of a line's label. */
+const SERVICE_LABEL_MAX = 255;
+
 export function buildSaleSummary(
   sale: SummarySale,
   options: { shopName?: string; soldAt?: string | Date; changeCents?: number } = {}
@@ -77,9 +82,19 @@ export function buildSaleSummary(
 
   const items = (sale.items ?? []).map((line) => {
     // Names come from the server and end up in a shared text: one line each, so a name cannot add lines of its own.
+    const service = line.lineKind === 'SERVICE';
     const display = cleanDisplayText(line.displayName, 80);
-    const label = cleanDisplayText(line.lineLabel, 80);
-    const name = display && label && display !== label ? `${display} (${label})` : display || label || 'Item';
+    // A service's label is its name and what was chosen on it, and the server keeps up to 255 characters of it: cut
+    // shorter, "Braids (Long, Extra packs, Wash" would end in the middle of a choice.
+    const label = cleanDisplayText(line.lineLabel, service ? SERVICE_LABEL_MAX : 80);
+    // A service's label is made by the server to be read whole ("Braids (Long, Extra packs)"): it already starts with the
+    // service's name, so putting the name in front of it again would say the name twice.
+    const name =
+      service && label
+        ? label
+        : display && label && display !== label
+          ? `${display} (${label})`
+          : display || label || 'Item';
     const quantity = typeof line.quantity === 'number' ? line.quantity : NaN;
     const unit = typeof line.unitPrice === 'number' ? line.unitPrice : NaN;
     const computed = lineCents(quantity, unit);
@@ -140,12 +155,32 @@ export function buildSaleSummary(
   };
 }
 
-/** "2 x Bread, 1 x Milk, +3 more": what was in a sale, in a line a manager can use to find it again. */
-export function saleLabel(cart: { name: string; quantity: number }[], show = 3, maxLength = 160): string {
-  const named = cart.slice(0, show).map((line) => `${quantityText(line.quantity)} x ${line.name.trim() || 'Item'}`);
+/**
+ * "2 x Bread, 1 x Milk, +3 more": what was in a sale, in a line a manager can use to find it again. A service says who
+ * did it ("1 x Haircut by Wanjiku"): the sale is the only record of whose work it was until it reaches the server.
+ */
+export function saleLabel(cart: { name: string; quantity: number; service?: { performerName: string } }[], show = 3, maxLength = 160): string {
+  const named = cart.slice(0, show).map((line) => {
+    const what = `${quantityText(line.quantity)} x ${line.name.trim() || 'Item'}`;
+    const by = line.service ? cleanDisplayText(line.service.performerName, 60) : '';
+    return by ? `${what} by ${by}` : what;
+  });
   const rest = cart.length - named.length;
   const label = rest > 0 ? `${named.join(', ')}, +${rest} more` : named.join(', ');
   return label.length > maxLength ? `${label.slice(0, maxLength - 1)}…` : label;
+}
+
+/** The entries of a list that are objects. A queued request is read back from the phone's storage: nothing in it is trusted to be the shape it was written in. */
+export function objectsIn<T extends object>(list: unknown): T[] {
+  return Array.isArray(list) ? (list.filter((entry) => entry !== null && typeof entry === 'object') as T[]) : [];
+}
+
+/** Whether a queued sale includes an M-Pesa payment: the customer has paid, and the sale is the only record of it. */
+export function paidByMpesa(item: { body?: unknown }): boolean {
+  const body = item.body as { payments?: unknown } | null | undefined;
+  return objectsIn<{ method?: string }>(body?.payments).some(
+    (payment) => payment.method === 'mpesa_manual' || payment.method === 'mpesa'
+  );
 }
 
 /**
@@ -153,11 +188,7 @@ export function saleLabel(cart: { name: string; quantity: number }[], show = 3, 
  * is already with the shop, and without the sale nothing on this phone records that.
  */
 export function discardWarning(item: { body?: unknown }): string {
-  const body = item.body as { payments?: unknown } | null | undefined;
-  const mpesa =
-    Array.isArray(body?.payments) &&
-    (body.payments as { method?: string }[]).some((payment) => payment.method === 'mpesa_manual' || payment.method === 'mpesa');
-  return mpesa
+  return paidByMpesa(item)
     ? "This sale includes an M-Pesa payment, so the customer has already paid. If it is discarded nothing records that the sale happened. It will not be sent to the server, and it cannot be brought back."
     : 'It will not be sent to the server, and it cannot be brought back.';
 }
@@ -171,11 +202,9 @@ export function describeQueuedItem(item: { method: string; path: string; body?: 
   if (item.path !== '/api/v1/sales' || !body || !Array.isArray(body.lines)) {
     return { title: `${item.method} ${item.path}`, detail: item.label?.trim() || null };
   }
-  const lines = body.lines as { quantity: number; unitPrice: number }[];
+  const lines = objectsIn<{ quantity: number; unitPrice: number }>(body.lines);
   const total = totalCents(lines.map((line) => ({ quantity: Number(line.quantity), unitPrice: Number(line.unitPrice) })));
-  const methods = Array.isArray(body.payments)
-    ? [...new Set((body.payments as { method?: string }[]).map((payment) => methodLabel(payment.method)))]
-    : [];
+  const methods = [...new Set(objectsIn<{ method?: string }>(body.payments).map((payment) => methodLabel(payment.method)))];
   const count = `${lines.length} ${lines.length === 1 ? 'item' : 'items'}`;
   return {
     title: total === null ? 'Sale' : `Sale of ${formatMoney(total)}`,

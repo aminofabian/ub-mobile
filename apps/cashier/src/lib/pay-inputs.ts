@@ -14,6 +14,14 @@ export interface PayInputs {
   code: string;
 }
 
+/**
+ * Whether the way of paying has to wait for a connection. Credit is the shop's to allow: the customer is found, and the
+ * credit limit checked, by the shop, which the till cannot ask with no line.
+ */
+export function creditNeedsConnection(mode: PayMode, offline: boolean): boolean {
+  return mode === 'credit' && offline;
+}
+
 export type Shares =
   | { ok: true; tenders: Tender[]; mpesaCents: number; cashCents: number }
   | { ok: false; message: string };

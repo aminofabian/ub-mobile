@@ -1,5 +1,6 @@
 import { isApiError } from '@kiosk/core';
 import { classifyReplayFailure } from '@kiosk/offline';
+import type { ServiceTag } from './cart';
 import { formatMoney, toCents } from './money';
 import type { PayMode } from './pay-inputs';
 import { serverWords } from './server-words';
@@ -13,12 +14,50 @@ export interface BasketLine {
   itemId: string;
   quantity: number;
   unitPrice: number;
+  /** Present when the line is a service: the sale then names the service and who did it, and no product. */
+  service?: ServiceTag;
+}
+
+/** A product line of a sale. */
+export interface GoodsSaleLine {
+  itemId: string;
+  quantity: number;
+  unitPrice: number;
+}
+
+/** A service line of a sale: no product, but the service, who did it and what was chosen on it. */
+export interface ServiceSaleLine {
+  kind: 'SERVICE';
+  serviceId: string;
+  performerStaffProfileId: string;
+  quantity: number;
+  unitPrice: number;
+  /** What was chosen on the service (a length, an extra). Left out when nothing was. */
+  modifierOptionIds?: string[];
+}
+
+export type SaleLine = GoodsSaleLine | ServiceSaleLine;
+
+/** One basket line as the server's sale request takes it. A service never carries the made-up id the basket keeps it under. */
+export function saleLineOf(line: BasketLine): SaleLine {
+  const { service } = line;
+  if (service) {
+    return {
+      kind: 'SERVICE',
+      serviceId: service.serviceId,
+      performerStaffProfileId: service.performerId,
+      quantity: line.quantity,
+      unitPrice: line.unitPrice,
+      ...(service.optionIds.length > 0 ? { modifierOptionIds: [...service.optionIds] } : {}),
+    };
+  }
+  return { itemId: line.itemId, quantity: line.quantity, unitPrice: line.unitPrice };
 }
 
 export interface SaleBody {
   branchId: string;
   customerId?: string;
-  lines: { itemId: string; quantity: number; unitPrice: number }[];
+  lines: SaleLine[];
   payments: SalePayment[];
   /** The notes the customer handed over, when they were recorded. */
   cashReceived?: number;
@@ -38,7 +77,7 @@ export function buildSaleBody(input: {
   return {
     branchId,
     ...(customerId ? { customerId } : {}),
-    lines: cart.map((line) => ({ itemId: line.itemId, quantity: line.quantity, unitPrice: line.unitPrice })),
+    lines: cart.map((line) => saleLineOf(line)),
     payments,
     ...(cashReceived !== undefined ? { cashReceived } : {}),
     clientSoldAt: soldAt.toISOString(),
@@ -91,15 +130,28 @@ export function isSaleRefusal(error: unknown): boolean {
   return classifyReplayFailure(error) === 'refused';
 }
 
-/** What to tell the cashier when the server refused a sale. */
-export function describeSaleRefusal(error: unknown, options: { mpesaPaid?: boolean } = {}): string {
+/**
+ * Said when a sale with a service in it is refused. The server turns a service down for a price that is not the
+ * service's now, or for a person who may no longer do it, and a basket holds the price and the person it was made with.
+ */
+export const SERVICE_CHANGED_WORDS =
+  'If a service was changed in the shop (its price, or who does it), take it out of the basket and add it again from Services.';
+
+/** What to tell the cashier when the server refused a sale. `hasService`: the basket has a service in it. */
+export function describeSaleRefusal(error: unknown, options: { mpesaPaid?: boolean; typedCode?: boolean; hasService?: boolean } = {}): string {
   const said = isApiError(error) ? serverWords(error.message) : '';
   const reason = said ? `: ${said}` : '.';
   const head = `The server did not accept this sale${reason}`;
+  // A prompt that was paid is the stronger fact: the sale is kept for a manager and another prompt would be a second payment.
+  // A code the cashier typed is the cashier's to put right (a wrong digit, a wrong amount), but the money is the shop's already.
   const ending = options.mpesaPaid
     ? 'The customer has already paid by M-Pesa, so do not send another prompt. Ask your manager.'
-    : 'Nothing was recorded. Check the payment and try again.';
-  return `${head}${head.endsWith('.') ? '' : '.'} ${ending}`;
+    : options.typedCode
+      ? 'Nothing was recorded, and the customer has paid by M-Pesa with the code you typed. Check the code and the amount and try again. If it is still not accepted, ask your manager before the customer leaves.'
+      : 'Nothing was recorded. Check the payment and try again.';
+  // Not when the customer has paid by M-Pesa: the sale is then the manager's to settle, not to be put together again.
+  const service = options.hasService && !options.mpesaPaid ? ` ${SERVICE_CHANGED_WORDS}` : '';
+  return `${head}${head.endsWith('.') ? '' : '.'} ${ending}${service}`;
 }
 
 /**

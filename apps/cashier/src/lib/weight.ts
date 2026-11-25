@@ -120,3 +120,39 @@ export function previewWeighedLine(unitPrice: number, text: string): WeighedPrev
   if (totalCents === null) return { ok: false, words: 'This item has no usable price.' };
   return { ok: true, thousandths: entry.thousandths, weight: formatKg(entry.thousandths), totalCents };
 }
+
+/**
+ * The weight that a given amount of money buys at a per-kilogram price — so a cashier can serve "KES
+ * 100 of sugar" without doing the division. At KES 180/kg, 100 shillings is 100/180 = 0.556 kg. The
+ * weight is rounded to the gram (the scale's own step), and the money it then actually comes to is
+ * worked out back from that weight, so what the till charges always matches the weight on the label.
+ */
+export interface SpendPreview {
+  ok: boolean;
+  /** The weight the money buys, in thousandths of a kg. */
+  thousandths?: number;
+  /** That weight, said in words: "0.556 kg". */
+  weight?: string;
+  /** What the sale actually comes to at that rounded weight (a few cents off the amount asked). */
+  totalCents?: number;
+  words?: string;
+}
+
+export function weightForSpend(unitPricePerKg: number, spendText: string): SpendPreview {
+  const spend = Number(spendText.replace(/[^0-9.]/g, ''));
+  if (!Number.isFinite(spend) || spend <= 0) {
+    return { ok: false, words: 'Enter how much the customer is spending.' };
+  }
+  if (!Number.isFinite(unitPricePerKg) || unitPricePerKg <= 0) {
+    return { ok: false, words: 'This item has no usable price per kg.' };
+  }
+  const kg = spend / unitPricePerKg;
+  const thousandths = kgToThousandths(kg);
+  if (thousandths === null) {
+    return { ok: false, words: 'That amount is too small or too large to weigh.' };
+  }
+  // Charge for the weight the scale would actually show, not the exact division.
+  const totalCents = lineCents(thousandthsToKg(thousandths), unitPricePerKg);
+  if (totalCents === null) return { ok: false, words: 'This item has no usable price.' };
+  return { ok: true, thousandths, weight: formatKg(thousandths), totalCents };
+}
