@@ -19,7 +19,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#28a745"
+        "backgroundColor": "#02461F"
       },
       "package": "com.kioskke.cashier"
     },
