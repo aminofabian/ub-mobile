@@ -1,5 +1,25 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, StyleSheet, View } from 'react-native';
+import { useFonts } from 'expo-font';
+import {
+  Poppins_400Regular,
+  Poppins_500Medium,
+  Poppins_600SemiBold,
+  Poppins_700Bold,
+  Poppins_800ExtraBold,
+} from '@expo-google-fonts/poppins';
+import {
+  SchibstedGrotesk_600SemiBold,
+  SchibstedGrotesk_700Bold,
+  SchibstedGrotesk_800ExtraBold,
+} from '@expo-google-fonts/schibsted-grotesk';
+import {
+  PlusJakartaSans_400Regular,
+  PlusJakartaSans_500Medium,
+  PlusJakartaSans_600SemiBold,
+  PlusJakartaSans_700Bold,
+  PlusJakartaSans_800ExtraBold,
+} from '@expo-google-fonts/plus-jakarta-sans';
 import { Text, theme } from '@kiosk/ui';
 import {
   APP_NAMES,
@@ -14,12 +34,14 @@ import {
   forgetKnownStaff,
   forgetTillRegistered,
   getEmbeddedTenantSlug,
+  getOrCreateTillDeviceId,
   getTenantDisplayName,
   getUnsentSummary,
   loadKnownStaff,
   parseTenantDeepLink,
   rememberStaff,
   removeKnownStaff,
+  requestTillAccess,
   shiftsAreDisabled,
   type ApiClient,
   type BranchOption,
@@ -29,6 +51,7 @@ import {
   type StaffUser,
   type TenantContext,
 } from '@kiosk/core';
+import { MART } from '../theme/mart';
 import { useStaffBoot } from '../hooks/useStaffBoot';
 import { enterApp, enterBranch, type EntryQuestions, type EntryStage } from '../lib/entry';
 import { describeEntryNotice, type NoticeActionId, type NoticeStage } from '../lib/notices';
@@ -67,6 +90,8 @@ export interface StaffShellProps {
   isTill?: boolean;
   /** Saves the sales that were never sent as text the person can keep. Passed by the Cashier. */
   exportUnsent?: () => Promise<void>;
+  /** The shop has taken this phone off as a till: the app lets go of what it kept for that shop. Must not throw. */
+  onRemoved?: (shopId: string) => void | Promise<void>;
   /** Draws the camera for the pairing QR. Only apps that ship the camera module pass it; the rest type the code. */
   renderScanner?: PairScannerRenderer;
   children: (session: StaffSession) => React.ReactNode;
@@ -91,7 +116,27 @@ function openShop(): string | undefined {
  * person is from the server, check the app fits them, work out the branch, and only then open the app.
  * The four apps used to carry their own copy of this; they now render their screens inside it.
  */
-export function StaffShell({ app, baseURL, allowPassword = false, isTill = false, exportUnsent, renderScanner, children }: StaffShellProps) {
+export function StaffShell({ app, baseURL, allowPassword = false, isTill = false, exportUnsent, onRemoved, renderScanner, children }: StaffShellProps) {
+  // The mart look is set in Plus Jakarta Sans, the face the web dashboard already uses. Loading it here means every
+  // staff app (Cashier, Grocery, Stock, Admin) gets it without each one wiring it up; the face is bundled, so this
+  // resolves in a frame or two. Poppins stays loaded for the `@kiosk/ui` components some apps still render, so no
+  // screen silently falls back to the system font. If loading ever fails the app still opens, in the system face.
+  const [fontsLoaded, fontsError] = useFonts({
+    PlusJakartaSans_400Regular,
+    PlusJakartaSans_500Medium,
+    PlusJakartaSans_600SemiBold,
+    PlusJakartaSans_700Bold,
+    PlusJakartaSans_800ExtraBold,
+    // The brand face (TT Norms Pro's stand-in) — headers and banners only; everything else is the device's own.
+    SchibstedGrotesk_600SemiBold,
+    SchibstedGrotesk_700Bold,
+    SchibstedGrotesk_800ExtraBold,
+    Poppins_400Regular,
+    Poppins_500Medium,
+    Poppins_600SemiBold,
+    Poppins_700Bold,
+    Poppins_800ExtraBold,
+  });
   const { tenant, setTenant, setBranch, setEmail, setAuthenticated, reset } = useAuthStore();
   // The stage as the code that reacts to a late answer or a link sees it. Set together with the state (see `go`), so
   // there is no render in between in which they could still find the old one.
@@ -120,7 +165,7 @@ export function StaffShell({ app, baseURL, allowPassword = false, isTill = false
   // the same shop; its slug does not.
   const tenantSlug = tenant?.slug ?? null;
   const shopName = tenant?.displayName ?? getTenantDisplayName() ?? undefined;
-  const appTitle = `${shopName ?? 'Kiosk Ke'} ${APP_NAMES[app]}`;
+  const appTitle = `${shopName ?? 'Kiosk'} ${APP_NAMES[app]}`;
 
   const api = useMemo(
     () =>
@@ -204,6 +249,11 @@ export function StaffShell({ app, baseURL, allowPassword = false, isTill = false
       ...(isTill
         ? {
             checkTill: (branchId: string) => checkTillRegistration(api, id, branchId),
+            askTillAccess: async (branchId: string) => {
+              const deviceKey = await getOrCreateTillDeviceId(id);
+              if (!deviceKey) return;
+              await requestTillAccess(api, { branchId, deviceKey });
+            },
             // A shop that runs without shifts says so in its public settings, which need no sign-in.
             loadShiftsDisabled: () => fetchShiftsDisabled(baseURL, useAuthStore.getState().tenant?.host),
           }
@@ -230,14 +280,17 @@ export function StaffShell({ app, baseURL, allowPassword = false, isTill = false
       } else {
         setAuthenticated(false);
         // A phone that is no longer a till here keeps no list of the people who worked it.
-        if (next.name === 'removed' && id) void clearKnownStaff(id).catch(() => undefined);
+        if (next.name === 'removed' && id) {
+          void clearKnownStaff(id).catch(() => undefined);
+          if (onRemoved) void Promise.resolve(onRemoved(id)).catch(() => undefined);
+        }
         // Nothing on these screens uses the session, so it does not stay on the phone: the person cannot use this
         // app, or this phone, or has no branch to work at, and the only way on is to sign in again.
         if (endsSessionOn(next.name)) void endSession(baseURL).catch(() => undefined);
       }
       go(next);
     },
-    [baseURL, go, setAuthenticated, setBranch, setEmail]
+    [baseURL, go, onRemoved, setAuthenticated, setBranch, setEmail]
   );
 
   const enter = useCallback(async () => {
@@ -327,7 +380,7 @@ export function StaffShell({ app, baseURL, allowPassword = false, isTill = false
     [tenantId]
   );
 
-  if (phase === 'loading') return <View style={styles.blank} />;
+  if ((!fontsLoaded && !fontsError) || phase === 'loading') return <View style={styles.blank} />;
   if (phase === 'error' && bootError) return <WhiteLabelErrorScreen message={bootError} onRetry={retry} />;
   if (phase === 'tenant' || !tenant) {
     return (
@@ -459,7 +512,7 @@ export function StaffShell({ app, baseURL, allowPassword = false, isTill = false
 }
 
 const styles = StyleSheet.create({
-  blank: { flex: 1, backgroundColor: theme.colors.background },
+  blank: { flex: 1, backgroundColor: MART.paper },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.background },
   checking: { marginTop: theme.spacing.md },
 });

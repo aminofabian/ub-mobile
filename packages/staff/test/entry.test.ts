@@ -130,6 +130,33 @@ test('a phone that was a till here and is not any more is stopped, only where th
   assert.equal((await enterApp(ask().questions)).name, 'ready', 'an app that is not a till never asks');
 });
 
+test('an unknown or removed till asks the owner without blocking entry', async () => {
+  const asked: string[] = [];
+  const askTillAccess = async (branchId: string) => {
+    asked.push(branchId);
+  };
+
+  assert.equal(
+    (await enterApp(ask({ checkTill: async () => 'not_registered', askTillAccess }).questions)).name,
+    'ready'
+  );
+  assert.deepEqual(asked, ['b-1']);
+
+  asked.length = 0;
+  assert.equal(
+    (await enterApp(ask({ checkTill: async () => 'removed', askTillAccess }).questions)).name,
+    'removed'
+  );
+  assert.deepEqual(asked, ['b-1']);
+
+  asked.length = 0;
+  assert.equal(
+    (await enterApp(ask({ checkTill: async () => 'registered', askTillAccess }).questions)).name,
+    'ready'
+  );
+  assert.deepEqual(asked, []);
+});
+
 test('a shop that is switched off, found when the till is asked about, stops the person instead of letting them sell', async () => {
   const off = await enterApp(ask({ checkTill: async () => 'shop_off' }).questions);
   assert.deepEqual(off, { name: 'shop_off' });

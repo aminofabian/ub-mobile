@@ -58,8 +58,19 @@ export interface EntryQuestions {
   loadBranches: () => Promise<BranchOption[]>;
   /** Asked only where the phone is a till (the Cashier). Left out, no check is made. */
   checkTill?: (branchId: string) => Promise<TillCheck>;
+  /**
+   * Ask the owner to trust this phone when it is not a registered till. Fire-and-forget:
+   * entry never waits on it, and selling is not blocked here.
+   */
+  askTillAccess?: (branchId: string) => Promise<void>;
   /** Asked only where shifts matter (the Cashier). Left out, or no answer, means shifts are on. */
   loadShiftsDisabled?: () => Promise<boolean>;
+}
+
+function notifyOwnerAboutTill(questions: EntryQuestions, till: TillCheck, branchId: string): void {
+  if (!questions.askTillAccess) return;
+  if (till !== 'not_registered' && till !== 'removed') return;
+  void questions.askTillAccess(branchId).catch(() => undefined);
 }
 
 async function askTill(questions: EntryQuestions, branchId: string, limitMs: number): Promise<TillCheck> {
@@ -104,10 +115,14 @@ async function settle(
     knownName !== undefined ? Promise.resolve(knownName) : branchNameFor(questions, branchId, limitMs),
     shiftsAreOff(questions, limitMs),
   ]);
-  if (till === 'removed') return { name: 'removed', user, branchId };
+  if (till === 'removed') {
+    notifyOwnerAboutTill(questions, till, branchId);
+    return { name: 'removed', user, branchId };
+  }
   // The shop passed /me but is switched off: every call from here would be turned away, and sales would be saved
   // as "offline" for a server that will refuse them.
   if (till === 'shop_off') return { name: 'shop_off' };
+  notifyOwnerAboutTill(questions, till, branchId);
   return { name: 'ready', user, branchId, branchName, shiftsDisabled };
 }
 

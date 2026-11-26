@@ -1,6 +1,12 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
-import { Button, Text, theme } from '@kiosk/ui';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Platform, Pressable, ScrollView, StyleSheet, TextInput, View  } from 'react-native';
+import { CardGloss } from '../theme/CardGloss';
+import { askOwner } from '../lib/till-request';
+import { Ionicons } from '@expo/vector-icons';
+import { FONT, MART, onFill, RADIUS, SPACE, tint, TYPE, WEIGHT } from '../theme/mart';
+import { MartButton, MartText, Screen } from '../theme/mart-ui';
+import { Field } from '../theme/Field';
+import { Entrance } from '../theme/Entrance';
 import {
   loginWithPassword,
   loginWithPin,
@@ -8,7 +14,6 @@ import {
   type KnownStaff,
   type SignedInUser,
 } from '@kiosk/core';
-import { AuthBackBar } from '../components/AuthBackBar';
 import { canSubmitSignIn, cleanEmail, cleanPin, isEmailComplete, type SignInMethod } from '../lib/sign-in-form';
 import { NO_WRONG_TRIES, countWrongTries, describeSignInProblem, type SignInProblem, type WrongTries } from '../lib/sign-in-problems';
 
@@ -57,7 +62,7 @@ export function SignInScreen({
   const [email, setEmail] = useState('');
   const [pin, setPin] = useState('');
   const [password, setPassword] = useState('');
-  const [method, setMethod] = useState<SignInMethod>('pin');
+  const [method, setMethod] = useState<SignInMethod>('password');
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<SignInProblem | null>(null);
   const [resent, setResent] = useState<string | null>(null);
@@ -78,7 +83,28 @@ export function SignInScreen({
 
   const typed = cleanEmail(email);
   const known = knownStaff.find((person) => person.email === typed);
+  const greeting = useMemo(() => {
+    const hour = new Date().getHours();
+    return hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  }, []);
+  const firstName = known?.name?.trim().split(/\s+/)[0] ?? null;
+  const ask = {
+    shopName: shopName ?? shop,
+    branchName: null,
+    reason:
+      problem?.kind === 'not_approved_till'
+        ? problem.message
+        : 'This phone cannot sell until it is registered as a till.',
+  };
   const ready = canSubmitSignIn({ method, email, pin, password });
+
+  // The brand green fills the pass header; its text colour is worked out from it.
+  const brand = MART.fallbackPrimary;
+  const on = onFill(brand);
+  const initials = useMemo(() => {
+    const parts = (shopName ?? '').trim().split(/\s+/).filter(Boolean);
+    return (parts[0]?.[0] ?? 'K').toUpperCase() + (parts[1]?.[0] ?? '').toUpperCase();
+  }, [shopName]);
 
   const submit = async () => {
     if (!ready || busy || sending.current) return;
@@ -151,137 +177,242 @@ export function SignInScreen({
   };
 
   return (
-    <View style={styles.container}>
-      <AuthBackBar onSecondary={onChangeStore} secondaryLabel="Change store" />
+    <Screen style={styles.container}>
       <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
-        <Text variant="h1" accessibilityRole="header">
-          Sign in
-        </Text>
-        {shopName ? (
-          <Text variant="muted" style={styles.context}>
-            {shopName}
-          </Text>
-        ) : null}
-        {notice ? (
-          <Text variant="body" style={styles.notice} accessibilityLiveRegion="polite">
-            {notice}
-          </Text>
-        ) : null}
-
-        {knownStaff.length > 0 ? (
-          <View style={styles.chips}>
-            {knownStaff.map((person) => (
+        <Entrance delay={0} style={[styles.pass, { backgroundColor: brand }]}>
+          {/* Layered translucent shapes give the flat green depth, like light catching a surface. */}
+          <View style={[styles.glow, { backgroundColor: on.wash }]} pointerEvents="none" />
+          <View style={[styles.orb, styles.orbOne, { backgroundColor: on.wash }]} pointerEvents="none" />
+          <View style={[styles.orb, styles.orbTwo, { backgroundColor: on.hairline }]} pointerEvents="none" />
+          {/* A lacquered sweep across the shop's colour, so the header is a surface and not a flat block. */}
+          <View style={styles.lacquer} pointerEvents="none" />
+          <View style={styles.passTop}>
+            <View style={styles.passBrand}>
+              <View style={[styles.plaque, { backgroundColor: on.primary }]}>
+                <MartText variant="title" color={brand} style={styles.plaqueMark}>
+                  {initials}
+                </MartText>
+              </View>
+              <View style={styles.passNames}>
+                <MartText variant="shelf" color={on.secondary} numberOfLines={1} style={styles.passEyebrow}>
+                  {(shopName ?? 'YOUR SHOP').toUpperCase()}
+                </MartText>
+                <MartText variant="heading" color={on.primary}>
+                  Staff sign-in
+                </MartText>
+              </View>
+            </View>
+            {onChangeStore ? (
               <Pressable
-                key={person.email}
-                onPress={() => pick(person)}
+                onPress={onChangeStore}
                 accessibilityRole="button"
-                accessibilityLabel={`Sign in as ${person.name || person.email}`}
-                accessibilityState={{ selected: typed === person.email }}
-                style={({ pressed }) => [styles.chip, typed === person.email && styles.chipSelected, pressed && styles.pressed]}
+                accessibilityLabel="Change store"
+                hitSlop={8}
+                style={({ pressed }) => [
+                  styles.storeChip,
+                  { borderColor: on.hairline, backgroundColor: on.wash },
+                  pressed && styles.pressed,
+                ]}
               >
-                <Text style={styles.chipName}>{person.name || person.email}</Text>
-                {person.name ? (
-                  <Text variant="caption" style={styles.chipEmail} numberOfLines={1}>
-                    {person.email}
-                  </Text>
-                ) : null}
+                <MartText variant="shelf" color={on.primary} style={styles.storeChipText}>
+                  Change store
+                </MartText>
               </Pressable>
-            ))}
+            ) : null}
           </View>
-        ) : null}
+          <MartText variant="display" color={on.primary} style={styles.passTitle}>
+            {firstName ? `${greeting}, ${firstName}.` : `${greeting}.`}
+          </MartText>
+          <MartText variant="body" color={on.secondary} style={styles.passHint}>
+            {known
+              ? 'Your PIN and the shelf are ready. Your shift picks up where it left off.'
+              : 'Sign in with your email and PIN or password.'}
+          </MartText>
+        </Entrance>
 
-        <TextInput
-          style={styles.input}
-          placeholder="Email"
-          value={email}
-          onChangeText={(text) => {
-            setEmail(text);
-            if (problem) setProblem(null);
-          }}
-          autoCapitalize="none"
-          autoCorrect={false}
-          autoComplete="email"
-          keyboardType="email-address"
-          textContentType="username"
-          returnKeyType="next"
-          onSubmitEditing={() => secretInput.current?.focus()}
-          editable={!busy}
-          accessibilityLabel="Email"
-        />
-        {known ? (
-          <Pressable onPress={notYou} accessibilityRole="button" accessibilityLabel="Not you? Remove from this phone" hitSlop={8} style={styles.notYou}>
-            <Text variant="caption" style={styles.link}>
-              Not you? Remove from this phone
-            </Text>
-          </Pressable>
-        ) : null}
+        <View style={styles.formBody}>
+          {/* The same glazed surface the shelf's cards use: warm ivory, a reflection, lit edge. */}
+          <CardGloss radius={RADIUS.xl} />
+          {notice ? (
+            <View style={styles.noticeBox} accessibilityLiveRegion="polite">
+              <MartText variant="body" color={MART.inkMuted}>
+                {notice}
+              </MartText>
+            </View>
+          ) : null}
 
-        {method === 'pin' ? (
-          <TextInput
-            ref={secretInput}
-            style={styles.input}
-            placeholder="PIN"
-            value={pin}
-            onChangeText={(text) => {
-              setPin(cleanPin(text));
-              if (problem) setProblem(null);
-            }}
-            secureTextEntry
-            keyboardType="number-pad"
-            maxLength={6}
-            autoComplete="off"
-            importantForAutofill="no"
-            returnKeyType="go"
-            onSubmitEditing={submit}
-            editable={!busy}
-            accessibilityLabel="PIN"
-          />
-        ) : (
-          <TextInput
-            ref={secretInput}
-            style={styles.input}
-            placeholder="Password"
-            value={password}
-            onChangeText={(text) => {
-              setPassword(text);
-              if (problem) setProblem(null);
-            }}
-            secureTextEntry
-            autoCapitalize="none"
-            autoCorrect={false}
-            autoComplete="password"
-            textContentType="password"
-            returnKeyType="go"
-            onSubmitEditing={submit}
-            editable={!busy}
-            accessibilityLabel="Password"
-          />
-        )}
+          {knownStaff.length > 0 ? (
+            <View style={styles.people}>
+              <MartText variant="label" color={MART.inkMuted} style={styles.peopleLabel}>
+                Who's signing in?
+              </MartText>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.peopleRow}>
+                {knownStaff.map((person) => {
+                  const on = typed === person.email;
+                  const parts = (person.name || person.email).trim().split(/\s+/).filter(Boolean);
+                  const mark = (parts[0]?.[0] ?? '?').toUpperCase();
+                  return (
+                    <Pressable
+                      key={person.email}
+                      onPress={() => pick(person)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Sign in as ${person.name || person.email}`}
+                      accessibilityState={{ selected: on }}
+                      style={({ pressed }) => [styles.person, on && styles.personOn, pressed && styles.pressed]}
+                    >
+                      <View style={[styles.personMark, on && { backgroundColor: brand }]}>
+                        <MartText variant="label" color={on ? onFill(brand).primary : MART.ink}>
+                          {mark}
+                        </MartText>
+                      </View>
+                      <View style={styles.personText}>
+                        <MartText variant="label" numberOfLines={1}>
+                          {person.name || person.email}
+                        </MartText>
+                        {person.name ? (
+                          <MartText variant="meta" color={MART.inkQuiet} numberOfLines={1}>
+                            {person.email}
+                          </MartText>
+                        ) : null}
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          ) : null}
+
+          <Entrance delay={90}>
+            <Field
+              on="tile"
+              label="Email"
+              icon="mail-outline"
+              placeholder="you@shop.co.ke"
+              value={email}
+              onChangeText={(text) => {
+                setEmail(text);
+                if (problem) setProblem(null);
+              }}
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="email"
+              keyboardType="email-address"
+              textContentType="username"
+              returnKeyType="next"
+              onSubmitEditing={() => secretInput.current?.focus()}
+              editable={!busy}
+              accessibilityLabel="Email"
+            />
+          </Entrance>
+          {known ? (
+            <Pressable onPress={notYou} accessibilityRole="button" accessibilityLabel="Not you? Remove from this phone" hitSlop={8} style={styles.notYou}>
+              <MartText variant="meta" style={styles.link}>
+                Not you? Remove from this phone
+              </MartText>
+            </Pressable>
+          ) : null}
+
+          <Entrance delay={150}>
+          {method === 'pin' ? (
+            <Field
+              ref={secretInput}
+              on="tile"
+              label="PIN"
+              icon="keypad-outline"
+              placeholder="••••"
+              value={pin}
+              onChangeText={(text) => {
+                setPin(cleanPin(text));
+                if (problem) setProblem(null);
+              }}
+              secureTextEntry
+              keyboardType="number-pad"
+              maxLength={6}
+              autoComplete="off"
+              importantForAutofill="no"
+              returnKeyType="go"
+              onSubmitEditing={submit}
+              editable={!busy}
+              accessibilityLabel="PIN"
+            />
+          ) : (
+            <Field
+              ref={secretInput}
+              on="tile"
+              label="Password"
+              icon="lock-closed-outline"
+              placeholder="Your password"
+              value={password}
+              onChangeText={(text) => {
+                setPassword(text);
+                if (problem) setProblem(null);
+              }}
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="off"
+              textContentType="none"
+              importantForAutofill="no"
+              returnKeyType="go"
+              onSubmitEditing={submit}
+              editable={!busy}
+              accessibilityLabel="Password"
+            />
+          )}
+          </Entrance>
 
         {problem ? (
           <View accessibilityLiveRegion="polite" style={styles.problemBox}>
-            <Text variant="body" style={styles.problem}>
+            <MartText variant="body" color={MART.danger}>
               {problem.message}
-            </Text>
+            </MartText>
+            {problem.kind === 'not_approved_till' ? (
+              <View style={styles.askRow}>
+                <Pressable
+                  onPress={() => void askOwner('whatsapp', ask)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Ask the owner on WhatsApp"
+                  style={({ pressed }) => [styles.askBtn, pressed && styles.pressed]}
+                >
+                  <Ionicons name="logo-whatsapp" size={16} color={MART.fallbackPrimary} />
+                  <MartText variant="label" color={MART.fallbackPrimary}>
+                    WhatsApp the owner
+                  </MartText>
+                </Pressable>
+                <Pressable
+                  onPress={() => void askOwner('email', ask)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Ask the owner by email"
+                  style={({ pressed }) => [styles.askBtn, pressed && styles.pressed]}
+                >
+                  <Ionicons name="mail-outline" size={16} color={MART.fallbackPrimary} />
+                  <MartText variant="label" color={MART.fallbackPrimary}>
+                    Email
+                  </MartText>
+                </Pressable>
+              </View>
+            ) : null}
             {problem.action === 'resend_verification' ? (
-              <Button title="Send the link again" variant="secondary" onPress={resend} disabled={busy} style={styles.problemAction} />
+              <MartButton label="Send the link again" kind="quiet" onPress={resend} disabled={busy} style={styles.problemAction} />
             ) : null}
             {problem.action === 'pair' && onPair ? (
-              <Button title="Pair this phone" variant="secondary" onPress={onPair} disabled={busy} style={styles.problemAction} />
+              <MartButton label="Pair this phone" kind="quiet" onPress={onPair} disabled={busy} style={styles.problemAction} />
             ) : null}
             {resent ? (
-              <Text variant="caption" style={styles.resent}>
+              <MartText variant="meta" color={MART.inkQuiet} style={styles.resent}>
                 {resent}
-              </Text>
+              </MartText>
             ) : null}
           </View>
         ) : null}
 
-        <Button title={busy ? 'Signing in...' : 'Sign in'} onPress={submit} disabled={!ready || busy} style={styles.submit} />
+        <Entrance delay={210}>
+          <MartButton label={busy ? 'Signing in…' : 'Sign in'} busy={busy} onPress={submit} disabled={!ready || busy} style={styles.submit} />
+        </Entrance>
         {allowPassword ? (
-          <Button
-            title={method === 'pin' ? 'Use password instead' : 'Use PIN instead'}
-            variant="secondary"
+          <MartButton
+            label={method === 'pin' ? 'Use password instead' : 'Use PIN instead'}
+            kind="quiet"
             onPress={switchMethod}
             disabled={busy}
             style={styles.secondary}
@@ -289,60 +420,256 @@ export function SignInScreen({
         ) : null}
         {pairingEnabled && onPair && problem?.action !== 'pair' ? (
           <Pressable onPress={onPair} accessibilityRole="button" accessibilityLabel="Pair this phone with a code" hitSlop={8} style={styles.pairLink}>
-            <Text variant="caption" style={styles.link}>
+            <MartText variant="meta" style={styles.link}>
               New phone? Pair it with a code
-            </Text>
+            </MartText>
           </Pressable>
         ) : null}
+        </View>
+
+        <Entrance delay={270} style={styles.footer}>
+          <MartText variant="meta" color={MART.inkQuiet} style={styles.footerText}>
+            Trouble signing in? Ask the shop owner to reset your PIN.
+          </MartText>
+          <View style={styles.footerMark}>
+            <View style={[styles.footerDot, { backgroundColor: brand }]} />
+            <MartText variant="shelf" color={MART.inkQuiet}>
+              POWERED BY KIOSK
+            </MartText>
+          </View>
+        </Entrance>
       </ScrollView>
-    </View>
+    </Screen>
   );
 }
 
+const EDGE = SPACE.xxl; // 28 — a calmer page inset than the 20 gutter for the auth screens.
+
 const styles = StyleSheet.create({
+  // No page padding: the header and card span full width, each setting its own EDGE inset so their
+  // content shares one left line.
   container: {
-    flex: 1,
-    paddingHorizontal: theme.spacing.lg,
-    paddingBottom: theme.spacing.lg,
-    backgroundColor: theme.colors.background,
+    paddingHorizontal: 0,
+    paddingBottom: SPACE.lg,
   },
-  form: { flexGrow: 1, justifyContent: 'center' },
-  context: { marginBottom: theme.spacing.md },
-  notice: { marginBottom: theme.spacing.md, color: theme.colors.textMuted },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: theme.spacing.md },
+  form: { flexGrow: 1 },
+  pass: {
+    paddingHorizontal: EDGE,
+    // Clears the status bar on both platforms: an iPhone's Dynamic Island needs far more room than Android's bar.
+    paddingTop: Platform.select({ ios: 72, android: 40, default: 72 }),
+    paddingBottom: SPACE.xxxl,
+    borderBottomLeftRadius: 40,
+    borderBottomRightRadius: 40,
+    gap: SPACE.xs,
+    overflow: 'hidden',
+    shadowColor: MART.fallbackPrimary,
+    shadowOpacity: 0.2,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 6,
+  },
+  glow: {
+    position: 'absolute',
+    width: 320,
+    height: 320,
+    borderRadius: 999,
+    top: -160,
+    left: -80,
+    opacity: 0.5,
+  },
+  orb: {
+    position: 'absolute',
+    borderRadius: 999,
+  },
+  orbOne: {
+    width: 180,
+    height: 180,
+    top: -70,
+    right: -50,
+  },
+  orbTwo: {
+    width: 110,
+    height: 110,
+    top: 40,
+    right: 60,
+  },
+  plaque: {
+    width: 52,
+    height: 52,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: MART.ink,
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  plaqueMark: { letterSpacing: -0.5 },
+  passNames: { flex: 1, gap: 2 },
+  passEyebrow: { letterSpacing: 1.4, opacity: 0.85 },
+  people: { gap: SPACE.sm },
+  peopleLabel: { paddingHorizontal: 2 },
+  peopleRow: { gap: SPACE.sm, paddingRight: SPACE.lg },
+  person: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACE.sm,
+    paddingVertical: SPACE.sm,
+    paddingHorizontal: SPACE.md,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: MART.border,
+    backgroundColor: MART.paperElevated,
+  },
+  personOn: { borderColor: MART.fallbackPrimary, backgroundColor: tint(MART.fallbackPrimary, 0.06) },
+  personMark: {
+    width: 32,
+    height: 32,
+    borderRadius: RADIUS.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: MART.paperSunken,
+  },
+  personText: { maxWidth: 150 },
+  passRing: {
+    width: 56,
+    height: 56,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  passTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: SPACE.md,
+    marginBottom: SPACE.lg,
+  },
+  // The monogram + shop name as one group, so the chip can sit opposite them.
+  passBrand: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACE.md,
+  },
+  // A quiet outlined capsule on the green: present, but it never competes with "Welcome back".
+  storeChip: {
+    minHeight: 34,
+    justifyContent: 'center',
+    paddingHorizontal: SPACE.md,
+    borderWidth: 1,
+    borderRadius: RADIUS.pill,
+  },
+  storeChipText: { letterSpacing: 0.2 },
+  passMark: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  passMonogram: {
+    ...TYPE.label,
+    fontFamily: FONT.black,
+    fontWeight: WEIGHT.black,
+  },
+  passStore: { flex: 1 },
+  passTitle: {},
+  passHint: {},
+  // A white card that rides up into the header's curve, so the screen reads as one piece.
+  lacquer: {
+    position: 'absolute',
+    top: '-40%',
+    left: '-30%',
+    right: '-30%',
+    height: '85%',
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    transform: [{ rotate: '-9deg' }],
+  },
+  formBody: {
+    // card inset 16 + inner padding 12 = 28, aligning card content with the header's EDGE (28).
+    gap: SPACE.lg,
+    marginTop: -32,
+    marginHorizontal: SPACE.lg,
+    paddingHorizontal: SPACE.md,
+    paddingTop: SPACE.xl,
+    paddingBottom: SPACE.xl,
+    backgroundColor: MART.paperElevated,
+    borderRadius: RADIUS.xl,
+    overflow: 'hidden',
+    shadowColor: MART.ink,
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
+  },
+  noticeBox: { gap: SPACE.sm },
+  askRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.sm },
+  askBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minHeight: 44,
+    paddingHorizontal: SPACE.md,
+    borderRadius: RADIUS.pill,
+    backgroundColor: tint(MART.fallbackPrimary, 0.08),
+  },
+  notice: {
+    padding: SPACE.lg,
+    borderRadius: RADIUS.lg,
+    backgroundColor: MART.infoSurface,
+  },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.sm },
   chip: {
     minHeight: 48,
     maxWidth: '100%',
     justifyContent: 'center',
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    marginRight: theme.spacing.sm,
-    marginBottom: theme.spacing.sm,
+    paddingHorizontal: SPACE.lg,
+    paddingVertical: SPACE.sm,
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.lg,
-    backgroundColor: theme.colors.surface,
+    borderColor: MART.border,
+    borderRadius: RADIUS.lg,
+    backgroundColor: MART.paperElevated,
   },
-  chipSelected: { borderColor: theme.colors.primary },
-  chipName: { fontSize: 16, fontWeight: '600', color: theme.colors.text },
-  chipEmail: { color: theme.colors.textMuted },
+  chipSelected: { borderColor: MART.fallbackPrimary, borderWidth: 1.5 },
   pressed: { opacity: 0.6 },
-  input: {
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.md,
-    padding: theme.spacing.md,
-    marginBottom: theme.spacing.md,
-    fontSize: 16,
-    minHeight: 48,
+  notYou: { alignSelf: 'flex-start', minHeight: 32, justifyContent: 'center', marginTop: -SPACE.xs },
+  link: { color: MART.info, fontFamily: TYPE.label.fontFamily },
+  problemBox: { gap: SPACE.sm },
+  problemAction: { marginTop: SPACE.xs },
+  resent: {},
+  submit: {
+    marginTop: SPACE.sm,
+    shadowColor: MART.fallbackPrimary,
+    shadowOpacity: 0.28,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
   },
-  notYou: { alignSelf: 'flex-start', minHeight: 32, justifyContent: 'center', marginTop: -theme.spacing.sm, marginBottom: theme.spacing.md },
-  link: { color: theme.colors.primaryDark, fontWeight: '600' },
-  problemBox: { marginBottom: theme.spacing.md },
-  problem: { color: theme.colors.danger },
-  problemAction: { marginTop: theme.spacing.sm },
-  resent: { marginTop: theme.spacing.sm, color: theme.colors.textMuted },
-  submit: {},
-  secondary: { marginTop: theme.spacing.md },
-  pairLink: { alignSelf: 'center', minHeight: 48, justifyContent: 'center', marginTop: theme.spacing.md },
+  secondary: {},
+  pairLink: { alignSelf: 'center', minHeight: 48, justifyContent: 'center', marginTop: SPACE.sm },
+  footer: {
+    marginTop: 'auto',
+    paddingTop: SPACE.xxl,
+    paddingHorizontal: SPACE.lg,
+    alignItems: 'center',
+    gap: SPACE.lg,
+  },
+  footerText: {
+    textAlign: 'center',
+    maxWidth: 300,
+  },
+  footerMark: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACE.sm,
+  },
+  footerDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+  },
 });
