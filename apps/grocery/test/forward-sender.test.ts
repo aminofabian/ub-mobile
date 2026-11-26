@@ -13,7 +13,6 @@ import {
   MIXED_IN,
   NO_FORWARDS,
   OPEN_ELSEWHERE,
-  retryAsNew,
   startForward,
   type ForwardEntry,
   type ForwardState,
@@ -462,42 +461,24 @@ test('up to three drafts left open are cleared; more than that is not something 
   assert.deepEqual([...others.values()].map((draft) => draft.status), ['building', 'building', 'building', 'building']);
 });
 
-test('a draft anyone else is using is left alone, and the sale is held back with the reason', async () => {
+test('a web counter draft open for the same person is left alone, and the phone sale still goes (GS2)', async () => {
   for (const clientDraftId of [WEB_DRAFT, null, '', 'phone:']) {
     const h = harness();
     const { others } = lookAtOpen(h, [{ id: 'web1', clientDraftId, status: 'building' }]);
     h.state = queue(NO_FORWARDS, 1);
-    assert.deepEqual(await h.sender.flush(), { sent: 0, refused: 1, stopped: false }, String(clientDraftId));
-    const entry = h.state.entries[0]!;
-    assert.deepEqual(entry.problem, OPEN_ELSEWHERE);
-    assert.deepEqual([entry.inDoubt, entry.sentAt, entry.draftId], [false, null, null], 'nothing was sent for it');
-    assert.deepEqual(h.log, ['list s1', 'read web1'], 'the other sale is looked at and nothing more');
-    assert.equal(others.get('web1')?.status, 'building', 'and it is not touched');
-    await h.sender.flush();
-    assert.equal(h.log.length, 2, 'a held-back sale is not looked up over and over');
+    assert.deepEqual(await h.sender.flush(), { sent: 1, refused: 0, stopped: false }, String(clientDraftId));
+    assert.deepEqual(h.log, ['list s1', 'read web1', 'draft s1', 'issue s1 k1'], String(clientDraftId));
+    assert.equal(others.get('web1')?.status, 'building', 'the web draft is not cancelled');
   }
 });
 
-test('a sale held back goes once what was open is closed, when it is sent again', async () => {
-  const h = harness();
-  const { others } = lookAtOpen(h, [{ id: 'web1', clientDraftId: WEB_DRAFT, status: 'building' }]);
-  h.state = queue(NO_FORWARDS, 1);
-  await h.sender.flush();
-  others.delete('web1');
-  const again = retryAsNew(h.state, 's1', { id: 's9', issueKey: 'k9' }, 9100);
-  assert.ok(again.ok);
-  h.state = again.state;
-  assert.deepEqual(await h.sender.flush(), { sent: 1, refused: 0, stopped: false });
-  assert.deepEqual(h.log.slice(2), ['list s9', 'draft s9', 'issue s9 k9']);
-});
-
-test('every sale behind a held-back one is held back the same way, and nothing is made at the server', async () => {
+test('two phone sales still go while a web draft sits open', async () => {
   const h = harness();
   lookAtOpen(h, [{ id: 'web1', clientDraftId: WEB_DRAFT, status: 'building' }]);
   h.state = queue(queue(NO_FORWARDS, 1), 2);
-  assert.deepEqual(await h.sender.flush(), { sent: 0, refused: 2, stopped: false });
-  assert.equal(h.log.some((line) => line.startsWith('draft') || line.startsWith('issue')), false);
-  assert.equal(h.server.drafts.size, 0);
+  assert.deepEqual(await h.sender.flush(), { sent: 2, refused: 0, stopped: false });
+  assert.equal(h.server.drafts.size, 2);
+  assert.equal(h.server.invoices.size, 2);
 });
 
 test('a draft that cannot be read, or that this person may not look at or cancel, holds the sale back', async () => {

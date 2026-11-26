@@ -111,7 +111,9 @@ export function createForwardSender(deps: ForwardDeps): ForwardSender {
       if (!named) return OPEN_ELSEWHERE;
       // Closed since the list was made: nothing is open there any more.
       if (named.status !== 'building') continue;
-      if (!isPhoneDraftName(named.clientDraftId)) return OPEN_ELSEWHERE;
+      // GS2: a new phone draft is its own row — a web counter draft open for the
+      // same person must not hold this sale back. Only clear phone leftovers.
+      if (!isPhoneDraftName(named.clientDraftId)) continue;
       // The list was asked for this person's drafts only, but a draft is cancelled only once the server says it is theirs.
       if (named.createdBy !== deps.ownerId) return OPEN_ELSEWHERE;
       if (gone()) return 'wait';
