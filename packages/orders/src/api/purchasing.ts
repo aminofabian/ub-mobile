@@ -33,6 +33,8 @@ export type SupplierItemLinkRecord = {
   variantOfItemId?: string | null;
   parentItemName?: string | null;
   variantName?: string | null;
+  /** Catalog department (item type) of the linked item. */
+  itemTypeId?: string | null;
 };
 
 export type PurchaseOrderLine = {
@@ -96,9 +98,22 @@ function enc(value: string): string {
 
 // ---- Suppliers ----
 
-export async function fetchSuppliers(api: ApiClient): Promise<SupplierRecord[]> {
+export async function fetchSuppliers(
+  api: ApiClient,
+  opts?: { itemTypeIds?: readonly string[] }
+): Promise<SupplierRecord[]> {
+  const parts = ['page=0', 'size=100'];
+  if (opts?.itemTypeIds !== undefined) {
+    for (const id of opts.itemTypeIds) {
+      const trimmed = id?.trim();
+      if (trimmed) parts.push(`itemTypeIds=${encodeURIComponent(trimmed)}`);
+    }
+    if (opts.itemTypeIds.length === 0) {
+      parts.push('itemTypeIds=');
+    }
+  }
   const page = await api.get<ItemsPageResult<SupplierRecord>>(
-    '/api/v1/suppliers?page=0&size=100'
+    `/api/v1/suppliers?${parts.join('&')}`
   );
   return page.content;
 }
@@ -204,9 +219,17 @@ export async function postGoodsReceipt(
     receivedAt: string;
     notes?: string | null;
     lines: { purchaseOrderLineId: string; qtyReceived: number }[];
-  }
+  },
+  /**
+   * The key the server remembers this receipt by. Without one a new key is made for every call, so a second call is a
+   * second receipt; a screen that may send the same receipt again passes the one key for the whole attempt.
+   */
+  opts?: { idempotencyKey?: string }
 ): Promise<GoodsReceiptResult> {
-  return api.post<GoodsReceiptResult>(GOODS_RECEIPTS, body, { idempotent: true });
+  return api.post<GoodsReceiptResult>(GOODS_RECEIPTS, body, {
+    idempotent: true,
+    ...(opts?.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : {}),
+  });
 }
 
 export async function postGrnSupplierInvoice(
@@ -217,11 +240,13 @@ export async function postGrnSupplierInvoice(
     invoiceDate: string;
     dueDate?: string | null;
     lines: { itemId: string; qty: number; unitCost: number; lineTotal: number }[];
-  }
+  },
+  /** The key the server remembers this invoice by; see `postGoodsReceipt`. */
+  opts?: { idempotencyKey?: string }
 ): Promise<GrnSupplierInvoiceResult> {
   return api.post<GrnSupplierInvoiceResult>(
     `${GOODS_RECEIPTS}/${enc(goodsReceiptId)}/supplier-invoice`,
     body,
-    { idempotent: true }
+    { idempotent: true, ...(opts?.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : {}) }
   );
 }

@@ -21,6 +21,7 @@ import { usePosStore } from './store/pos-store';
 import { useLiveInvoices } from './store/live-invoices-store';
 import { usePrinter } from './store/printer-store';
 import { alertInvoiceArrived, primeInvoiceAlert, releaseInvoiceAlert } from './lib/invoice-alert';
+import { pullAndPrintTillSlips } from './lib/till-print-listener';
 
 // Drawn only when the person chooses to scan a pairing QR: the camera is asked for then, not at start.
 const renderScanner: PairScannerRenderer = (props) => <QrScanner {...props} />;
@@ -119,13 +120,36 @@ function Till({ session }: { session: StaffSession }) {
     const offCancelled = realtime.subscribe('grocery.invoice.cancelled', drop);
     const offExpired = realtime.subscribe('grocery.invoice.expired', drop);
 
+    // Remote order/receipt slips from the order desk or grocery clerk → print on this till.
+    const pullSlips = () => {
+      void pullAndPrintTillSlips(api);
+    };
+    pullSlips();
+    const slipTimer = setInterval(pullSlips, 5_000);
+    const onSlipNote = (payload: unknown) => {
+      const d = (payload ?? {}) as Record<string, unknown>;
+      const nested =
+        d.payload && typeof d.payload === 'object' && !Array.isArray(d.payload)
+          ? (d.payload as Record<string, unknown>)
+          : null;
+      const type = String(nested?.notificationType ?? nested?.type ?? d.notificationType ?? d.type ?? '');
+      if (type === 'till.slip' || d.kind === 'order' || d.kind === 'receipt') {
+        pullSlips();
+      }
+    };
+    const offTillPrint = realtime.subscribe('till.print', () => pullSlips());
+    const offNotif = realtime.subscribe('notification.created', onSlipNote);
+
     void realtime.connect();
     return () => {
       sync.stop();
+      clearInterval(slipTimer);
       offCreated();
       offPaid();
       offCancelled();
       offExpired();
+      offTillPrint();
+      offNotif();
       realtime.disconnect();
     };
   }, [api, sync]);

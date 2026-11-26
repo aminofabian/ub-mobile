@@ -25,3 +25,18 @@ test('an answer the app wrote is not marked, and neither is an error made by han
   assert.equal(new ApiError('x', { status: 400 }).foreign, undefined);
   assert.equal(new ApiError('x', { status: 400, foreign: false }).foreign, undefined);
 });
+
+test('the problem\'s machine name travels with the error, and a missing or blank one does not', async () => {
+  const typed = await readApiError(
+    new Response(JSON.stringify({ type: 'urn:problem:data-integrity', title: 'Invalid data', status: 400 }), { status: 400 })
+  );
+  assert.equal(typed.type, 'urn:problem:data-integrity');
+  const untyped = await readApiError(new Response(JSON.stringify({ title: 'Out of stock', status: 400 }), { status: 400 }));
+  assert.equal(untyped.type, undefined, 'the default "about:blank" says nothing, so it is not kept');
+  const blank = await readApiError(new Response(JSON.stringify({ type: 'about:blank', title: 'x', status: 400 }), { status: 400 }));
+  assert.equal(blank.type, undefined);
+  assert.equal(new ApiError('x', { status: 400 }).type, undefined);
+  assert.equal(new ApiError('x', { status: 400, type: '' }).type, undefined);
+  const page = await readApiError(new Response('<html></html>', { status: 400 }));
+  assert.equal(page.type, undefined, 'a web page has no machine name');
+});

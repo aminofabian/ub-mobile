@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Kiosk Ke Grocery",
+    "name": "KIOSK CLERK",
     "slug": "kiosk-grocery",
     "version": "0.0.1",
     "orientation": "portrait",
@@ -9,7 +9,7 @@
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#28a745"
+      "backgroundColor": "#014712"
     },
     "assetBundlePatterns": ["**/*"],
     "ios": {
@@ -19,14 +19,24 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#28a745"
+        "backgroundColor": "#014712"
       },
       "package": "com.kioskke.grocery"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": ["expo-secure-store"],
+    "plugins": [
+      "expo-secure-store",
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": false,
+          "modes": ["peripheral", "central"],
+          "bluetoothAlwaysPermission": "Allow Kiosk to connect to your Bluetooth receipt printer."
+        }
+      ]
+    ],
     "extra": {
       "apiBaseURL": "https://api.kiosk.ke"
     }

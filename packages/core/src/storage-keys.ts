@@ -59,6 +59,10 @@ export const PLAIN_FIELDS = [
   'topSellers',
   /** Cashier: this till's shift-progress stats (sales counted this shift, clean-close streak), for the shift gamification cues. */
   'shiftPulse',
+  /** Cashier: which people have already been shown the first-day tips at this shop, so nobody sees them twice. */
+  'firstRun',
+  /** Grocery: baskets parked at the counter, so several sales can be on the go at once (the web counter's drafts). */
+  'groceryDrafts',
   /** Grocery: the sale being rung up at the counter, kept until it is sent forward or cleared (a day at most). */
   'groceryBasket',
   /** Grocery: the sales sent forward to the cashier that the server has not yet confirmed, with the keys that make resending them safe. */

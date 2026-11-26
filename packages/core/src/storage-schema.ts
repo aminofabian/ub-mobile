@@ -145,6 +145,8 @@ async function readLegacy(store: KeyValueStore): Promise<LegacyData> {
     savedPrinter: null,
     topSellers: null,
     shiftPulse: null,
+    firstRun: null,
+    groceryDrafts: null,
     groceryBasket: null,
     groceryForwards: null,
     spoils: null,

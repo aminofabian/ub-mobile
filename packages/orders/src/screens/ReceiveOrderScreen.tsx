@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -8,7 +8,7 @@ import {
   View,
 } from 'react-native';
 import { Button, Card, Text, theme } from '@kiosk/ui';
-import type { ApiClient } from '@kiosk/core';
+import { generateIdempotencyKey, type ApiClient } from '@kiosk/core';
 import {
   cancelPurchaseOrder,
   fetchPurchaseOrder,
@@ -19,6 +19,14 @@ import {
   type PurchaseOrderLine,
 } from '../api/purchasing';
 import { formatMoney, formatQty, toNum } from '../lib/format';
+import {
+  HALF_DONE_WORDS,
+  planAttempt,
+  receiptFailureWords,
+  receiptSignature,
+  sendAttempt,
+  type ReceiptAttempt,
+} from '../lib/receipt-attempt';
 
 type Props = {
   api: ApiClient;
@@ -32,10 +40,6 @@ type ReceiveQty = Record<string, number>;
 type Selected = Record<string, boolean>;
 type ItemMeta = { name: string };
 
-function todayIsoDate(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 function round2(value: number): number {
   return Math.round(value * 100) / 100;
 }
@@ -48,6 +52,10 @@ export function ReceiveOrderScreen({ api, branchId, purchaseOrderId, onDone }: P
   const [loading, setLoading] = useState(true);
   const [confirming, setConfirming] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  /** The try being made to confirm this delivery, kept so a second press repeats it instead of starting another. */
+  const attemptRef = useRef<ReceiptAttempt | null>(null);
+  /** A confirmation is on its way. Read at once, so a second tap in the same moment cannot start another. */
+  const sending = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -138,7 +146,7 @@ export function ReceiveOrderScreen({ api, branchId, purchaseOrderId, onDone }: P
   };
 
   const confirmSelected = async () => {
-    if (!detail) return;
+    if (!detail || sending.current) return;
     const lines = openLines
       .filter((l) => selectedLines[l.id])
       .map((l) => ({
@@ -160,38 +168,68 @@ export function ReceiveOrderScreen({ api, branchId, purchaseOrderId, onDone }: P
       return;
     }
 
+    const body = {
+      purchaseOrderId: detail.id,
+      branchId: receiveBranch.trim(),
+      notes: `Confirmed from Order · ${detail.poNumber}`,
+      lines: lines.map((l) => ({
+        purchaseOrderLineId: l.purchaseOrderLineId,
+        qtyReceived: l.qtyReceived,
+      })),
+    };
+    const invoiceLines = lines.map((l) => ({
+      itemId: l.itemId,
+      qty: l.qtyReceived,
+      unitCost: l.unitCost,
+      lineTotal: round2(l.qtyReceived * l.unitCost),
+    }));
+
+    // A repeat of the same press sends the same keys and the same times, so the server recognises it and the stock is
+    // never put on the shelf twice (see lib/receipt-attempt).
+    const plan = planAttempt(
+      attemptRef.current,
+      { signature: receiptSignature(body), poNumber: detail.poNumber },
+      { key: generateIdempotencyKey, now: Date.now }
+    );
+    if (plan.kind === 'half_done') {
+      Alert.alert('Part of this is already recorded', HALF_DONE_WORDS);
+      return;
+    }
+    const attempt = plan.attempt;
+    attemptRef.current = attempt;
+
+    sending.current = true;
     setConfirming(true);
     try {
-      const grn = await postGoodsReceipt(api, {
-        purchaseOrderId: detail.id,
-        branchId: receiveBranch.trim(),
-        receivedAt: new Date().toISOString(),
-        notes: `Confirmed from Order · ${detail.poNumber}`,
-        lines: lines.map((l) => ({
-          purchaseOrderLineId: l.purchaseOrderLineId,
-          qtyReceived: l.qtyReceived,
-        })),
+      await sendAttempt(attempt, {
+        postGoodsReceipt: (key) =>
+          postGoodsReceipt(
+            api,
+            {
+              purchaseOrderId: body.purchaseOrderId,
+              branchId: body.branchId,
+              receivedAt: attempt.receivedAt,
+              notes: body.notes,
+              lines: body.lines,
+            },
+            { idempotencyKey: key }
+          ),
+        postInvoice: (goodsReceiptId, key) =>
+          postGrnSupplierInvoice(
+            api,
+            goodsReceiptId,
+            { invoiceNumber: attempt.invoiceNumber, invoiceDate: attempt.invoiceDate, lines: invoiceLines },
+            { idempotencyKey: key }
+          ),
       });
-
-      const invoiceLines = lines.map((l) => ({
-        itemId: l.itemId,
-        qty: l.qtyReceived,
-        unitCost: l.unitCost,
-        lineTotal: round2(l.qtyReceived * l.unitCost),
-      }));
-
-      await postGrnSupplierInvoice(api, grn.goodsReceiptId, {
-        invoiceNumber: `${detail.poNumber}-R${String(Date.now()).slice(-4)}`,
-        invoiceDate: todayIsoDate(),
-        lines: invoiceLines,
-      });
-
+      attemptRef.current = null;
       Alert.alert('Confirmed', 'Order confirmed — stock updated.', [
         { text: 'OK', onPress: onDone },
       ]);
     } catch (error) {
-      Alert.alert('Error', error instanceof Error ? error.message : 'Could not confirm order');
+      Alert.alert('Error', receiptFailureWords(attempt, error));
     } finally {
+      sending.current = false;
       setConfirming(false);
     }
   };

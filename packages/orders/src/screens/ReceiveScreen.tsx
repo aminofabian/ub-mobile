@@ -1,8 +1,8 @@
 import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { Card, Text, theme } from '@kiosk/ui';
-import type { ApiClient } from '@kiosk/core';
+import { Button, Card, Text, theme } from '@kiosk/ui';
+import { isApiError, type ApiClient } from '@kiosk/core';
 import {
   fetchPurchaseOrders,
   fetchSuppliers,
@@ -28,6 +28,8 @@ export function ReceiveScreen({ api, onOpenOrder }: Props) {
   const [orders, setOrders] = useState<PurchaseOrderListRow[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  /** Why the last load failed, in words for the person. Null when it worked. */
+  const [failed, setFailed] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -40,9 +42,16 @@ export function ReceiveScreen({ api, onOpenOrder }: Props) {
       open.sort((a, b) => b.poNumber.localeCompare(a.poNumber));
       setOrders(open);
       setSuppliers(supplierRows);
+      setFailed(null);
     } catch (error) {
-      // Keep the previous list on refresh failure; first load shows empty state.
+      // The previous list stays on a failed refresh. A first load that failed is not "no open orders": it says so, and
+      // offers to try again, because a person who is told nothing is due does not look any further.
       console.warn('Failed to load orders', error);
+      setFailed(
+        isApiError(error) && error.status === 403
+          ? 'Your role is not allowed to see supplier orders. Ask the owner of the shop to allow it.'
+          : 'Could not load the orders. Check the signal and try again.'
+      );
     } finally {
       setLoading(false);
     }
@@ -63,6 +72,13 @@ export function ReceiveScreen({ api, onOpenOrder }: Props) {
         <View style={styles.center}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
         </View>
+      ) : orders.length === 0 && failed ? (
+        <View style={styles.center}>
+          <Text variant="muted" style={styles.emptyHint}>
+            {failed}
+          </Text>
+          <Button title="Try again" onPress={() => void refresh()} style={styles.retry} />
+        </View>
       ) : orders.length === 0 ? (
         <View style={styles.center}>
           <Text variant="muted">No open orders.</Text>
@@ -76,6 +92,13 @@ export function ReceiveScreen({ api, onOpenOrder }: Props) {
           keyExtractor={(o) => o.id}
           onRefresh={() => void refresh()}
           refreshing={false}
+          ListHeaderComponent={
+            failed ? (
+              <Text variant="muted" style={styles.staleHint}>
+                Could not refresh. These are the last orders read.
+              </Text>
+            ) : null
+          }
           contentContainerStyle={styles.listContent}
           renderItem={({ item }) => {
             const tone = STATUS_TONE[item.status] ?? { bg: theme.colors.surface, fg: theme.colors.textMuted };
@@ -121,6 +144,8 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   emptyHint: { marginTop: 8, textAlign: 'center' },
+  retry: { marginTop: 16 },
+  staleHint: { marginBottom: 12 },
   listContent: { padding: 16, paddingBottom: 24 },
   card: { marginBottom: 12 },
   cardHeader: {

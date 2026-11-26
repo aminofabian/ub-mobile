@@ -223,11 +223,16 @@ test('/me is read into a person: permissions lower case and once each, names cle
     roleKey: 'cashier',
     roleName: 'Cashier',
     permissions: ['sales.sell', 'shifts.open', 'pos.drafts.write'],
+    itemTypeIds: [],
     hasPin: true,
   });
   assert.equal(parseMe({ ...PERSON, hasPin: 'true' })?.hasPin, false);
   assert.equal(parseMe({ ...PERSON, hasPin: 1 })?.hasPin, false);
   assert.equal(parseMe({ ...PERSON, branchId: null })?.branchId, null);
+  assert.deepEqual(
+    parseMe({ ...PERSON, itemTypeIds: [' dept-a ', 'dept-b', 'dept-a', '', 7] })?.itemTypeIds,
+    ['dept-a', 'dept-b'],
+  );
 });
 
 test('/me that is not a person with a role is refused, and nonsense permissions never get in', () => {
@@ -256,6 +261,7 @@ test('an account with no role is a person with nothing to open, whatever permiss
       roleKey: '',
       roleName: '',
       permissions: [],
+      itemTypeIds: [],
       hasPin: false,
     });
   }

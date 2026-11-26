@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -24,7 +24,17 @@ import {
   type SupplierItemLinkRecord,
   type SupplierRecord,
 } from '../api/purchasing';
+import {
+  dispatchTillPrint,
+  fetchTillCashiers,
+  type TillPrintCashier,
+  type TillPrintSlipLine,
+} from '../api/till-prints';
 import { formatMoney, toNum } from '../lib/format';
+import { describeTillSend } from '../lib/till-send-words';
+
+const ORDER_CURRENCY = 'KES';
+const TILL_PICK_KEY = (branchId: string) => `stock/order-print-till/${branchId || 'none'}`;
 
 type CartQty = Record<string, number>;
 
@@ -64,7 +74,44 @@ type Family = {
   lowStockCount: number;
 };
 
-export function OrdersScreen({ api, branchId }: { api: ApiClient; branchId: string }) {
+export function OrdersScreen({
+  api,
+  branchId,
+  itemTypeIds,
+  shopName,
+  branchName,
+  clerkName,
+  printLocal,
+  hasLocalPrinter = false,
+}: {
+  api: ApiClient;
+  branchId: string;
+  /**
+   * When set, only suppliers (and links) for these departments. Pass `[]` for
+   * an explicit empty scope (grocery clerk with no assignments).
+   */
+  itemTypeIds?: readonly string[];
+  /** Shop name on the till slip. */
+  shopName?: string | null;
+  /** Branch name on the till slip. */
+  branchName?: string | null;
+  /** Who placed the order — shown on the till slip. */
+  clerkName?: string | null;
+  /**
+   * Print the slip on this phone's paired thermal printer (grocery clerk BLE).
+   * When set, Review order shows "Print here".
+   */
+  printLocal?: (slip: {
+    reference: string;
+    supplierName: string;
+    lines: TillPrintSlipLine[];
+    businessName: string;
+    branchName: string;
+    placedByName: string;
+  }) => Promise<void>;
+  /** True when a printer is paired so "Print here" is offered. */
+  hasLocalPrinter?: boolean;
+}) {
   const [suppliers, setSuppliers] = useState<SupplierRecord[]>([]);
   const [supplierId, setSupplierId] = useState<string | null>(null);
   const [links, setLinks] = useState<SupplierItemLinkRecord[]>([]);
@@ -78,7 +125,21 @@ export function OrdersScreen({ api, branchId }: { api: ApiClient; branchId: stri
   const [cartOpen, setCartOpen] = useState(false);
   const [notes, setNotes] = useState('');
   const [placing, setPlacing] = useState(false);
+  const [printingOrder, setPrintingOrder] = useState(false);
+  const [cashiers, setCashiers] = useState<TillPrintCashier[]>([]);
+  const [cashiersLoading, setCashiersLoading] = useState(false);
+  const [cashiersError, setCashiersError] = useState<string | null>(null);
+  /** `null` = don't print (same as web "Don't print"). */
+  const [printTillId, setPrintTillId] = useState<string | null>(null);
+  const [tillPickerOpen, setTillPickerOpen] = useState(false);
+  /** Last saved order slip — so Print to till still works after the cart is cleared. */
+  const [lastPlaced, setLastPlaced] = useState<{
+    poNumber: string;
+    supplierName: string;
+    lines: TillPrintSlipLine[];
+  } | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  const scopeKey = itemTypeIds === undefined ? 'all' : itemTypeIds.slice().sort().join(',');
 
   // The active cart is always the selected supplier's entry in the shared map,
   // so switching suppliers can never leak or clobber another supplier's draft.
@@ -108,7 +169,10 @@ export function OrdersScreen({ api, branchId }: { api: ApiClient; branchId: stri
   useEffect(() => {
     let cancelled = false;
     setLoadingSuppliers(true);
-    void fetchSuppliers(api)
+    void fetchSuppliers(
+      api,
+      itemTypeIds !== undefined ? { itemTypeIds } : undefined,
+    )
       .then((rows) => {
         if (cancelled) return;
         const active = rows.filter(
@@ -131,7 +195,7 @@ export function OrdersScreen({ api, branchId }: { api: ApiClient; branchId: stri
     return () => {
       cancelled = true;
     };
-  }, [api]);
+  }, [api, scopeKey, itemTypeIds]);
 
   // Load item links for the selected supplier.
   useEffect(() => {
@@ -143,7 +207,23 @@ export function OrdersScreen({ api, branchId }: { api: ApiClient; branchId: stri
     setLoadingLinks(true);
     void fetchSupplierItemLinks(api, supplierId, { branchId })
       .then((rows) => {
-        if (!cancelled) setLinks(rows.filter((r) => r.active));
+        if (cancelled) return;
+        const active = rows.filter((r) => r.active);
+        if (itemTypeIds === undefined) {
+          setLinks(active);
+          return;
+        }
+        if (itemTypeIds.length === 0) {
+          setLinks([]);
+          return;
+        }
+        const allowed = new Set(itemTypeIds.map((id) => id.trim()).filter(Boolean));
+        setLinks(
+          active.filter((r) => {
+            const typeId = r.itemTypeId?.trim();
+            return !!typeId && allowed.has(typeId);
+          }),
+        );
       })
       .catch((error) => {
         if (!cancelled) {
@@ -157,7 +237,7 @@ export function OrdersScreen({ api, branchId }: { api: ApiClient; branchId: stri
     return () => {
       cancelled = true;
     };
-  }, [supplierId, api, branchId]);
+  }, [supplierId, api, branchId, scopeKey, itemTypeIds]);
 
   useEffect(() => {
     setParentFilterId(null);
@@ -168,6 +248,41 @@ export function OrdersScreen({ api, branchId }: { api: ApiClient; branchId: stri
     if (!hydrated) return;
     void cache.set(draftKey, cartsBySupplier).catch(() => {});
   }, [cartsBySupplier, hydrated, draftKey]);
+
+  // Cashiers this order can print to — same API as web `/order` CashierPrintPicker.
+  useEffect(() => {
+    let cancelled = false;
+    setCashiersLoading(true);
+    setCashiersError(null);
+    void fetchTillCashiers(api, branchId)
+      .then(async (rows) => {
+        if (cancelled) return;
+        setCashiers(rows);
+        const remembered = await cache.get<string>(TILL_PICK_KEY(branchId)).catch(() => null);
+        // Match web: restore remembered till, else leave as "Don't print" (unless only one cashier).
+        if (remembered && rows.some((r) => r.id === remembered)) {
+          setPrintTillId(remembered);
+        } else if (rows.length === 1) {
+          setPrintTillId(rows[0]!.id);
+        } else {
+          setPrintTillId(null);
+        }
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setCashiers([]);
+        setPrintTillId(null);
+        setCashiersError(
+          error instanceof Error ? error.message : 'Could not load cashiers',
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setCashiersLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api, branchId]);
 
   const selectSupplier = (nextId: string) => {
     if (nextId === supplierId) {
@@ -246,7 +361,6 @@ export function OrdersScreen({ api, branchId }: { api: ApiClient; branchId: stri
 
   const cartUnits = cartLines.reduce((sum, line) => sum + line.qty, 0);
   const cartTotal = cartLines.reduce((sum, line) => sum + unitCost(line.link) * line.qty, 0);
-
   const setQty = (itemId: string, qty: number) => {
     setCartsBySupplier((prevMap) => {
       const current = { ...(prevMap[supplierId ?? ''] ?? {}) };
@@ -258,6 +372,164 @@ export function OrdersScreen({ api, branchId }: { api: ApiClient; branchId: stri
       return next;
     });
   };
+
+  /** When true, the next till pick should also print the last placed order. */
+  const printPlacedAfterPickRef = useRef(false);
+
+  const buildOrderSlipLines = useCallback((): TillPrintSlipLine[] => {
+    return cartLines.map((line) => {
+      const unit = unitCost(line.link);
+      return {
+        name: line.link.itemName || 'Item',
+        qty: line.qty,
+        unitCost: unit,
+        lineTotal: unit * line.qty,
+      };
+    });
+  }, [cartLines]);
+
+  const dispatchSlip = useCallback(
+    async (opts: {
+      reference: string;
+      supplierName: string;
+      lines: TillPrintSlipLine[];
+      targetUserId: string;
+    }) => {
+      return dispatchTillPrint(api, {
+        kind: 'order',
+        branchId: branchId.trim() || null,
+        targetUserIds: [opts.targetUserId],
+        slip: {
+          reference: opts.reference,
+          supplierName: opts.supplierName,
+          businessName: shopName?.trim() || '',
+          branchName: branchName?.trim() || '',
+          placedByName: clerkName?.trim() || '',
+          currency: ORDER_CURRENCY,
+          lines: opts.lines,
+        },
+      });
+    },
+    [api, branchId, branchName, clerkName, shopName],
+  );
+
+  const localSlipPayload = useCallback(
+    (reference: string, lines: TillPrintSlipLine[], supplierName: string) => ({
+      reference,
+      supplierName,
+      lines,
+      businessName: shopName?.trim() || '',
+      branchName: branchName?.trim() || '',
+      placedByName: clerkName?.trim() || '',
+    }),
+    [branchName, clerkName, shopName],
+  );
+
+  /** Print on this phone's paired printer (grocery clerk). */
+  const printHere = async (reference?: string, lines?: TillPrintSlipLine[], supplierName?: string) => {
+    if (!printLocal) {
+      Alert.alert('No printer', 'Pair a Bluetooth printer in Sales → Invoice printer.');
+      return;
+    }
+    const slipLines = lines ?? buildOrderSlipLines();
+    if (slipLines.length === 0) {
+      Alert.alert('Empty order', 'Add products to the order.');
+      return;
+    }
+    setPrintingOrder(true);
+    try {
+      await printLocal(
+        localSlipPayload(
+          reference ?? `DRAFT-${Date.now().toString().slice(-6)}`,
+          slipLines,
+          supplierName ?? activeSupplier?.name ?? 'Supplier',
+        ),
+      );
+      Alert.alert('Printed', 'The order slip was sent to this phone’s printer.');
+    } catch (error) {
+      Alert.alert(
+        'Could not print',
+        error instanceof Error ? error.message : 'The printer did not take the slip.',
+      );
+    } finally {
+      setPrintingOrder(false);
+    }
+  };
+
+  /** Forward the draft cart to a till printer without saving the PO (web "Print order now"). */
+  const printOrderNow = async () => {
+    if (!printTillId) {
+      Alert.alert('Pick a till', 'Choose which till should print this order.');
+      setTillPickerOpen(true);
+      return;
+    }
+    const slipLines = buildOrderSlipLines();
+    if (slipLines.length === 0) {
+      Alert.alert('Empty order', 'Add products to the order.');
+      return;
+    }
+    setPrintingOrder(true);
+    try {
+      const sent = await dispatchSlip({
+        reference: `DRAFT-${Date.now().toString().slice(-6)}`,
+        supplierName: activeSupplier?.name || 'Supplier',
+        lines: slipLines,
+        targetUserId: printTillId,
+      });
+      Alert.alert('Sent to till', describeTillSend('order', sent.tills));
+    } catch (error) {
+      Alert.alert(
+        'Could not send',
+        error instanceof Error ? error.message : 'Could not send order to till',
+      );
+    } finally {
+      setPrintingOrder(false);
+    }
+  };
+
+  /** Forward the last placed order to a till (after create, or again). */
+  const printLastPlaced = useCallback(
+    async (targetUserId?: string) => {
+      if (!lastPlaced) return;
+      const tillId = targetUserId?.trim() || printTillId?.trim() || '';
+      if (!tillId) {
+        printPlacedAfterPickRef.current = true;
+        setTillPickerOpen(true);
+        return;
+      }
+      setPrintingOrder(true);
+      try {
+        const sent = await dispatchSlip({
+          reference: lastPlaced.poNumber,
+          supplierName: lastPlaced.supplierName,
+          lines: lastPlaced.lines,
+          targetUserId: tillId,
+        });
+        Alert.alert('Sent to till', describeTillSend('order', sent.tills));
+      } catch (error) {
+        Alert.alert(
+          'Could not send',
+          error instanceof Error ? error.message : 'Could not send order to till',
+        );
+      } finally {
+        setPrintingOrder(false);
+      }
+    },
+    [dispatchSlip, lastPlaced, printTillId],
+  );
+
+  const pickTill = useCallback(
+    (id: string) => {
+      setPrintTillId(id);
+      setTillPickerOpen(false);
+      void cache.set(TILL_PICK_KEY(branchId), id).catch(() => {});
+      if (printPlacedAfterPickRef.current) {
+        printPlacedAfterPickRef.current = false;
+        void printLastPlaced(id);
+      }
+    },
+    [branchId, printLastPlaced],
+  );
 
   const placeOrder = async () => {
     if (!supplierId || !activeSupplier) {
@@ -272,6 +544,8 @@ export function OrdersScreen({ api, branchId }: { api: ApiClient; branchId: stri
       Alert.alert('Empty order', 'Add products to the order.');
       return;
     }
+    const printTo = printTillId?.trim() || '';
+    const slipLines = buildOrderSlipLines();
     setPlacing(true);
     try {
       const po = await createPurchaseOrder(api, {
@@ -291,15 +565,58 @@ export function OrdersScreen({ api, branchId }: { api: ApiClient; branchId: stri
       } catch {
         await sendPurchaseOrder(api, po.id);
       }
+      const placed = {
+        poNumber: po.poNumber,
+        supplierName: activeSupplier.name || 'Supplier',
+        lines: slipLines,
+      };
+      setLastPlaced(placed);
+      let printNote = '';
+      if (printTo && slipLines.length > 0) {
+        try {
+          const sent = await dispatchSlip({
+            reference: po.poNumber,
+            supplierName: placed.supplierName,
+            lines: slipLines,
+            targetUserId: printTo,
+          });
+          printNote = `\n\n${describeTillSend('order', sent.tills)}`;
+        } catch {
+          printNote =
+            '\n\nThe order was saved, but the selected till did not get the print.';
+        }
+      }
       setCartsBySupplier((prevMap) => {
         const next = { ...prevMap };
         delete next[supplierId];
         return next;
       });
       setCartOpen(false);
+      const actions: Array<{
+        text: string;
+        style?: 'cancel' | 'default';
+        onPress?: () => void;
+      }> = [{ text: 'Done', style: 'cancel' }];
+      if (hasLocalPrinter && printLocal) {
+        actions.push({
+          text: 'Print here',
+          onPress: () => {
+            void printHere(po.poNumber, slipLines, placed.supplierName);
+          },
+        });
+      }
+      if (!printTo) {
+        actions.push({
+          text: 'Print to till',
+          onPress: () => {
+            void printLastPlaced(printTillId ?? undefined);
+          },
+        });
+      }
       Alert.alert(
         'Order placed',
-        `Order ${po.poNumber} placed — confirm when goods arrive.`
+        `Order ${po.poNumber} placed — confirm when goods arrive.${printNote}`,
+        actions,
       );
     } catch (error) {
       Alert.alert('Error', error instanceof Error ? error.message : 'Could not place order');
@@ -518,6 +835,79 @@ export function OrdersScreen({ api, branchId }: { api: ApiClient; branchId: stri
               onChangeText={setNotes}
               multiline
             />
+            {/* Same control as web /order "Print order to" — forward the slip to a cashier till printer. */}
+            <View style={styles.printOrderBox} accessibilityRole="radiogroup">
+              <Text variant="caption" style={styles.printOrderLegend}>
+                Print order to
+              </Text>
+              <Text variant="muted" style={styles.printOrderHint}>
+                One till only. Their screen chimes and the slip prints on that cashier’s printer — even remotely.
+              </Text>
+              {cashiersLoading ? (
+                <Text variant="muted">Loading cashiers…</Text>
+              ) : cashiersError ? (
+                <Text variant="muted" style={styles.printOrderError}>
+                  {cashiersError}
+                </Text>
+              ) : cashiers.length === 0 ? (
+                <Text variant="muted">No cashiers on this shop, so nothing will print remotely.</Text>
+              ) : (
+                <>
+                  <Pressable
+                    style={styles.printOrderRow}
+                    onPress={() => {
+                      printPlacedAfterPickRef.current = false;
+                      setPrintTillId(null);
+                      void cache.set(TILL_PICK_KEY(branchId), '').catch(() => {});
+                    }}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: printTillId === null }}
+                  >
+                    <Text variant="body" style={printTillId === null ? styles.printOrderOn : undefined}>
+                      {printTillId === null ? '●' : '○'} Don’t print
+                    </Text>
+                  </Pressable>
+                  {cashiers.map((cashier) => {
+                    const on = printTillId === cashier.id;
+                    return (
+                      <Pressable
+                        key={cashier.id}
+                        style={styles.printOrderRow}
+                        onPress={() => pickTill(cashier.id)}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected: on }}
+                      >
+                        <Text variant="body" style={on ? styles.printOrderOn : undefined} numberOfLines={1}>
+                          {on ? '●' : '○'} {cashier.name}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </>
+              )}
+            </View>
+            <Button
+              title={printingOrder ? 'Sending to till…' : 'Print order now'}
+              onPress={() => void printOrderNow()}
+              disabled={printingOrder || placing || cartLines.length === 0 || !printTillId}
+              variant="secondary"
+            />
+            {hasLocalPrinter && printLocal ? (
+              <Button
+                title={printingOrder ? 'Printing…' : 'Print here'}
+                onPress={() => void printHere()}
+                disabled={printingOrder || placing || cartLines.length === 0}
+                variant="secondary"
+              />
+            ) : null}
+            {lastPlaced ? (
+              <Button
+                title={printingOrder ? 'Sending…' : `Print ${lastPlaced.poNumber} to till again`}
+                onPress={() => void printLastPlaced()}
+                disabled={printingOrder || placing || !printTillId}
+                variant="secondary"
+              />
+            ) : null}
             <View style={styles.cartFooter}>
               <View>
                 <Text variant="caption">Total</Text>
@@ -526,9 +916,67 @@ export function OrdersScreen({ api, branchId }: { api: ApiClient; branchId: stri
               <Button
                 title={placing ? 'Placing…' : 'Place order'}
                 onPress={() => void placeOrder()}
-                disabled={placing || cartLines.length === 0}
+                disabled={placing || printingOrder || cartLines.length === 0}
               />
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Till picker — any cashier till, even remote */}
+      <Modal
+        visible={tillPickerOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => {
+          printPlacedAfterPickRef.current = false;
+          setTillPickerOpen(false);
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHeader}>
+              <Text variant="h2">Print on till</Text>
+              <Pressable
+                onPress={() => {
+                  printPlacedAfterPickRef.current = false;
+                  setTillPickerOpen(false);
+                }}
+                accessibilityRole="button"
+              >
+                <Text variant="body" style={styles.modalClose}>
+                  Close
+                </Text>
+              </Pressable>
+            </View>
+            <Text variant="caption" style={styles.cartSupplier}>
+              The slip is queued remotely. If they are on Sell it prints now; otherwise it waits.
+            </Text>
+            <FlatList
+              data={cashiers}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <Pressable
+                  style={styles.supplierRow}
+                  onPress={() => pickTill(item.id)}
+                  accessibilityRole="button"
+                >
+                  <View style={styles.supplierRowText}>
+                    <Text variant="body">{item.name}</Text>
+                  </View>
+                  {item.id === printTillId ? (
+                    <Text variant="body" style={styles.check}>
+                      ✓
+                    </Text>
+                  ) : null}
+                </Pressable>
+              )}
+              ListEmptyComponent={
+                <View style={styles.center}>
+                  <Text variant="muted">No cashier tills on this shop.</Text>
+                </View>
+              }
+            />
           </View>
         </View>
       </Modal>
@@ -822,6 +1270,27 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: theme.colors.text,
   },
+  printOrderBox: {
+    marginTop: 10,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.md,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: theme.colors.surface,
+  },
+  printOrderLegend: {
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    color: theme.colors.textMuted,
+    marginBottom: 4,
+  },
+  printOrderHint: { marginBottom: 8, fontSize: 12, lineHeight: 16 },
+  printOrderError: { color: theme.colors.danger },
+  printOrderRow: { paddingVertical: 6 },
+  printOrderOn: { fontWeight: '700', color: theme.colors.primary },
   cartFooter: {
     flexDirection: 'row',
     alignItems: 'center',

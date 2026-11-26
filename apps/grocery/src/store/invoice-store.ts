@@ -1,35 +1,35 @@
-import { create } from 'zustand';
+import { tenantKeeper, type Keeper } from '@kiosk/core';
+import { decodeBasket, encodeBasket, type Basket } from '../lib/basket';
+import { decodeForwards, encodeForwards, NO_FORWARDS, type ForwardState } from '../lib/forward';
+import { decodeDrafts, encodeDrafts, type DraftState } from '../lib/drafts';
 
-export interface CartLine {
-  itemId: string;
-  name: string;
-  quantity: number;
-  unitPrice: number;
+/**
+ * What the Grocery counter keeps on the phone, per shop: the sale being put together (the basket) and the sales that
+ * are waiting to be sent to the cashier. The same keeper is handed to every screen that asks, so a count in a banner and
+ * the list behind it always agree, and a closed app or a flat battery loses neither.
+ */
+
+export function basketKeeperFor(tenantId: string): Keeper<Basket | null> {
+  return tenantKeeper<Basket | null>('groceryBasket', tenantId, {
+    initial: null,
+    parse: (text, now) => decodeBasket(text, now),
+    serialize: (basket) => encodeBasket(basket),
+  });
 }
 
-interface InvoiceState {
-  lines: CartLine[];
-  addLine: (item: { id: string; name: string; sellingPrice: number }, qty?: number) => void;
-  updateQuantity: (itemId: string, quantity: number) => void;
-  removeLine: (itemId: string) => void;
-  clear: () => void;
-  total: () => number;
+/** Baskets parked at the counter, beside the one being worked on. */
+export function draftsKeeperFor(tenantId: string): Keeper<DraftState | null> {
+  return tenantKeeper<DraftState | null>('groceryDrafts', tenantId, {
+    initial: null,
+    parse: (text, now) => decodeDrafts(text, now),
+    serialize: (state) => encodeDrafts(state),
+  });
 }
 
-export const useInvoiceStore = create<InvoiceState>((set, get) => ({
-  lines: [],
-  addLine: (item, qty = 1) => {
-    const lines = [...get().lines];
-    const existing = lines.find((l) => l.itemId === item.id);
-    if (existing) existing.quantity += qty;
-    else lines.push({ itemId: item.id, name: item.name, quantity: qty, unitPrice: item.sellingPrice });
-    set({ lines });
-  },
-  updateQuantity: (itemId, quantity) => {
-    if (quantity <= 0) set({ lines: get().lines.filter((l) => l.itemId !== itemId) });
-    else set({ lines: get().lines.map((l) => (l.itemId === itemId ? { ...l, quantity } : l)) });
-  },
-  removeLine: (itemId) => set({ lines: get().lines.filter((l) => l.itemId !== itemId) }),
-  clear: () => set({ lines: [] }),
-  total: () => get().lines.reduce((s, l) => s + l.quantity * l.unitPrice, 0),
-}));
+export function forwardKeeperFor(tenantId: string): Keeper<ForwardState> {
+  return tenantKeeper<ForwardState>('groceryForwards', tenantId, {
+    initial: NO_FORWARDS,
+    parse: (text, now) => decodeForwards(text, now) ?? NO_FORWARDS,
+    serialize: (state) => (state.entries.length === 0 ? null : encodeForwards(state)),
+  });
+}

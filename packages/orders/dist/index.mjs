@@ -4,9 +4,19 @@ var GOODS_RECEIPTS = "/api/v1/purchasing/path-a/goods-receipts";
 function enc(value) {
   return encodeURIComponent(value.trim());
 }
-async function fetchSuppliers(api) {
+async function fetchSuppliers(api, opts) {
+  const parts = ["page=0", "size=100"];
+  if (opts?.itemTypeIds !== void 0) {
+    for (const id of opts.itemTypeIds) {
+      const trimmed = id?.trim();
+      if (trimmed) parts.push(`itemTypeIds=${encodeURIComponent(trimmed)}`);
+    }
+    if (opts.itemTypeIds.length === 0) {
+      parts.push("itemTypeIds=");
+    }
+  }
   const page = await api.get(
-    "/api/v1/suppliers?page=0&size=100"
+    `/api/v1/suppliers?${parts.join("&")}`
   );
   return page.content;
 }
@@ -56,15 +66,43 @@ async function cancelPurchaseOrder(api, purchaseOrderId) {
     {}
   );
 }
-async function postGoodsReceipt(api, body) {
-  return api.post(GOODS_RECEIPTS, body, { idempotent: true });
+async function postGoodsReceipt(api, body, opts) {
+  return api.post(GOODS_RECEIPTS, body, {
+    idempotent: true,
+    ...opts?.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : {}
+  });
 }
-async function postGrnSupplierInvoice(api, goodsReceiptId, body) {
+async function postGrnSupplierInvoice(api, goodsReceiptId, body, opts) {
   return api.post(
     `${GOODS_RECEIPTS}/${enc(goodsReceiptId)}/supplier-invoice`,
     body,
-    { idempotent: true }
+    { idempotent: true, ...opts?.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : {} }
   );
+}
+
+// src/api/till-prints.ts
+var TILL_PRINTS = "/api/v1/purchasing/till-prints";
+async function fetchTillCashiers(api, branchId) {
+  const bid = branchId?.trim();
+  const q = bid ? `?branchId=${encodeURIComponent(bid)}` : "";
+  const rows = await api.get(`${TILL_PRINTS}/cashiers${q}`);
+  return Array.isArray(rows) ? rows : [];
+}
+async function dispatchTillPrint(api, body) {
+  const result = await api.post(TILL_PRINTS, body);
+  return {
+    jobIds: Array.isArray(result?.jobIds) ? result.jobIds : [],
+    tills: Array.isArray(result?.tills) ? result.tills : []
+  };
+}
+async function fetchPendingTillPrints(api) {
+  const rows = await api.get(`${TILL_PRINTS}/pending`);
+  return Array.isArray(rows) ? rows : [];
+}
+async function claimTillPrint(api, jobId) {
+  const id = jobId.trim();
+  if (!id) return;
+  await api.post(`${TILL_PRINTS}/${encodeURIComponent(id)}/claim`, {});
 }
 
 // src/lib/format.ts
@@ -88,8 +126,137 @@ function formatQty(value) {
   return Number.isInteger(n) ? String(n) : n.toFixed(2);
 }
 
+// src/lib/till-send-words.ts
+function describeTillSend(kind, tills) {
+  const label = kind === "receipt" ? "Receipt" : "Order";
+  const names = (rows) => rows.map((row) => row.name?.trim() || "the till").join(", ");
+  const online = tills.filter((row) => row.online);
+  const offline = tills.filter((row) => !row.online);
+  if (tills.length === 0) {
+    return `${label} queued for the till.`;
+  }
+  if (offline.length === 0) {
+    return `${label} sent to ${names(online)}. Their screen will chime and the slip will print.`;
+  }
+  if (online.length === 0) {
+    const who = names(offline);
+    return tills.length === 1 ? `${who} is not on Sell right now. The slip is waiting \u2014 they will hear a chime and it will print when they open the till.` : `${who} are not on Sell right now. The slips are waiting until they open the till.`;
+  }
+  return `${label} printing for ${names(online)}. ${names(offline)} will get it when they open Sell.`;
+}
+
+// src/lib/till-slip-escpos.ts
+var CUT_TAIL = new Uint8Array([27, 100, 8, 29, 86, 1]);
+var INIT = new Uint8Array([27, 64]);
+function escPosCharWidth(widthMm) {
+  if (widthMm <= 50) return 28;
+  if (widthMm <= 58) return 32;
+  return 48;
+}
+function strip(s) {
+  return s.normalize("NFKD").replace(/[^\x20-\x7E]/g, "").trim();
+}
+function repeat(ch, n) {
+  return ch.repeat(Math.max(0, n));
+}
+function padLeft(text, width) {
+  if (text.length >= width) return text.slice(-width);
+  return " ".repeat(width - text.length) + text;
+}
+function center(text, width) {
+  if (text.length >= width) return text.slice(0, width);
+  const pad = width - text.length;
+  const left = Math.floor(pad / 2);
+  return " ".repeat(left) + text + " ".repeat(pad - left);
+}
+function wrap(text, width) {
+  const t = text.trim();
+  if (!t) return [];
+  if (t.length <= width) return [t];
+  const out = [];
+  let rest = t;
+  while (rest.length > width) {
+    let cut = rest.lastIndexOf(" ", width);
+    if (cut <= 0) cut = width;
+    out.push(rest.slice(0, cut).trimEnd());
+    rest = rest.slice(cut).trimStart();
+  }
+  if (rest) out.push(rest);
+  return out;
+}
+function asNumber(value) {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+function formatQty2(n) {
+  if (!Number.isFinite(n)) return "0";
+  const rounded = Math.round(n * 1e3) / 1e3;
+  return Number.isInteger(rounded) ? String(rounded) : String(rounded);
+}
+function buildTillSlipEscPos(slip, kind, widthMm = 58) {
+  const w = escPosCharWidth(widthMm);
+  const currency = strip(slip.currency || "KES") || "KES";
+  const heading = kind === "receipt" ? "GOODS RECEIPT" : "PURCHASE ORDER";
+  const out = [];
+  if (slip.businessName?.trim()) {
+    out.push(center(strip(slip.businessName), w));
+  }
+  if (slip.branchName?.trim()) {
+    out.push(center(strip(slip.branchName), w));
+  }
+  out.push(repeat("-", w));
+  out.push(center(heading, w));
+  out.push(center(strip(slip.reference), w));
+  out.push(center(strip((/* @__PURE__ */ new Date()).toLocaleString("en-KE")), w));
+  if (slip.placedByName?.trim()) {
+    out.push(center(strip(slip.placedByName), w));
+  }
+  if (slip.supplierName?.trim()) {
+    out.push(repeat("-", w));
+    out.push(center(`Supplier: ${strip(slip.supplierName)}`, w));
+  }
+  out.push(repeat("-", w));
+  let grand = 0;
+  for (const line of slip.lines) {
+    const name = strip(line.name) || "Item";
+    for (const row of wrap(name, w)) out.push(row);
+    const unitCost2 = asNumber(line.unitCost);
+    const lineTotal = asNumber(line.lineTotal);
+    const qty = asNumber(line.qty);
+    grand += lineTotal;
+    const detail = `${formatQty2(qty)} x ${unitCost2.toFixed(2)} = ${lineTotal.toFixed(2)}`;
+    out.push(padLeft(strip(detail), w));
+  }
+  out.push(repeat("-", w));
+  out.push(padLeft(`TOTAL ${grand.toFixed(2)} ${currency}`, w));
+  out.push(repeat("-", w));
+  out.push(center(kind === "receipt" ? "Received into stock" : "Place with supplier", w));
+  const bodyParts = out.map((line) => encodeLatin1(`${line}
+`));
+  let bodyLen = 0;
+  for (const p of bodyParts) bodyLen += p.length;
+  const bytes = new Uint8Array(INIT.length + bodyLen + CUT_TAIL.length);
+  let offset = 0;
+  bytes.set(INIT, offset);
+  offset += INIT.length;
+  for (const p of bodyParts) {
+    bytes.set(p, offset);
+    offset += p.length;
+  }
+  bytes.set(CUT_TAIL, offset);
+  return bytes;
+}
+function encodeLatin1(s) {
+  const out = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i += 1) {
+    const code = s.charCodeAt(i);
+    out[i] = code <= 255 ? code : 63;
+  }
+  return out;
+}
+
 // src/screens/OrdersScreen.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -104,7 +271,9 @@ import {
 } from "react-native";
 import { Button, Card, Text, theme } from "@kiosk/ui";
 import { cache } from "@kiosk/offline";
-import { jsx, jsxs } from "react/jsx-runtime";
+import { Fragment, jsx, jsxs } from "react/jsx-runtime";
+var ORDER_CURRENCY = "KES";
+var TILL_PICK_KEY = (branchId) => `stock/order-print-till/${branchId || "none"}`;
 function unitCost(link) {
   const candidates = [link.lastCostPrice, link.defaultCostPrice, link.catalogBuyingPrice];
   for (const c of candidates) {
@@ -131,7 +300,16 @@ function linkParentLabel(link) {
   const sep = name.indexOf(" \xB7 ");
   return sep > 0 ? name.slice(0, sep) : name;
 }
-function OrdersScreen({ api, branchId }) {
+function OrdersScreen({
+  api,
+  branchId,
+  itemTypeIds,
+  shopName,
+  branchName,
+  clerkName,
+  printLocal,
+  hasLocalPrinter = false
+}) {
   const [suppliers, setSuppliers] = useState([]);
   const [supplierId, setSupplierId] = useState(null);
   const [links, setLinks] = useState([]);
@@ -145,7 +323,15 @@ function OrdersScreen({ api, branchId }) {
   const [cartOpen, setCartOpen] = useState(false);
   const [notes, setNotes] = useState("");
   const [placing, setPlacing] = useState(false);
+  const [printingOrder, setPrintingOrder] = useState(false);
+  const [cashiers, setCashiers] = useState([]);
+  const [cashiersLoading, setCashiersLoading] = useState(false);
+  const [cashiersError, setCashiersError] = useState(null);
+  const [printTillId, setPrintTillId] = useState(null);
+  const [tillPickerOpen, setTillPickerOpen] = useState(false);
+  const [lastPlaced, setLastPlaced] = useState(null);
   const [hydrated, setHydrated] = useState(false);
+  const scopeKey = itemTypeIds === void 0 ? "all" : itemTypeIds.slice().sort().join(",");
   const cart = cartsBySupplier[supplierId ?? ""] ?? {};
   const draftKey = useMemo(() => `stock/order-carts/${branchId}`, [branchId]);
   useEffect(() => {
@@ -164,7 +350,10 @@ function OrdersScreen({ api, branchId }) {
   useEffect(() => {
     let cancelled = false;
     setLoadingSuppliers(true);
-    void fetchSuppliers(api).then((rows) => {
+    void fetchSuppliers(
+      api,
+      itemTypeIds !== void 0 ? { itemTypeIds } : void 0
+    ).then((rows) => {
       if (cancelled) return;
       const active = rows.filter(
         (s) => s.status?.toLowerCase() === "active" && !s.deletedAt
@@ -184,7 +373,7 @@ function OrdersScreen({ api, branchId }) {
     return () => {
       cancelled = true;
     };
-  }, [api]);
+  }, [api, scopeKey, itemTypeIds]);
   useEffect(() => {
     if (!supplierId) {
       setLinks([]);
@@ -193,7 +382,23 @@ function OrdersScreen({ api, branchId }) {
     let cancelled = false;
     setLoadingLinks(true);
     void fetchSupplierItemLinks(api, supplierId, { branchId }).then((rows) => {
-      if (!cancelled) setLinks(rows.filter((r) => r.active));
+      if (cancelled) return;
+      const active = rows.filter((r) => r.active);
+      if (itemTypeIds === void 0) {
+        setLinks(active);
+        return;
+      }
+      if (itemTypeIds.length === 0) {
+        setLinks([]);
+        return;
+      }
+      const allowed = new Set(itemTypeIds.map((id) => id.trim()).filter(Boolean));
+      setLinks(
+        active.filter((r) => {
+          const typeId = r.itemTypeId?.trim();
+          return !!typeId && allowed.has(typeId);
+        })
+      );
     }).catch((error) => {
       if (!cancelled) {
         setLinks([]);
@@ -205,7 +410,7 @@ function OrdersScreen({ api, branchId }) {
     return () => {
       cancelled = true;
     };
-  }, [supplierId, api, branchId]);
+  }, [supplierId, api, branchId, scopeKey, itemTypeIds]);
   useEffect(() => {
     setParentFilterId(null);
   }, [supplierId]);
@@ -214,6 +419,35 @@ function OrdersScreen({ api, branchId }) {
     void cache.set(draftKey, cartsBySupplier).catch(() => {
     });
   }, [cartsBySupplier, hydrated, draftKey]);
+  useEffect(() => {
+    let cancelled = false;
+    setCashiersLoading(true);
+    setCashiersError(null);
+    void fetchTillCashiers(api, branchId).then(async (rows) => {
+      if (cancelled) return;
+      setCashiers(rows);
+      const remembered = await cache.get(TILL_PICK_KEY(branchId)).catch(() => null);
+      if (remembered && rows.some((r) => r.id === remembered)) {
+        setPrintTillId(remembered);
+      } else if (rows.length === 1) {
+        setPrintTillId(rows[0].id);
+      } else {
+        setPrintTillId(null);
+      }
+    }).catch((error) => {
+      if (cancelled) return;
+      setCashiers([]);
+      setPrintTillId(null);
+      setCashiersError(
+        error instanceof Error ? error.message : "Could not load cashiers"
+      );
+    }).finally(() => {
+      if (!cancelled) setCashiersLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [api, branchId]);
   const selectSupplier = (nextId) => {
     if (nextId === supplierId) {
       setSupplierPickerOpen(false);
@@ -287,6 +521,148 @@ function OrdersScreen({ api, branchId }) {
       return next;
     });
   };
+  const printPlacedAfterPickRef = useRef(false);
+  const buildOrderSlipLines = useCallback(() => {
+    return cartLines.map((line) => {
+      const unit = unitCost(line.link);
+      return {
+        name: line.link.itemName || "Item",
+        qty: line.qty,
+        unitCost: unit,
+        lineTotal: unit * line.qty
+      };
+    });
+  }, [cartLines]);
+  const dispatchSlip = useCallback(
+    async (opts) => {
+      return dispatchTillPrint(api, {
+        kind: "order",
+        branchId: branchId.trim() || null,
+        targetUserIds: [opts.targetUserId],
+        slip: {
+          reference: opts.reference,
+          supplierName: opts.supplierName,
+          businessName: shopName?.trim() || "",
+          branchName: branchName?.trim() || "",
+          placedByName: clerkName?.trim() || "",
+          currency: ORDER_CURRENCY,
+          lines: opts.lines
+        }
+      });
+    },
+    [api, branchId, branchName, clerkName, shopName]
+  );
+  const localSlipPayload = useCallback(
+    (reference, lines, supplierName) => ({
+      reference,
+      supplierName,
+      lines,
+      businessName: shopName?.trim() || "",
+      branchName: branchName?.trim() || "",
+      placedByName: clerkName?.trim() || ""
+    }),
+    [branchName, clerkName, shopName]
+  );
+  const printHere = async (reference, lines, supplierName) => {
+    if (!printLocal) {
+      Alert.alert("No printer", "Pair a Bluetooth printer in Sales \u2192 Invoice printer.");
+      return;
+    }
+    const slipLines = lines ?? buildOrderSlipLines();
+    if (slipLines.length === 0) {
+      Alert.alert("Empty order", "Add products to the order.");
+      return;
+    }
+    setPrintingOrder(true);
+    try {
+      await printLocal(
+        localSlipPayload(
+          reference ?? `DRAFT-${Date.now().toString().slice(-6)}`,
+          slipLines,
+          supplierName ?? activeSupplier?.name ?? "Supplier"
+        )
+      );
+      Alert.alert("Printed", "The order slip was sent to this phone\u2019s printer.");
+    } catch (error) {
+      Alert.alert(
+        "Could not print",
+        error instanceof Error ? error.message : "The printer did not take the slip."
+      );
+    } finally {
+      setPrintingOrder(false);
+    }
+  };
+  const printOrderNow = async () => {
+    if (!printTillId) {
+      Alert.alert("Pick a till", "Choose which till should print this order.");
+      setTillPickerOpen(true);
+      return;
+    }
+    const slipLines = buildOrderSlipLines();
+    if (slipLines.length === 0) {
+      Alert.alert("Empty order", "Add products to the order.");
+      return;
+    }
+    setPrintingOrder(true);
+    try {
+      const sent = await dispatchSlip({
+        reference: `DRAFT-${Date.now().toString().slice(-6)}`,
+        supplierName: activeSupplier?.name || "Supplier",
+        lines: slipLines,
+        targetUserId: printTillId
+      });
+      Alert.alert("Sent to till", describeTillSend("order", sent.tills));
+    } catch (error) {
+      Alert.alert(
+        "Could not send",
+        error instanceof Error ? error.message : "Could not send order to till"
+      );
+    } finally {
+      setPrintingOrder(false);
+    }
+  };
+  const printLastPlaced = useCallback(
+    async (targetUserId) => {
+      if (!lastPlaced) return;
+      const tillId = targetUserId?.trim() || printTillId?.trim() || "";
+      if (!tillId) {
+        printPlacedAfterPickRef.current = true;
+        setTillPickerOpen(true);
+        return;
+      }
+      setPrintingOrder(true);
+      try {
+        const sent = await dispatchSlip({
+          reference: lastPlaced.poNumber,
+          supplierName: lastPlaced.supplierName,
+          lines: lastPlaced.lines,
+          targetUserId: tillId
+        });
+        Alert.alert("Sent to till", describeTillSend("order", sent.tills));
+      } catch (error) {
+        Alert.alert(
+          "Could not send",
+          error instanceof Error ? error.message : "Could not send order to till"
+        );
+      } finally {
+        setPrintingOrder(false);
+      }
+    },
+    [dispatchSlip, lastPlaced, printTillId]
+  );
+  const pickTill = useCallback(
+    (id) => {
+      setPrintTillId(id);
+      setTillPickerOpen(false);
+      void cache.set(TILL_PICK_KEY(branchId), id).catch(() => {
+      });
+      if (printPlacedAfterPickRef.current) {
+        printPlacedAfterPickRef.current = false;
+        void printLastPlaced(id);
+      }
+    },
+    [branchId, printLastPlaced]
+  );
   const placeOrder = async () => {
     if (!supplierId || !activeSupplier) {
       Alert.alert("Missing supplier", "Pick a supplier first.");
@@ -300,6 +676,8 @@ function OrdersScreen({ api, branchId }) {
       Alert.alert("Empty order", "Add products to the order.");
       return;
     }
+    const printTo = printTillId?.trim() || "";
+    const slipLines = buildOrderSlipLines();
     setPlacing(true);
     try {
       const po = await createPurchaseOrder(api, {
@@ -319,15 +697,55 @@ function OrdersScreen({ api, branchId }) {
       } catch {
         await sendPurchaseOrder(api, po.id);
       }
+      const placed = {
+        poNumber: po.poNumber,
+        supplierName: activeSupplier.name || "Supplier",
+        lines: slipLines
+      };
+      setLastPlaced(placed);
+      let printNote = "";
+      if (printTo && slipLines.length > 0) {
+        try {
+          const sent = await dispatchSlip({
+            reference: po.poNumber,
+            supplierName: placed.supplierName,
+            lines: slipLines,
+            targetUserId: printTo
+          });
+          printNote = `
+
+${describeTillSend("order", sent.tills)}`;
+        } catch {
+          printNote = "\n\nThe order was saved, but the selected till did not get the print.";
+        }
+      }
       setCartsBySupplier((prevMap) => {
         const next = { ...prevMap };
         delete next[supplierId];
         return next;
       });
       setCartOpen(false);
+      const actions = [{ text: "Done", style: "cancel" }];
+      if (hasLocalPrinter && printLocal) {
+        actions.push({
+          text: "Print here",
+          onPress: () => {
+            void printHere(po.poNumber, slipLines, placed.supplierName);
+          }
+        });
+      }
+      if (!printTo) {
+        actions.push({
+          text: "Print to till",
+          onPress: () => {
+            void printLastPlaced(printTillId ?? void 0);
+          }
+        });
+      }
       Alert.alert(
         "Order placed",
-        `Order ${po.poNumber} placed \u2014 confirm when goods arrive.`
+        `Order ${po.poNumber} placed \u2014 confirm when goods arrive.${printNote}`,
+        actions
       );
     } catch (error) {
       Alert.alert("Error", error instanceof Error ? error.message : "Could not place order");
@@ -525,6 +943,75 @@ function OrdersScreen({ api, branchId }) {
               multiline: true
             }
           ),
+          /* @__PURE__ */ jsxs(View, { style: styles.printOrderBox, accessibilityRole: "radiogroup", children: [
+            /* @__PURE__ */ jsx(Text, { variant: "caption", style: styles.printOrderLegend, children: "Print order to" }),
+            /* @__PURE__ */ jsx(Text, { variant: "muted", style: styles.printOrderHint, children: "One till only. Their screen chimes and the slip prints on that cashier\u2019s printer \u2014 even remotely." }),
+            cashiersLoading ? /* @__PURE__ */ jsx(Text, { variant: "muted", children: "Loading cashiers\u2026" }) : cashiersError ? /* @__PURE__ */ jsx(Text, { variant: "muted", style: styles.printOrderError, children: cashiersError }) : cashiers.length === 0 ? /* @__PURE__ */ jsx(Text, { variant: "muted", children: "No cashiers on this shop, so nothing will print remotely." }) : /* @__PURE__ */ jsxs(Fragment, { children: [
+              /* @__PURE__ */ jsx(
+                Pressable,
+                {
+                  style: styles.printOrderRow,
+                  onPress: () => {
+                    printPlacedAfterPickRef.current = false;
+                    setPrintTillId(null);
+                    void cache.set(TILL_PICK_KEY(branchId), "").catch(() => {
+                    });
+                  },
+                  accessibilityRole: "radio",
+                  accessibilityState: { selected: printTillId === null },
+                  children: /* @__PURE__ */ jsxs(Text, { variant: "body", style: printTillId === null ? styles.printOrderOn : void 0, children: [
+                    printTillId === null ? "\u25CF" : "\u25CB",
+                    " Don\u2019t print"
+                  ] })
+                }
+              ),
+              cashiers.map((cashier) => {
+                const on = printTillId === cashier.id;
+                return /* @__PURE__ */ jsx(
+                  Pressable,
+                  {
+                    style: styles.printOrderRow,
+                    onPress: () => pickTill(cashier.id),
+                    accessibilityRole: "radio",
+                    accessibilityState: { selected: on },
+                    children: /* @__PURE__ */ jsxs(Text, { variant: "body", style: on ? styles.printOrderOn : void 0, numberOfLines: 1, children: [
+                      on ? "\u25CF" : "\u25CB",
+                      " ",
+                      cashier.name
+                    ] })
+                  },
+                  cashier.id
+                );
+              })
+            ] })
+          ] }),
+          /* @__PURE__ */ jsx(
+            Button,
+            {
+              title: printingOrder ? "Sending to till\u2026" : "Print order now",
+              onPress: () => void printOrderNow(),
+              disabled: printingOrder || placing || cartLines.length === 0 || !printTillId,
+              variant: "secondary"
+            }
+          ),
+          hasLocalPrinter && printLocal ? /* @__PURE__ */ jsx(
+            Button,
+            {
+              title: printingOrder ? "Printing\u2026" : "Print here",
+              onPress: () => void printHere(),
+              disabled: printingOrder || placing || cartLines.length === 0,
+              variant: "secondary"
+            }
+          ) : null,
+          lastPlaced ? /* @__PURE__ */ jsx(
+            Button,
+            {
+              title: printingOrder ? "Sending\u2026" : `Print ${lastPlaced.poNumber} to till again`,
+              onPress: () => void printLastPlaced(),
+              disabled: printingOrder || placing || !printTillId,
+              variant: "secondary"
+            }
+          ) : null,
           /* @__PURE__ */ jsxs(View, { style: styles.cartFooter, children: [
             /* @__PURE__ */ jsxs(View, { children: [
               /* @__PURE__ */ jsx(Text, { variant: "caption", children: "Total" }),
@@ -535,10 +1022,59 @@ function OrdersScreen({ api, branchId }) {
               {
                 title: placing ? "Placing\u2026" : "Place order",
                 onPress: () => void placeOrder(),
-                disabled: placing || cartLines.length === 0
+                disabled: placing || printingOrder || cartLines.length === 0
               }
             )
           ] })
+        ] }) })
+      }
+    ),
+    /* @__PURE__ */ jsx(
+      Modal,
+      {
+        visible: tillPickerOpen,
+        animationType: "slide",
+        transparent: true,
+        onRequestClose: () => {
+          printPlacedAfterPickRef.current = false;
+          setTillPickerOpen(false);
+        },
+        children: /* @__PURE__ */ jsx(View, { style: styles.modalOverlay, children: /* @__PURE__ */ jsxs(View, { style: styles.modalSheet, children: [
+          /* @__PURE__ */ jsxs(View, { style: styles.modalHeader, children: [
+            /* @__PURE__ */ jsx(Text, { variant: "h2", children: "Print on till" }),
+            /* @__PURE__ */ jsx(
+              Pressable,
+              {
+                onPress: () => {
+                  printPlacedAfterPickRef.current = false;
+                  setTillPickerOpen(false);
+                },
+                accessibilityRole: "button",
+                children: /* @__PURE__ */ jsx(Text, { variant: "body", style: styles.modalClose, children: "Close" })
+              }
+            )
+          ] }),
+          /* @__PURE__ */ jsx(Text, { variant: "caption", style: styles.cartSupplier, children: "The slip is queued remotely. If they are on Sell it prints now; otherwise it waits." }),
+          /* @__PURE__ */ jsx(
+            FlatList,
+            {
+              data: cashiers,
+              keyExtractor: (item) => item.id,
+              renderItem: ({ item }) => /* @__PURE__ */ jsxs(
+                Pressable,
+                {
+                  style: styles.supplierRow,
+                  onPress: () => pickTill(item.id),
+                  accessibilityRole: "button",
+                  children: [
+                    /* @__PURE__ */ jsx(View, { style: styles.supplierRowText, children: /* @__PURE__ */ jsx(Text, { variant: "body", children: item.name }) }),
+                    item.id === printTillId ? /* @__PURE__ */ jsx(Text, { variant: "body", style: styles.check, children: "\u2713" }) : null
+                  ]
+                }
+              ),
+              ListEmptyComponent: /* @__PURE__ */ jsx(View, { style: styles.center, children: /* @__PURE__ */ jsx(Text, { variant: "muted", children: "No cashier tills on this shop." }) })
+            }
+          )
         ] }) })
       }
     )
@@ -805,6 +1341,27 @@ var styles = StyleSheet.create({
     fontSize: 15,
     color: theme.colors.text
   },
+  printOrderBox: {
+    marginTop: 10,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.md,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: theme.colors.surface
+  },
+  printOrderLegend: {
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+    color: theme.colors.textMuted,
+    marginBottom: 4
+  },
+  printOrderHint: { marginBottom: 8, fontSize: 12, lineHeight: 16 },
+  printOrderError: { color: theme.colors.danger },
+  printOrderRow: { paddingVertical: 6 },
+  printOrderOn: { fontWeight: "700", color: theme.colors.primary },
   cartFooter: {
     flexDirection: "row",
     alignItems: "center",
@@ -817,7 +1374,8 @@ var styles = StyleSheet.create({
 import { useCallback as useCallback2, useState as useState2 } from "react";
 import { ActivityIndicator as ActivityIndicator2, FlatList as FlatList2, Pressable as Pressable2, StyleSheet as StyleSheet2, View as View2 } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
-import { Card as Card2, Text as Text2, theme as theme2 } from "@kiosk/ui";
+import { Button as Button2, Card as Card2, Text as Text2, theme as theme2 } from "@kiosk/ui";
+import { isApiError } from "@kiosk/core";
 import { jsx as jsx2, jsxs as jsxs2 } from "react/jsx-runtime";
 var STATUS_TONE = {
   sent: { bg: "#e0f2fe", fg: "#0369a1" },
@@ -829,6 +1387,7 @@ function ReceiveScreen({ api, onOpenOrder }) {
   const [orders, setOrders] = useState2([]);
   const [suppliers, setSuppliers] = useState2([]);
   const [loading, setLoading] = useState2(true);
+  const [failed, setFailed] = useState2(null);
   const refresh = useCallback2(async () => {
     try {
       const [sent, draft, supplierRows] = await Promise.all([
@@ -840,8 +1399,12 @@ function ReceiveScreen({ api, onOpenOrder }) {
       open.sort((a, b) => b.poNumber.localeCompare(a.poNumber));
       setOrders(open);
       setSuppliers(supplierRows);
+      setFailed(null);
     } catch (error) {
       console.warn("Failed to load orders", error);
+      setFailed(
+        isApiError(error) && error.status === 403 ? "Your role is not allowed to see supplier orders. Ask the owner of the shop to allow it." : "Could not load the orders. Check the signal and try again."
+      );
     } finally {
       setLoading(false);
     }
@@ -852,7 +1415,10 @@ function ReceiveScreen({ api, onOpenOrder }) {
     }, [refresh])
   );
   const supplierName = (supplierId) => suppliers.find((s) => s.id === supplierId)?.name ?? "Supplier";
-  return /* @__PURE__ */ jsx2(View2, { style: styles2.container, children: loading ? /* @__PURE__ */ jsx2(View2, { style: styles2.center, children: /* @__PURE__ */ jsx2(ActivityIndicator2, { size: "large", color: theme2.colors.primary }) }) : orders.length === 0 ? /* @__PURE__ */ jsxs2(View2, { style: styles2.center, children: [
+  return /* @__PURE__ */ jsx2(View2, { style: styles2.container, children: loading ? /* @__PURE__ */ jsx2(View2, { style: styles2.center, children: /* @__PURE__ */ jsx2(ActivityIndicator2, { size: "large", color: theme2.colors.primary }) }) : orders.length === 0 && failed ? /* @__PURE__ */ jsxs2(View2, { style: styles2.center, children: [
+    /* @__PURE__ */ jsx2(Text2, { variant: "muted", style: styles2.emptyHint, children: failed }),
+    /* @__PURE__ */ jsx2(Button2, { title: "Try again", onPress: () => void refresh(), style: styles2.retry })
+  ] }) : orders.length === 0 ? /* @__PURE__ */ jsxs2(View2, { style: styles2.center, children: [
     /* @__PURE__ */ jsx2(Text2, { variant: "muted", children: "No open orders." }),
     /* @__PURE__ */ jsx2(Text2, { variant: "muted", style: styles2.emptyHint, children: "Place an order first, then confirm here when goods arrive." })
   ] }) : /* @__PURE__ */ jsx2(
@@ -862,6 +1428,7 @@ function ReceiveScreen({ api, onOpenOrder }) {
       keyExtractor: (o) => o.id,
       onRefresh: () => void refresh(),
       refreshing: false,
+      ListHeaderComponent: failed ? /* @__PURE__ */ jsx2(Text2, { variant: "muted", style: styles2.staleHint, children: "Could not refresh. These are the last orders read." }) : null,
       contentContainerStyle: styles2.listContent,
       renderItem: ({ item }) => {
         const tone = STATUS_TONE[item.status] ?? { bg: theme2.colors.surface, fg: theme2.colors.textMuted };
@@ -908,6 +1475,8 @@ var styles2 = StyleSheet2.create({
   container: { flex: 1, backgroundColor: theme2.colors.background },
   center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
   emptyHint: { marginTop: 8, textAlign: "center" },
+  retry: { marginTop: 16 },
+  staleHint: { marginBottom: 12 },
   listContent: { padding: 16, paddingBottom: 24 },
   card: { marginBottom: 12 },
   cardHeader: {
@@ -923,7 +1492,7 @@ var styles2 = StyleSheet2.create({
 });
 
 // src/screens/ReceiveOrderScreen.tsx
-import { useCallback as useCallback3, useEffect as useEffect2, useMemo as useMemo2, useState as useState3 } from "react";
+import { useCallback as useCallback3, useEffect as useEffect2, useMemo as useMemo2, useRef as useRef2, useState as useState3 } from "react";
 import {
   ActivityIndicator as ActivityIndicator3,
   Alert as Alert2,
@@ -932,11 +1501,51 @@ import {
   StyleSheet as StyleSheet3,
   View as View3
 } from "react-native";
-import { Button as Button2, Card as Card3, Text as Text3, theme as theme3 } from "@kiosk/ui";
-import { jsx as jsx3, jsxs as jsxs3 } from "react/jsx-runtime";
-function todayIsoDate() {
-  return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+import { Button as Button3, Card as Card3, Text as Text3, theme as theme3 } from "@kiosk/ui";
+import { generateIdempotencyKey } from "@kiosk/core";
+
+// src/lib/receipt-attempt.ts
+function receiptSignature(input) {
+  const lines = input.lines.map((line) => `${line.purchaseOrderLineId}:${line.qtyReceived}`).sort();
+  return [input.purchaseOrderId, input.branchId, ...lines].join("|");
 }
+function planAttempt(previous, input, make) {
+  if (previous && previous.signature === input.signature) return { kind: "go", attempt: previous };
+  if (previous && previous.goodsReceiptId !== null) return { kind: "half_done", attempt: previous };
+  const at = new Date(make.now());
+  return {
+    kind: "go",
+    attempt: {
+      signature: input.signature,
+      goodsReceiptKey: make.key(),
+      invoiceKey: make.key(),
+      invoiceNumber: `${input.poNumber}-R${String(at.getTime()).slice(-4)}`,
+      receivedAt: at.toISOString(),
+      invoiceDate: at.toISOString().slice(0, 10),
+      goodsReceiptId: null
+    }
+  };
+}
+async function sendAttempt(attempt, tools) {
+  if (attempt.goodsReceiptId === null) {
+    const receipt = await tools.postGoodsReceipt(attempt.goodsReceiptKey);
+    const id = receipt && typeof receipt.goodsReceiptId === "string" ? receipt.goodsReceiptId.trim() : "";
+    if (id === "") throw new Error("The server did not say which receipt it made.");
+    attempt.goodsReceiptId = id;
+  }
+  await tools.postInvoice(attempt.goodsReceiptId, attempt.invoiceKey);
+}
+function receiptFailureWords(attempt, error) {
+  const said = error instanceof Error && error.message.trim() !== "" ? error.message.trim() : "Could not confirm the order.";
+  if (attempt.goodsReceiptId !== null) {
+    return `The goods are recorded as received, but the invoice could not be saved: ${said} Press Confirm receipt again to finish it. The goods will not be counted twice.`;
+  }
+  return `${said} Press Confirm receipt again to try once more. It will not be counted twice.`;
+}
+var HALF_DONE_WORDS = "The goods from your last try are already received. Go back and open this order again to see what is still to come, so nothing is counted twice.";
+
+// src/screens/ReceiveOrderScreen.tsx
+import { jsx as jsx3, jsxs as jsxs3 } from "react/jsx-runtime";
 function round2(value) {
   return Math.round(value * 100) / 100;
 }
@@ -948,6 +1557,8 @@ function ReceiveOrderScreen({ api, branchId, purchaseOrderId, onDone }) {
   const [loading, setLoading] = useState3(true);
   const [confirming, setConfirming] = useState3(false);
   const [cancelling, setCancelling] = useState3(false);
+  const attemptRef = useRef2(null);
+  const sending = useRef2(false);
   useEffect2(() => {
     let cancelled = false;
     setLoading(true);
@@ -1025,7 +1636,7 @@ function ReceiveOrderScreen({ api, branchId, purchaseOrderId, onDone }) {
     setQtyByLine((prev) => ({ ...prev, [lineId]: Math.max(0, qty) }));
   };
   const confirmSelected = async () => {
-    if (!detail) return;
+    if (!detail || sending.current) return;
     const lines = openLines.filter((l) => selectedLines[l.id]).map((l) => ({
       purchaseOrderLineId: l.id,
       qtyReceived: Math.max(0, qtyByLine[l.id] ?? 0),
@@ -1041,35 +1652,62 @@ function ReceiveOrderScreen({ api, branchId, purchaseOrderId, onDone }) {
       Alert2.alert("Missing branch", "A branch is required to confirm.");
       return;
     }
+    const body = {
+      purchaseOrderId: detail.id,
+      branchId: receiveBranch.trim(),
+      notes: `Confirmed from Order \xB7 ${detail.poNumber}`,
+      lines: lines.map((l) => ({
+        purchaseOrderLineId: l.purchaseOrderLineId,
+        qtyReceived: l.qtyReceived
+      }))
+    };
+    const invoiceLines = lines.map((l) => ({
+      itemId: l.itemId,
+      qty: l.qtyReceived,
+      unitCost: l.unitCost,
+      lineTotal: round2(l.qtyReceived * l.unitCost)
+    }));
+    const plan = planAttempt(
+      attemptRef.current,
+      { signature: receiptSignature(body), poNumber: detail.poNumber },
+      { key: generateIdempotencyKey, now: Date.now }
+    );
+    if (plan.kind === "half_done") {
+      Alert2.alert("Part of this is already recorded", HALF_DONE_WORDS);
+      return;
+    }
+    const attempt = plan.attempt;
+    attemptRef.current = attempt;
+    sending.current = true;
     setConfirming(true);
     try {
-      const grn = await postGoodsReceipt(api, {
-        purchaseOrderId: detail.id,
-        branchId: receiveBranch.trim(),
-        receivedAt: (/* @__PURE__ */ new Date()).toISOString(),
-        notes: `Confirmed from Order \xB7 ${detail.poNumber}`,
-        lines: lines.map((l) => ({
-          purchaseOrderLineId: l.purchaseOrderLineId,
-          qtyReceived: l.qtyReceived
-        }))
+      await sendAttempt(attempt, {
+        postGoodsReceipt: (key) => postGoodsReceipt(
+          api,
+          {
+            purchaseOrderId: body.purchaseOrderId,
+            branchId: body.branchId,
+            receivedAt: attempt.receivedAt,
+            notes: body.notes,
+            lines: body.lines
+          },
+          { idempotencyKey: key }
+        ),
+        postInvoice: (goodsReceiptId, key) => postGrnSupplierInvoice(
+          api,
+          goodsReceiptId,
+          { invoiceNumber: attempt.invoiceNumber, invoiceDate: attempt.invoiceDate, lines: invoiceLines },
+          { idempotencyKey: key }
+        )
       });
-      const invoiceLines = lines.map((l) => ({
-        itemId: l.itemId,
-        qty: l.qtyReceived,
-        unitCost: l.unitCost,
-        lineTotal: round2(l.qtyReceived * l.unitCost)
-      }));
-      await postGrnSupplierInvoice(api, grn.goodsReceiptId, {
-        invoiceNumber: `${detail.poNumber}-R${String(Date.now()).slice(-4)}`,
-        invoiceDate: todayIsoDate(),
-        lines: invoiceLines
-      });
+      attemptRef.current = null;
       Alert2.alert("Confirmed", "Order confirmed \u2014 stock updated.", [
         { text: "OK", onPress: onDone }
       ]);
     } catch (error) {
-      Alert2.alert("Error", error instanceof Error ? error.message : "Could not confirm order");
+      Alert2.alert("Error", receiptFailureWords(attempt, error));
     } finally {
+      sending.current = false;
       setConfirming(false);
     }
   };
@@ -1114,7 +1752,7 @@ function ReceiveOrderScreen({ api, branchId, purchaseOrderId, onDone }) {
         ] })
       ] }),
       canCancel ? /* @__PURE__ */ jsx3(
-        Button2,
+        Button3,
         {
           title: cancelling ? "Cancelling\u2026" : "Cancel order",
           variant: "danger",
@@ -1213,7 +1851,7 @@ function ReceiveOrderScreen({ api, branchId, purchaseOrderId, onDone }) {
         ] })
       ] }),
       /* @__PURE__ */ jsx3(
-        Button2,
+        Button3,
         {
           title: confirming ? "Confirming\u2026" : "Confirm receipt",
           onPress: () => void confirmSelected(),
@@ -1293,12 +1931,18 @@ export {
   ReceiveOrderScreen,
   ReceiveScreen,
   addPurchaseOrderLine,
+  buildTillSlipEscPos,
   cancelPurchaseOrder,
+  claimTillPrint,
   createPurchaseOrder,
+  describeTillSend,
+  dispatchTillPrint,
+  fetchPendingTillPrints,
   fetchPurchaseOrder,
   fetchPurchaseOrders,
   fetchSupplierItemLinks,
   fetchSuppliers,
+  fetchTillCashiers,
   formatMoney,
   formatQty,
   postGoodsReceipt,

@@ -450,7 +450,7 @@ test('forgetting a shop forgets who signed in at it and that the phone was a til
 });
 
 test('the staff-app fields are per-shop plain fields like the rest', () => {
-  for (const field of ['knownStaff', 'tillSeen', 'heldBaskets'] as const) {
+  for (const field of ['knownStaff', 'tillSeen', 'heldBaskets', 'catalog', 'shopFlags', 'tillLog'] as const) {
     assert.ok((K.PLAIN_FIELDS as readonly string[]).includes(field), field);
     assert.notEqual(K.plainKey(ACME.tenantId, field), K.plainKey(BOBS.tenantId, field));
   }

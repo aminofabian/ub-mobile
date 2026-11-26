@@ -17,6 +17,11 @@ export interface StaffUser {
   roleName: string;
   /** Permission keys, lower case. This is what a gate reads (plan §5.11.4 rule 2). */
   permissions: string[];
+  /**
+   * Department (item-type) IDs this person is restricted to. Grocery clerks with none
+   * see no departments until an admin assigns at least one.
+   */
+  itemTypeIds: string[];
   hasPin: boolean;
 }
 
@@ -65,6 +70,17 @@ export function parseMe(payload: unknown): StaffUser | null {
       ].slice(0, MAX_PERMISSIONS)
     : [];
 
+  const itemTypeIds = Array.isArray(record.itemTypeIds)
+    ? [
+        ...new Set(
+          record.itemTypeIds
+            .filter((value): value is string => typeof value === 'string')
+            .map((value) => value.trim())
+            .filter((value) => value.length > 0 && value.length <= MAX_ID_LENGTH),
+        ),
+      ]
+    : [];
+
   return {
     id: userId,
     email: email(record.email),
@@ -73,6 +89,7 @@ export function parseMe(payload: unknown): StaffUser | null {
     roleKey,
     roleName: roleless ? '' : cleanDisplayText(role?.name, 60) || roleKey,
     permissions,
+    itemTypeIds,
     hasPin: record.hasPin === true,
   };
 }

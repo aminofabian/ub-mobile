@@ -4,18 +4,49 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { cleanDisplayText, fetchDepartments, formatKes, generateIdempotencyKey, itemLabel, QTY_SCALE, type DepartmentOption, type StockItem } from '@kiosk/core';
-import { CardGloss, FlyToCart, Gloss, ItemPicker, MartText, WeightSheet, type Flight, useKept, MART, RADIUS as MART_RADIUS, SPACE as MART_SPACE, onFill, tint, zoneFor } from '@kiosk/staff';
-import { Banner, Button, Card, Chip, Field, FONT, Text, theme } from '@kiosk/ui';
-import { addItem, basketProblemWords, basketTotalCents, claimBasket, emptyBasket } from '../lib/basket';
+import {
+  fetchDepartments,
+  formatKes,
+  generateIdempotencyKey,
+  itemLabel,
+  QTY_SCALE,
+  visibleDepartments,
+  type DepartmentOption,
+  type StockItem,
+} from '@kiosk/core';
+import {
+  FlyToCart,
+  Gloss,
+  ItemPicker,
+  MartText,
+  PressableScale,
+  WeightSheet,
+  type Flight,
+  useKept,
+  FONT,
+  WEIGHT,
+  MART,
+  RADIUS,
+  SHADOW,
+  SPACE,
+  onFill,
+  tint,
+  zoneFor,
+} from '@kiosk/staff';
+import { Banner, Button, Text } from '@kiosk/ui';
+import { addItem, basketProblemWords, basketTotalCents, claimBasket, emptyBasket, removeLine, setQuantity } from '../lib/basket';
 import { MAX_DRAFTS, dropDraft, draftsFor, parkDraft, resumeDraft } from '../lib/drafts';
 import { forwardsOf, leftByOthers, unsentFor } from '../lib/forward';
-import { planPick } from '../lib/pick';
-import { basketHeadline, lastSentSale, lineSummary, queueNotes, queueSummary, saleHeadline, saleStatus, signOutWords } from '../lib/sale-words';
+import { planPick, unitsFromThousandths } from '../lib/pick';
+import { lastSentSale, lineSummary, queueNotes, queueSummary, saleHeadline, saleStatus, signOutWords } from '../lib/sale-words';
+import { AMBER } from '../theme/amber';
 import { useGrocerySession } from '../lib/session';
 import { useNow } from '../lib/useNow';
+import { openTab } from '../navigation/root-nav';
 import type { GroceryStackParamList } from '../navigation/AppNavigator';
 import { basketKeeperFor, draftsKeeperFor, forwardKeeperFor } from '../store/invoice-store';
+
+const TABULAR = { fontVariant: ['tabular-nums'] as Array<'tabular-nums'> };
 
 type Props = NativeStackScreenProps<GroceryStackParamList, 'Builder'>;
 
@@ -56,9 +87,11 @@ function HomeAction({
       <View style={[homeStyles.actionIcon, { backgroundColor: tint(accent, 0.16) }]}>
         <Ionicons name={icon} size={22} color={accent} />
       </View>
-      <View style={{ flex: 1 }}>
-        <Text style={homeStyles.actionTitle}>{title}</Text>
-        <Text variant="muted">{subtitle}</Text>
+      <View style={{ flex: 1, gap: 2 }}>
+        <MartText variant="heading">{title}</MartText>
+        <MartText variant="meta" color={AMBER.inkQuiet}>
+          {subtitle}
+        </MartText>
       </View>
       <Ionicons name="chevron-forward" size={18} color={MART.inkQuiet} />
     </Pressable>
@@ -70,13 +103,23 @@ function HomeAction({
  * selling — just the work they are here for. Selling needs `grocery.invoices.create`; this person does not have it.
  */
 function StockOnlyHome({ navigation }: Props) {
-  const { branchName, modes, signOut } = useGrocerySession();
+  const { branchName, modes, mayOrder, signOut } = useGrocerySession();
+  const openStock = (screen: 'EditStock' | 'Spoils' | 'Order') => {
+    openTab('StockTab', screen);
+  };
   return (
     <View style={homeStyles.fill}>
+      <Gloss />
       <View style={homeStyles.hero}>
-        <Text style={homeStyles.heroEyebrow}>GROCERY{branchName ? ` · ${branchName.toUpperCase()}` : ''}</Text>
-        <Text style={homeStyles.heroTitle}>Stock jobs</Text>
-        <Text style={homeStyles.heroSub}>Update what is on the shelf and write off what cannot be sold.</Text>
+        <MartText variant="shelf" color={onFill(MART.fallbackPrimary).secondary} style={homeStyles.heroEyebrow}>
+          {branchName ? branchName.toUpperCase() : 'GROCERY'}
+        </MartText>
+        <MartText variant="display" color={onFill(MART.fallbackPrimary).primary} style={homeStyles.heroTitle}>
+          Stock jobs
+        </MartText>
+        <MartText variant="body" color={onFill(MART.fallbackPrimary).secondary} style={homeStyles.heroSub}>
+          Update what is on the shelf, write off what cannot be sold, and order for your department.
+        </MartText>
       </View>
       <ScrollView contentContainerStyle={homeStyles.body}>
         {modes.includes('stockEdit') ? (
@@ -85,7 +128,7 @@ function StockOnlyHome({ navigation }: Props) {
             title="Edit stock"
             subtitle="Set how many are on the shelf"
             accent={MART.fallbackPrimary}
-            onPress={() => navigation.getParent()?.navigate('StockTab' as never)}
+            onPress={() => openStock('EditStock')}
           />
         ) : null}
         {modes.includes('spoils') ? (
@@ -94,17 +137,28 @@ function StockOnlyHome({ navigation }: Props) {
             title="Write off"
             subtitle="Spoiled, expired or broken stock"
             accent={MART.danger}
-            onPress={() => navigation.getParent()?.navigate('StockTab' as never)}
+            onPress={() => openStock('Spoils')}
           />
         ) : null}
-        {!modes.includes('stockEdit') && !modes.includes('spoils') ? (
+        {mayOrder ? (
+          <HomeAction
+            icon="cart-outline"
+            title="Order"
+            subtitle="Place a supplier order for your department"
+            accent={AMBER.primary}
+            onPress={() => openStock('Order')}
+          />
+        ) : null}
+        {!modes.includes('stockEdit') && !modes.includes('spoils') && !mayOrder ? (
           <Banner tone="info">
             You are signed in, but the shop has not switched on any job for you here yet. Ask the owner to allow selling
             or stock edits.
           </Banner>
         ) : null}
-        <Pressable onPress={() => void signOut()} style={homeStyles.signOut}>
-          <Text style={{ fontFamily: FONT.medium, color: MART.danger }}>Sign out</Text>
+        <Pressable onPress={() => void signOut()} style={homeStyles.signOut} accessibilityRole="button" accessibilityLabel="Sign out">
+          <MartText variant="label" color={MART.danger}>
+            Sign out
+          </MartText>
         </Pressable>
       </ScrollView>
     </View>
@@ -118,7 +172,8 @@ export function InvoiceBuilderScreen(props: Props) {
 }
 
 function SellCounter({ navigation }: Props) {
-  const { api, tenantId, userId, branchId, branchName, modes, renderScanner, signOut } = useGrocerySession();
+  const { api, tenantId, userId, branchId, branchName, modes, mayOrder, renderScanner, signOut, user } =
+    useGrocerySession();
   const insets = useSafeAreaInsets();
   const now = useNow();
   const basketKeeper = useMemo(() => basketKeeperFor(tenantId), [tenantId]);
@@ -137,24 +192,39 @@ function SellCounter({ navigation }: Props) {
   /** Where each tab starts, so the chosen one can be brought into view. */
   const navRef = useRef<ScrollView>(null);
   const tabX = useRef<number[]>([]);
+  const showAllTab = departments.length > 1;
 
   useEffect(() => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    const index = departmentId === null ? 0 : departments.findIndex((department) => department.id === departmentId) + 1;
+    const index = !showAllTab
+      ? 0
+      : departmentId === null
+        ? 0
+        : departments.findIndex((department) => department.id === departmentId) + 1;
     const x = tabX.current[index];
     if (x !== undefined) navRef.current?.scrollTo({ x: Math.max(0, x - 12), animated: true });
-  }, [departmentId, departments]);
+  }, [departmentId, departments, showAllTab]);
 
   useEffect(() => {
     let alive = true;
     fetchDepartments(api).then(
-      (list) => alive && setDepartments(list),
+      (list) => {
+        if (!alive) return;
+        const visible = visibleDepartments(list, user);
+        setDepartments(visible);
+        // One assigned department: lock the shelf to it (no misleading "All").
+        if (visible.length === 1) {
+          setDepartmentId(visible[0]!.id);
+          return;
+        }
+        setDepartmentId((current) => (current && visible.some((d) => d.id === current) ? current : null));
+      },
       () => undefined
     );
     return () => {
       alive = false;
     };
-  }, [api]);
+  }, [api, user]);
   const [note, setNote] = useState<Note | null>(null);
 
   useEffect(() => {
@@ -184,6 +254,8 @@ function SellCounter({ navigation }: Props) {
       Animated.spring(pulse, { toValue: 1, friction: 4, tension: 140, useNativeDriver: true }),
     ]).start();
   }, [totalCents, pulse]);
+
+  const [focusSignal, setFocusSignal] = useState(0);
 
   const inBasketById = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -230,6 +302,23 @@ function SellCounter({ navigation }: Props) {
       }
     },
     [add]
+  );
+
+  /** One fewer of this product on the shelf card. Weighed lines come out whole; unit lines step by one. */
+  const onRemove = useCallback(
+    (item: StockItem) => {
+      const at = Date.now();
+      const current = claimBasket(basketKeeper.get(), owner, at);
+      const line = current.lines.find((candidate) => candidate.itemId === item.id);
+      if (!line) return;
+      if (line.weighed || line.quantityUnits <= QTY_SCALE) {
+        basketKeeper.update(() => removeLine(current, line.lineId, at));
+        return;
+      }
+      const result = setQuantity(current, line.lineId, line.quantityUnits - QTY_SCALE, at);
+      if (result.ok) basketKeeper.update(() => result.basket);
+    },
+    [basketKeeper, owner]
   );
 
   // Parked baskets belong to this person at this branch, and age out with the working basket.
@@ -293,27 +382,40 @@ function SellCounter({ navigation }: Props) {
     ]);
   }, [basketKeeper, forwardKeeper, owner, signOut, userId]);
 
+  const openMenu = useCallback(() => {
+    const actions: Array<{ text: string; style?: 'cancel' | 'destructive'; onPress?: () => void }> = [
+      { text: 'Sales waiting to send', onPress: () => navigation.getParent()?.navigate('SalesTab' as never) },
+      { text: 'Stock', onPress: () => navigation.getParent()?.navigate('StockTab' as never) },
+    ];
+    if (mayOrder) {
+      actions.push({
+        text: 'Order',
+        onPress: () => openTab('StockTab', 'Order'),
+      });
+    }
+    actions.push(
+      { text: 'Sign out', style: 'destructive', onPress: () => void confirmSignOut() },
+      { text: 'Close', style: 'cancel' },
+    );
+    Alert.alert(branchName ?? 'Your counter', 'Grocery counter', actions);
+  }, [branchName, confirmSignOut, mayOrder, navigation]);
+
+
   return (
     <View style={styles.fill}>
       <Gloss />
       <View style={[styles.top, { paddingTop: Math.max(insets.top, 8) }]}>
         <View style={styles.head}>
           <View style={styles.plaque}>
-            <MartText variant="label" color={MART.fallbackPrimary} style={styles.plaqueMark}>
+            <MartText variant="label" color={AMBER.primaryDeep} style={styles.plaqueMark}>
               {initialsOf(branchName ?? 'Counter')}
             </MartText>
           </View>
           <View style={styles.headText}>
-            <MartText variant="heading" numberOfLines={1} style={styles.headTitle}>
+            <MartText variant="title" numberOfLines={1} style={styles.headTitle}>
               {branchName ?? 'Your counter'}
             </MartText>
-            <MartText variant="shelf" color={MART.inkQuiet} style={styles.headSub}>
-              GROCERY COUNTER
-            </MartText>
           </View>
-          <Pressable onPress={confirmSignOut} hitSlop={8} style={styles.signOutChip} accessibilityLabel="Sign out">
-            <Ionicons name="log-out-outline" size={16} color={MART.inkMuted} />
-          </Pressable>
         </View>
 
         {readFailed ? (
@@ -331,25 +433,29 @@ function SellCounter({ navigation }: Props) {
           </Banner>
         ) : null}
         {notes.length > 0 ? (
-          (
-            <Pressable
-              onPress={() => navigation.getParent()?.navigate('SalesTab' as never)}
-              accessibilityRole="button"
-              accessibilityLabel={`${notes[0].text}. Open the sales waiting to send.`}
-              style={({ pressed }) => [styles.notice, pressed && styles.noticePressed]}
-            >
-              <Ionicons name="alert-circle-outline" size={14} color={MART.danger} />
-              <MartText variant="meta" color={MART.danger} numberOfLines={1} style={styles.noticeText}>
-                {notes.length === 1 ? notes[0].text : `${notes[0].text} +${notes.length - 1}`}
-              </MartText>
-              <Ionicons name="chevron-forward" size={12} color={MART.danger} />
-            </Pressable>
-          )
+          <Pressable
+            onPress={() => navigation.getParent()?.navigate('SalesTab' as never)}
+            accessibilityRole="button"
+            accessibilityLabel={`${notes[0].text}. Open sales waiting to send.`}
+            style={({ pressed }) => [styles.notice, pressed && styles.noticePressed]}
+          >
+            <View style={styles.noticeDot} />
+            <MartText variant="meta" color={MART.inkMuted} numberOfLines={1} style={styles.noticeText}>
+              {notes.length === 1
+                ? 'Sale waiting to send — open Sales'
+                : `${notes.length} sales waiting — open Sales`}
+            </MartText>
+            <Ionicons name="chevron-forward" size={12} color={MART.inkQuiet} />
+          </Pressable>
         ) : null}
         {others > 0 ? (
           <Banner tone="info">{`${others} ${others === 1 ? 'sale' : 'sales'} made by someone else ${others === 1 ? 'is' : 'are'} waiting on this phone. They go when that person signs in.`}</Banner>
         ) : null}
-        {lastSale ? <Banner tone="ok">{`Last sale ${saleHeadline(lastSale)}. ${saleStatus(lastSale, now).words}`}</Banner> : null}
+        {lastSale ? (
+          <MartText variant="meta" color={MART.inkQuiet} numberOfLines={1} style={styles.lastSale}>
+            {`Last sale ${saleHeadline(lastSale)} · ${saleStatus(lastSale, now).words}`}
+          </MartText>
+        ) : null}
         {note && note.tone === 'warn' ? <Banner tone={note.tone}>{note.text}</Banner> : null}
       </View>
 
@@ -361,7 +467,8 @@ function SellCounter({ navigation }: Props) {
         onCancel={() => weighing && dropWeighing(weighing.id)}
         onConfirm={(thousandths) => {
           if (!weighing) return null;
-          const problem = add(weighing, thousandths);
+          // WeightSheet is in thousandths; the basket is in ten-thousandths (QTY_SCALE).
+          const problem = add(weighing, unitsFromThousandths(thousandths));
           if (!problem) dropWeighing(weighing.id);
           return problem;
         }}
@@ -376,7 +483,16 @@ function SellCounter({ navigation }: Props) {
           contentContainerStyle={styles.aisles}
           keyboardShouldPersistTaps="handled"
         >
-        {[{ id: null as string | null, label: 'All', colour: MART.fallbackPrimary }, ...departments.map((d) => ({ id: d.id, label: d.label, colour: d.color ?? zoneFor(d.label) }))].map((tab, index) => {
+        {[
+          ...(showAllTab
+            ? [{ id: null as string | null, label: 'All', colour: AMBER.primary }]
+            : []),
+          ...departments.map((d) => ({
+            id: d.id as string | null,
+            label: d.label,
+            colour: d.color ?? zoneFor(d.label),
+          })),
+        ].map((tab, index) => {
           const on = departmentId === tab.id;
           return (
             <Pressable
@@ -387,16 +503,17 @@ function SellCounter({ navigation }: Props) {
               }}
               accessibilityRole="tab"
               accessibilityState={{ selected: on }}
-              accessibilityLabel={tab.id ? `${tab.label} department` : 'All departments'}
-              style={({ pressed }) => [styles.tab, pressed && styles.tabPressed]}
+              accessibilityLabel={tab.id ? `${tab.label} department` : 'All assigned departments'}
+              style={({ pressed }) => [styles.tab, on && styles.tabOn, pressed && styles.tabPressed]}
             >
-              <View style={styles.tabLead}>
-                {on ? <View style={[styles.tabDot, { backgroundColor: tab.colour }]} /> : null}
-                <MartText variant="label" color={on ? MART.ink : MART.inkMuted} numberOfLines={1} style={styles.tabLabel}>
-                  {tab.label}
-                </MartText>
-              </View>
-              <View style={[styles.tabRule, on && { backgroundColor: tab.colour }]} />
+              <MartText
+                variant="label"
+                color={on ? AMBER.primaryDeep : AMBER.inkMuted}
+                numberOfLines={1}
+                style={[styles.tabLabel, on ? styles.tabLabelOn : null]}
+              >
+                {tab.label}
+              </MartText>
             </Pressable>
           );
         })}
@@ -408,7 +525,12 @@ function SellCounter({ navigation }: Props) {
           api={api}
           branchId={branchId}
           onPick={onPick}
+          onRemove={onRemove}
           inBasket={inBasketById}
+          focusSignal={focusSignal}
+          showFilter
+          showAdd
+          accent={AMBER.primary}
           onPickRect={(rect) => {
             const initials = rect.name
               .trim()
@@ -469,54 +591,61 @@ function SellCounter({ navigation }: Props) {
 
       {/* Above the tab bar only — the tab already owns the home-indicator inset. */}
       <View ref={barBox} style={styles.bar}>
+        {basket.lines.length > 0 ? (
+          <PressableScale
+            onPress={() => void park()}
+            scaleTo={0.95}
+            style={styles.side}
+            accessibilityRole="button"
+            accessibilityLabel="Park this basket"
+          >
+            <Ionicons name="pause-outline" size={18} color={MART.ink} />
+          </PressableScale>
+        ) : null}
         <View style={styles.barText}>
-          <MartText variant="meta" color={MART.inkQuiet}>
+          <MartText variant="meta" color={MART.inkQuiet} style={styles.barMeta}>
             {toWeigh.length > 1
               ? `${toWeigh.length - 1} more to weigh`
               : basket.lines.length === 0
                 ? drafts.length > 0
-                  ? `${drafts.length} ${drafts.length === 1 ? 'basket' : 'baskets'} parked above`
-                  : 'In this sale'
-                : `${basket.lines.length} ${basket.lines.length === 1 ? 'line' : 'lines'}`}
+                  ? `${drafts.length} parked`
+                  : 'Empty'
+                : basket.lines.length === 1
+                  ? '1 item'
+                  : `${basket.lines.length} items`}
           </MartText>
           <Animated.View style={{ transform: [{ scale: pulse }] }}>
-            <MartText variant="title" numberOfLines={1} adjustsFontSizeToFit style={styles.barTitle}>
-              {basket.lines.length === 0 ? 'Nothing yet' : formatKes(totalCents)}
+            <MartText variant="title" numberOfLines={1} adjustsFontSizeToFit style={[styles.barTitle, TABULAR]}>
+              {basket.lines.length === 0 ? 'KES 0.00' : formatKes(totalCents)}
             </MartText>
           </Animated.View>
         </View>
-        {basket.lines.length > 0 ? (
-          <Pressable
-            onPress={() => void park()}
-            accessibilityRole="button"
-            accessibilityLabel="Park this basket"
-            style={({ pressed }) => [styles.parkPill, pressed && styles.goPressed]}
-          >
-            <MartText variant="label" color={MART.ink}>
-              Park
-            </MartText>
-          </Pressable>
-        ) : null}
-        <Pressable
+        <PressableScale
           onPress={() => navigation.navigate('Finalize')}
           disabled={basket.lines.length === 0 || !basketKept.ready}
+          scaleTo={0.97}
+          style={[
+            styles.goBtn,
+            basket.lines.length === 0 ? styles.goBtnIdle : styles.goBtnReady,
+            !basketKept.ready && styles.dim,
+          ]}
           accessibilityRole="button"
           accessibilityLabel="Open the basket"
-          style={({ pressed }) => [styles.goBtn, (basket.lines.length === 0 || !basketKept.ready) && styles.goBtnOff, pressed && styles.goPressed]}
         >
-          <MartText variant="label" color={basket.lines.length === 0 ? MART.inkQuiet : onFill(MART.fallbackPrimary).primary}>
-            Basket
+          <MartText
+            variant="label"
+            color={basket.lines.length === 0 ? MART.inkQuiet : onFill(MART.fallbackPrimary).primary}
+            style={styles.nextLabel}
+          >
+            Next
           </MartText>
-          <View style={styles.goDisc}>
-            <Ionicons name="arrow-forward" size={15} color={MART.fallbackPrimary} />
-          </View>
-        </Pressable>
+        </PressableScale>
       </View>
 
       {note?.tone === 'ok' ? (
         <Animated.View style={[styles.toast, { bottom: 100 }]} pointerEvents="none">
           <Ionicons name="checkmark-circle" size={15} color={MART.success} />
-          <MartText variant="label" color={MART.ink} numberOfLines={1} style={styles.toastText}>
+          <MartText variant="label" color={MART.paper} numberOfLines={1} style={styles.toastText}>
             {note.text}
           </MartText>
         </Animated.View>
@@ -529,106 +658,131 @@ function SellCounter({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  fill: { flex: 1, backgroundColor: theme.colors.background },
-  top: { paddingHorizontal: theme.spacing.md, paddingTop: 2 },
-  head: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingBottom: 6 },
+  fill: { flex: 1, backgroundColor: AMBER.page },
+  top: { paddingHorizontal: SPACE.md, paddingTop: 2 },
+  menuBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: AMBER.card,
+    borderWidth: 1,
+    borderColor: AMBER.line,
+  },
+  menuPressed: { opacity: 0.7, transform: [{ scale: 0.97 }] },
+  headCentred: { alignItems: 'center' },
+  addItem: {
+    minHeight: 32,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: AMBER.wash,
+  },
+  head: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, paddingHorizontal: SPACE.md, paddingBottom: SPACE.xs },
   plaque: {
     width: 34,
     height: 34,
-    borderRadius: 10,
+    borderRadius: RADIUS.md,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: MART.paperElevated,
+    ...SHADOW.card,
   },
   plaqueMark: { letterSpacing: -0.5 },
   headText: { flex: 1, gap: 0 },
-  headTitle: { letterSpacing: -0.2 },
-  headSub: { letterSpacing: 1.1 },
-  readyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: theme.spacing.sm,
-  },
-  readyLead: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
-  readyDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: MART.success },
-  readyTitle: { fontFamily: FONT.bold, fontSize: 18, letterSpacing: -0.3, color: MART.ink },
-  signOutChip: { width: 26, height: 26, alignItems: 'center', justifyContent: 'center' },
+  headTitle: { fontFamily: FONT.semibold, fontWeight: WEIGHT.semibold, letterSpacing: -0.3 },
+  signOutChip: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center', borderRadius: RADIUS.pill, backgroundColor: MART.paperSunken },
   toast: {
     position: 'absolute',
-    left: 12,
-    right: 12,
+    left: SPACE.md,
+    right: SPACE.md,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    minHeight: 36,
-    paddingHorizontal: 12,
-    borderRadius: 12,
+    gap: SPACE.sm,
+    minHeight: 40,
+    paddingHorizontal: SPACE.md,
+    borderRadius: RADIUS.lg,
     backgroundColor: 'rgba(22,24,15,0.92)',
+    ...SHADOW.card,
   },
-  toastText: { flex: 1, color: MART.paper },
+  toastText: { flex: 1 },
   notice: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    minHeight: 30,
-    marginHorizontal: 12,
-    marginTop: 2,
-    paddingHorizontal: 9,
-    borderRadius: 8,
-    backgroundColor: tint(MART.danger, 0.06),
+    gap: 6,
+    minHeight: 28,
+    marginHorizontal: SPACE.md,
+    marginTop: 4,
+    paddingHorizontal: SPACE.sm,
+    borderRadius: RADIUS.pill,
+    backgroundColor: MART.paperSunken,
   },
-  noticePressed: { opacity: 0.8 },
+  noticeDot: { width: 7, height: 7, borderRadius: 999, backgroundColor: MART.danger },
+  noticePressed: { opacity: 0.75 },
   noticeText: { flex: 1 },
-  chips: { flexDirection: 'row', gap: 6, paddingHorizontal: 12, paddingRight: 16, paddingBottom: 8 },
-  // A horizontal rail in a column must be told its height, or it takes the screen's.
-  // A top navigation: labels on a hairline, an underline marking where you are.
-  navWrap: { borderBottomWidth: 1, borderBottomColor: MART.border, paddingBottom: 0 },
+  lastSale: { marginHorizontal: SPACE.md, marginTop: SPACE.xs, marginBottom: 2 },
+  navWrap: { paddingBottom: SPACE.xs },
   aisleRail: { flexGrow: 0 },
-  aisles: { paddingHorizontal: 12, gap: 4, alignItems: 'flex-end' },
-  tab: { paddingHorizontal: 8, paddingTop: 8, paddingBottom: 6, alignItems: 'center', gap: 7 },
-  tabLead: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  tabDot: { width: 6, height: 6, borderRadius: 999 },
-  tabPressed: { opacity: 0.55 },
-  tabLabel: { fontSize: 13.5, letterSpacing: -0.15 },
-  tabRule: { height: 2.5, alignSelf: 'stretch', borderRadius: 2, backgroundColor: 'transparent' },
-  aisle: {
+  aisles: { paddingHorizontal: SPACE.md, gap: SPACE.sm, alignItems: 'center', paddingVertical: SPACE.xs },
+  tab: {
+    minHeight: 36,
+    paddingHorizontal: SPACE.lg,
+    borderRadius: RADIUS.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+  tabOn: { backgroundColor: AMBER.wash, borderColor: AMBER.wash },
+  tabPressed: { opacity: 0.75 },
+  tabLabel: { fontFamily: FONT.medium, fontWeight: WEIGHT.medium, fontSize: 14, letterSpacing: -0.15 },
+  tabLabelOn: { fontFamily: FONT.semibold, fontWeight: WEIGHT.semibold },
+  retry: { marginTop: SPACE.sm },
+  barCard: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    minHeight: 32,
-    paddingHorizontal: 12,
-    borderRadius: 999,
-    backgroundColor: MART.paperElevated,
+    gap: 10,
+    backgroundColor: AMBER.card,
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: MART.border,
+    borderColor: AMBER.line,
+    paddingVertical: 10,
+    paddingLeft: 14,
+    paddingRight: 8,
   },
-  aisleOn: { backgroundColor: MART.fallbackPrimary, borderColor: MART.fallbackPrimary },
-  aisleDot: { width: 8, height: 8, borderRadius: 999 },
-  retry: { marginTop: theme.spacing.sm },
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginHorizontal: 12,
-    marginBottom: 8,
-    padding: 12,
-    borderRadius: 30,
+    gap: SPACE.sm,
+    width: '96%',
+    maxWidth: 760,
+    alignSelf: 'center',
+    marginBottom: SPACE.sm,
+    paddingHorizontal: SPACE.sm,
+    paddingVertical: SPACE.sm,
+    borderRadius: RADIUS.xl,
     backgroundColor: MART.paperElevated,
-    shadowColor: MART.ink,
-    shadowOpacity: 0.16,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 8,
+    ...SHADOW.floating,
   },
-  drafts: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingBottom: 8 },
+  side: {
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS.pill,
+    backgroundColor: MART.paperSunken,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  barMeta: { fontSize: 11 },
+  dim: { opacity: 0.5 },
+  drafts: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, paddingHorizontal: SPACE.md, paddingBottom: SPACE.sm },
   draftsLabel: { letterSpacing: 1.1, marginRight: 2 },
   draftName: { maxWidth: 150 },
   draftCount: {
     minWidth: 18,
     height: 18,
     paddingHorizontal: 4,
-    borderRadius: 999,
+    borderRadius: RADIUS.pill,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: MART.paperSunken,
@@ -639,79 +793,66 @@ const styles = StyleSheet.create({
     gap: 6,
     minHeight: 30,
     paddingHorizontal: 10,
-    borderRadius: 999,
-    backgroundColor: MART.paperElevated,
-    borderWidth: 1,
-    borderColor: MART.border,
+    borderRadius: RADIUS.pill,
+    backgroundColor: MART.paperSunken,
   },
   draftPressed: { backgroundColor: MART.paperSunken, transform: [{ scale: 0.97 }] },
-  parkPill: {
-    minHeight: 52,
-    justifyContent: 'center',
-    paddingHorizontal: 18,
-    borderRadius: 999,
-    backgroundColor: MART.paperElevated,
-    borderWidth: 1,
-    borderColor: MART.borderStrong,
-  },
-  weighCard: { borderRadius: 24, overflow: 'hidden', backgroundColor: MART.paperElevated, padding: 16 },
   goBtn: {
-    flexDirection: 'row',
+    minHeight: 42,
+    minWidth: 96,
+    paddingHorizontal: SPACE.lg,
+    borderRadius: RADIUS.pill,
     alignItems: 'center',
-    gap: 8,
-    minHeight: 52,
-    paddingLeft: 20,
-    paddingRight: 6,
-    borderRadius: 999,
+    justifyContent: 'center',
+  },
+  nextLabel: { fontFamily: FONT.semibold, fontWeight: WEIGHT.semibold, fontSize: 14, letterSpacing: -0.2 },
+  goBtnIdle: {
+    backgroundColor: MART.paperSunken,
+  },
+  goBtnReady: {
     backgroundColor: MART.fallbackPrimary,
   },
-  goBtnOff: { backgroundColor: MART.paperSunken },
-  goPressed: { opacity: 0.9, transform: [{ scale: 0.99 }] },
-  goDisc: { width: 40, height: 40, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: MART.paperSunken },
-  barText: { flex: 1, marginRight: theme.spacing.md },
-  barTitle: { fontFamily: FONT.semibold },
+  barText: { flex: 1, gap: 1 },
+  barTitle: { fontFamily: FONT.bold, fontWeight: WEIGHT.bold, fontSize: 18, lineHeight: 22, letterSpacing: -0.3 },
 });
 
 const homeStyles = StyleSheet.create({
-  fill: { flex: 1, backgroundColor: MART.paper },
+  fill: { flex: 1, backgroundColor: AMBER.page },
   hero: {
     backgroundColor: MART.fallbackPrimary,
-    paddingHorizontal: MART_SPACE.xl,
+    paddingHorizontal: SPACE.xl,
     paddingTop: 64,
-    paddingBottom: MART_SPACE.xxl,
-    borderBottomLeftRadius: MART_RADIUS.xl,
-    borderBottomRightRadius: MART_RADIUS.xl,
-    gap: MART_SPACE.xxs,
+    paddingBottom: SPACE.xxl,
+    borderBottomLeftRadius: RADIUS.xl,
+    borderBottomRightRadius: RADIUS.xl,
+    gap: SPACE.xxs,
   },
-  heroEyebrow: { fontFamily: FONT.semibold, fontSize: 10.5, letterSpacing: 0.5, color: onFill(MART.fallbackPrimary).secondary },
-  heroTitle: { fontFamily: FONT.bold, fontSize: 26, letterSpacing: -0.5, color: onFill(MART.fallbackPrimary).primary, marginTop: MART_SPACE.xxs },
-  heroSub: { fontFamily: FONT.regular, fontSize: 14, lineHeight: 21, color: onFill(MART.fallbackPrimary).secondary, marginTop: MART_SPACE.xs },
-  body: { padding: MART_SPACE.xl, gap: MART_SPACE.md },
+  heroEyebrow: { letterSpacing: 0.5 },
+  heroTitle: { marginTop: SPACE.xxs },
+  heroSub: { marginTop: SPACE.xs },
+  body: { padding: SPACE.xl, gap: SPACE.md },
   action: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: MART_SPACE.md,
-    padding: MART_SPACE.lg,
+    gap: SPACE.md,
+    padding: SPACE.lg,
     backgroundColor: MART.paperElevated,
-    borderRadius: MART_RADIUS.lg,
-    borderWidth: 1,
-    borderColor: MART.border,
+    borderRadius: RADIUS.lg,
+    ...SHADOW.card,
   },
   pressed: { opacity: 0.7 },
   actionIcon: {
     width: 46,
     height: 46,
-    borderRadius: MART_RADIUS.md,
+    borderRadius: RADIUS.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  actionTitle: { fontFamily: FONT.semibold, fontSize: 15, letterSpacing: -0.2, color: MART.ink },
   signOut: {
-    marginTop: MART_SPACE.sm,
-    paddingVertical: MART_SPACE.md,
-    borderRadius: MART_RADIUS.pill,
-    borderWidth: 1,
-    borderColor: MART.border,
+    marginTop: SPACE.sm,
+    paddingVertical: SPACE.md,
+    borderRadius: RADIUS.pill,
+    backgroundColor: MART.paperSunken,
     alignItems: 'center',
   },
 });

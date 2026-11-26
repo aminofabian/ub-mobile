@@ -3,15 +3,32 @@ import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { formatKes, formatQty, generateIdempotencyKey, QTY_SCALE } from '@kiosk/core';
-import { MartText, WeightSheet, MART, tint, zoneFor, useKept } from '@kiosk/staff';
-import { Banner, Button, Text, theme } from '@kiosk/ui';
+import {
+  Gloss,
+  MartText,
+  PressableScale,
+  WeightSheet,
+  FONT,
+  WEIGHT,
+  MART,
+  RADIUS,
+  SHADOW,
+  SPACE,
+  onFill,
+  tint,
+  zoneFor,
+  useKept,
+} from '@kiosk/staff';
+import { Banner, Button, Text } from '@kiosk/ui';
 import { basketProblemWords, basketTotalCents, claimBasket, clearBasket, lineTotalCents, removeLine, setQuantity, type BasketLine } from '../lib/basket';
 import { startForward, startProblemWords } from '../lib/forward';
-import { basketHeadline } from '../lib/sale-words';
+import { unitsFromThousandths } from '../lib/pick';
 import { useForwardSender } from '../lib/sender';
 import { useGrocerySession } from '../lib/session';
 import type { GroceryStackParamList } from '../navigation/AppNavigator';
 import { basketKeeperFor, forwardKeeperFor } from '../store/invoice-store';
+
+const TABULAR = { fontVariant: ['tabular-nums'] as Array<'tabular-nums'> };
 
 type Props = NativeStackScreenProps<GroceryStackParamList, 'Finalize'>;
 
@@ -42,7 +59,7 @@ function BasketLine({ line, divider, onSet, onRemove }: { line: BasketLine; divi
             </MartText>
           </View>
           <View style={styles.left}>
-            <MartText variant="heading" numberOfLines={2}>
+            <MartText variant="heading" numberOfLines={2} style={styles.productName}>
               {line.name}
             </MartText>
             <MartText variant="meta" color={MART.inkQuiet} numberOfLines={1}>
@@ -78,7 +95,7 @@ function BasketLine({ line, divider, onSet, onRemove }: { line: BasketLine; divi
                 >
                   <Ionicons name={units <= 1 ? 'trash-outline' : 'remove'} size={15} color={units <= 1 ? MART.danger : MART.ink} />
                 </Pressable>
-                <MartText variant="heading" style={styles.count}>{units}</MartText>
+                <MartText variant="heading" style={[styles.count, TABULAR]}>{units}</MartText>
                 <Pressable
                   onPress={() => setError(onSet(line.quantityUnits + QTY_SCALE))}
                   hitSlop={7}
@@ -105,7 +122,8 @@ function BasketLine({ line, divider, onSet, onRemove }: { line: BasketLine; divi
         perUnitCents={line.unitCents}
         onCancel={() => setWeighing(false)}
         onConfirm={(thousandths) => {
-          const problem = onSet(thousandths);
+          // WeightSheet is in thousandths; the basket is in ten-thousandths (QTY_SCALE).
+          const problem = onSet(unitsFromThousandths(thousandths));
           if (!problem) setWeighing(false);
           return problem;
         }}
@@ -210,16 +228,36 @@ export function FinalizeScreen({ navigation }: Props) {
   if (basketKept.ready && basket.lines.length === 0) {
     return (
       <View style={styles.fill}>
-        <Text variant="muted" style={styles.empty}>
-          The basket is empty.
-        </Text>
-        <Button title="Back to selling" onPress={() => navigation.navigate('Builder')} style={styles.pad} />
+        <Gloss />
+        <View style={styles.emptyWrap}>
+          <View style={styles.emptyMark}>
+            <Ionicons name="basket-outline" size={28} color={MART.inkQuiet} />
+          </View>
+          <MartText variant="title" style={styles.emptyTitle}>
+            Basket empty
+          </MartText>
+          <MartText variant="meta" color={MART.inkQuiet} style={styles.emptyCopy}>
+            Add items on the counter, then come back to send them.
+          </MartText>
+          <PressableScale
+            onPress={() => navigation.navigate('Builder')}
+            scaleTo={0.97}
+            style={styles.emptyCta}
+            accessibilityRole="button"
+            accessibilityLabel="Back to selling"
+          >
+            <MartText variant="label" color={onFill(MART.fallbackPrimary).primary}>
+              Back to selling
+            </MartText>
+          </PressableScale>
+        </View>
       </View>
     );
   }
 
   return (
     <View style={styles.fill}>
+      <Gloss />
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
         {problem ? <Banner tone="danger">{problem}</Banner> : null}
         <View style={styles.card}>
@@ -228,7 +266,7 @@ export function FinalizeScreen({ navigation }: Props) {
               IN THIS SALE
             </MartText>
             <MartText variant="shelf" color={MART.inkQuiet}>
-              {basket.lines.length === 1 ? '1 LINE' : `${basket.lines.length} LINES`}
+              {basket.lines.length === 1 ? '1 ITEM' : `${basket.lines.length} ITEMS`}
             </MartText>
           </View>
           <View style={styles.headRule} />
@@ -242,53 +280,95 @@ export function FinalizeScreen({ navigation }: Props) {
             />
           ))}
         </View>
-        <Button title="Clear the basket" variant="secondary" onPress={confirmClear} style={styles.clear} />
+        <Pressable
+          onPress={confirmClear}
+          accessibilityRole="button"
+          accessibilityLabel="Clear the basket"
+          style={({ pressed }) => [styles.clearBtn, pressed && styles.pressed]}
+        >
+          <MartText variant="label" color={MART.danger}>
+            Clear the basket
+          </MartText>
+        </Pressable>
       </ScrollView>
 
       <View style={styles.bar}>
         <View style={styles.barTop}>
           <MartText variant="meta" color={MART.inkQuiet}>
-            {basket.lines.length === 1 ? '1 line' : `${basket.lines.length} lines`}
+            {basket.lines.length === 1 ? '1 item' : `${basket.lines.length} items`}
           </MartText>
-          <MartText variant="title" numberOfLines={1} adjustsFontSizeToFit>
+          <MartText variant="title" numberOfLines={1} adjustsFontSizeToFit style={TABULAR}>
             {formatKes(basketTotalCents(basket))}
           </MartText>
         </View>
         <MartText variant="meta" color={MART.inkQuiet} style={styles.fine}>
-          The server prices the invoice. If a price has changed, the cashier's total can differ from this one.
+          The till prices the invoice. If a price has changed, the cashier's total can differ.
         </MartText>
-        <Button
-          title={busy ? 'Sending to the till…' : 'Send to cashier →'}
+        <PressableScale
           onPress={() => void send()}
           disabled={busy || !ready || basket.lines.length === 0}
-        />
+          scaleTo={0.97}
+          style={[styles.sendBtn, (busy || !ready || basket.lines.length === 0) && styles.dim]}
+          accessibilityRole="button"
+          accessibilityLabel={busy ? 'Sending to the till' : 'Send to cashier'}
+        >
+          <MartText variant="label" color={onFill(MART.fallbackPrimary).primary} style={styles.sendLabel}>
+            {busy ? 'Sending…' : 'Send to cashier'}
+          </MartText>
+          {!busy ? (
+            <View style={styles.sendDisc}>
+              <Ionicons name="arrow-forward" size={16} color={MART.fallbackPrimary} />
+            </View>
+          ) : null}
+        </PressableScale>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  barLabel: { fontFamily: 'System', fontWeight: '600' },
-  // One card for the whole basket, ruled between lines, exactly as the till draws its checkout list.
-  card: {
-    borderRadius: 22,
+  fill: { flex: 1, backgroundColor: MART.paper },
+  pad: { margin: SPACE.md },
+  body: { padding: SPACE.md, paddingBottom: SPACE.xxl, gap: SPACE.md },
+  emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: SPACE.xxl, gap: SPACE.sm },
+  emptyMark: {
+    width: 64,
+    height: 64,
+    borderRadius: RADIUS.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: MART.paperElevated,
-    paddingHorizontal: 12,
-    paddingTop: 4,
-    shadowColor: MART.ink,
-    shadowOpacity: 0.10,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 4,
+    ...SHADOW.card,
+    marginBottom: SPACE.sm,
   },
-  cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10 },
+  emptyTitle: { textAlign: 'center' },
+  emptyCopy: { textAlign: 'center', maxWidth: 280 },
+  emptyCta: {
+    marginTop: SPACE.md,
+    minHeight: 48,
+    paddingHorizontal: SPACE.xl,
+    borderRadius: RADIUS.pill,
+    backgroundColor: MART.fallbackPrimary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  retry: { marginTop: SPACE.sm },
+  card: {
+    borderRadius: RADIUS.lg,
+    backgroundColor: MART.paperElevated,
+    paddingHorizontal: SPACE.md,
+    paddingTop: SPACE.xs,
+    ...SHADOW.card,
+  },
+  cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: SPACE.sm },
   cardHeadLabel: { letterSpacing: 1.1 },
-  headRule: { height: 1, backgroundColor: MART.border },
-  rowWrap: { paddingVertical: 10 },
-  rowDivider: { borderTopWidth: 1, borderTopColor: MART.border, marginLeft: 44 },
-  row: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-  mark: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginTop: 1 },
+  headRule: { height: StyleSheet.hairlineWidth, backgroundColor: MART.border },
+  rowWrap: { paddingVertical: SPACE.sm },
+  rowDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: MART.border, marginLeft: 44 },
+  row: { flexDirection: 'row', alignItems: 'flex-start', gap: SPACE.sm },
+  mark: { width: 36, height: 36, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', marginTop: 1 },
   left: { flex: 1, gap: 1 },
+  productName: { fontFamily: FONT.regular, fontWeight: WEIGHT.regular },
   right: { width: 108, alignItems: 'flex-end', gap: 3 },
   rowError: { paddingLeft: 44, paddingTop: 2 },
   weighChip: {
@@ -297,36 +377,55 @@ const styles = StyleSheet.create({
     gap: 5,
     minHeight: 30,
     paddingHorizontal: 10,
-    borderRadius: 999,
+    borderRadius: RADIUS.pill,
     backgroundColor: tint(MART.fallbackPrimary, 0.1),
   },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  stepBtn: { width: 32, height: 32, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: MART.paperSunken },
+  stepBtn: { width: 32, height: 32, borderRadius: RADIUS.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: MART.paperSunken },
   count: { minWidth: 22, textAlign: 'center' },
   pressed: { opacity: 0.7 },
-
-  fill: { flex: 1, backgroundColor: theme.colors.background },
-  pad: { margin: theme.spacing.md },
-  body: { padding: theme.spacing.md },
-  empty: { textAlign: 'center', padding: theme.spacing.lg },
-  retry: { marginTop: theme.spacing.sm },
-  error: { color: theme.colors.danger, marginTop: theme.spacing.xs },
-  clear: { marginTop: theme.spacing.sm },
-  bar: {
-    gap: 8,
-    marginHorizontal: 12,
-    marginBottom: 8,
-    padding: 12,
-    borderRadius: 30,
-    backgroundColor: MART.paperElevated,
-    shadowColor: MART.ink,
-    shadowOpacity: 0.16,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 8,
+  clearBtn: {
+    alignSelf: 'center',
+    paddingVertical: SPACE.sm,
+    paddingHorizontal: SPACE.lg,
   },
-  barOld: { padding: theme.spacing.md, borderTopWidth: 1, borderTopColor: theme.colors.border, backgroundColor: theme.colors.surface },
+  bar: {
+    gap: SPACE.sm,
+    width: '96%',
+    maxWidth: 760,
+    alignSelf: 'center',
+    marginBottom: SPACE.sm,
+    paddingHorizontal: SPACE.md,
+    paddingVertical: SPACE.md,
+    borderRadius: RADIUS.xl,
+    backgroundColor: MART.paperElevated,
+    ...SHADOW.floating,
+  },
   barTop: { gap: 2 },
-  total: { marginBottom: 0 },
-  fine: { marginBottom: theme.spacing.sm },
+  fine: { marginBottom: SPACE.xs },
+  sendBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACE.sm,
+    minHeight: 54,
+    paddingHorizontal: SPACE.xl,
+    borderRadius: RADIUS.pill,
+    backgroundColor: MART.fallbackPrimary,
+    shadowColor: MART.fallbackPrimary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  sendDisc: {
+    width: 30,
+    height: 30,
+    borderRadius: RADIUS.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: MART.paperSunken,
+  },
+  dim: { opacity: 0.5 },
+  sendLabel: { fontFamily: FONT.semibold, fontWeight: WEIGHT.semibold, fontSize: 15, letterSpacing: -0.2 },
 });

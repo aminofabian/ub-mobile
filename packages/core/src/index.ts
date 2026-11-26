@@ -31,6 +31,7 @@ export * from './stock-qty';
 export * from './stock-items';
 export * from './stock-adjust';
 export * from './stock-access';
+export * from './departments';
 export * from './keeper';
 export * from './spoils';
 export * from './tenant-keeper';

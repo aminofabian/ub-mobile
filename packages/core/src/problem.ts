@@ -85,10 +85,15 @@ export class ApiError extends Error {
    * turned a request down reads this, never the words.
    */
   readonly foreign?: true;
+  /**
+   * The problem's machine name as the server wrote it (`urn:problem:data-integrity`), when it gave one. Code that has
+   * to tell one kind of "no" from another reads this, never the words.
+   */
+  readonly type?: string;
 
   constructor(
     message: string,
-    info: { status: number; code?: string; requirement?: string; hint?: string; foreign?: boolean }
+    info: { status: number; code?: string; requirement?: string; hint?: string; foreign?: boolean; type?: string }
   ) {
     super(message);
     this.name = 'ApiError';
@@ -97,6 +102,7 @@ export class ApiError extends Error {
     if (info.requirement !== undefined) this.requirement = info.requirement;
     if (info.hint !== undefined) this.hint = info.hint;
     if (info.foreign) this.foreign = true;
+    if (typeof info.type === 'string' && info.type !== '' && info.type !== 'about:blank') this.type = info.type;
   }
 }
 
@@ -126,6 +132,7 @@ export async function readApiError(response: Response): Promise<ApiError> {
       code: problem?.code,
       requirement: problem?.requirement,
       hint: problem?.hint,
+      type: problem?.type,
     });
   } catch {
     return new ApiError(text, { status: response.status, foreign: true });
