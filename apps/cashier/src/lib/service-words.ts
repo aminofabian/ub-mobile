@@ -82,7 +82,7 @@ export function priceBoxWords(service: Service): { heading: string; placeholder:
 /** How the price of one comes together, when what is chosen adds to it: "1,000.00 + 500.00 extras = 1,500.00 each". */
 export function sumWords(parts: { baseCents: number; extrasCents: number; unitCents: number } | null): string | null {
   if (!parts || parts.extrasCents <= 0) return null;
-  return `${formatMoney(parts.baseCents)} + ${formatMoney(parts.extrasCents)} extras = ${formatMoney(parts.unitCents)} each`;
+  return `KES ${formatMoney(parts.baseCents)} + ${formatMoney(parts.extrasCents)} extras = ${formatMoney(parts.unitCents)} each`;
 }
 
 /** The most shared names said in the words: the rest are counted. */

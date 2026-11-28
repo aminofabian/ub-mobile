@@ -20,6 +20,7 @@ export type ShopperBalances = {
 
 export type ShopperPickupOrder = {
   id: string;
+  orderCode?: string;
   status?: string;
   grandTotal?: number | string | null;
   currency?: string;

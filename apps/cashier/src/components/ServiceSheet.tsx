@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { StyleSheet, TextInput, View } from 'react-native';
-import { Button, Chip, Text, theme } from '@kiosk/ui';
+import { MART, MartText, RADIUS, SPACE } from '@kiosk/staff';
 import type { CartLine } from '../lib/cart';
 import { formatMoney, lineCents } from '../lib/money';
 import { checkPriceEntry } from '../lib/price-entry';
@@ -20,6 +20,7 @@ import {
 } from '../lib/service-sale';
 import { groupWords, NO_ONE_DOES_WORDS, priceBoxWords, sharedNamesWords, sumWords } from '../lib/service-words';
 import { Prompt } from './Prompt';
+import { CashierButton, CashierChip } from './CashierPrimitives';
 
 interface ServiceSheetProps {
   /** The service being added. Null while the sheet is closed. */
@@ -76,19 +77,19 @@ function SheetBody({ service, performers, onCancel, onAdd }: Omit<ServiceSheetPr
 
   return (
     <View style={styles.body}>
-      {details ? <Text variant="muted">{details}</Text> : null}
+      {details ? <MartText variant="meta" color={MART.inkQuiet}>{details}</MartText> : null}
 
-      <Text variant="body" style={styles.heading} accessibilityRole="header">
+      <MartText variant="heading" style={styles.heading} accessibilityRole="header">
         Who did it?
-      </Text>
+      </MartText>
       {able.length === 0 ? (
-        <Text variant="caption" style={styles.problem}>
+        <MartText variant="meta" style={styles.problem}>
           {NO_ONE_DOES_WORDS}
-        </Text>
+        </MartText>
       ) : (
         <View style={styles.chips}>
           {able.map((performer) => (
-            <Chip
+            <CashierChip
               key={performer.id}
               label={performer.name}
               selected={choice.performerId === performer.id}
@@ -98,16 +99,16 @@ function SheetBody({ service, performers, onCancel, onAdd }: Omit<ServiceSheetPr
           ))}
         </View>
       )}
-      {alike ? <Text variant="caption">{alike}</Text> : null}
+      {alike ? <MartText variant="meta">{alike}</MartText> : null}
 
       {service.groups.map((group) => (
         <View key={group.id}>
-          <Text variant="body" style={styles.heading} accessibilityRole="header">
-            {group.name} <Text variant="muted">({groupWords(group)})</Text>
-          </Text>
+          <MartText variant="heading" style={styles.heading} accessibilityRole="header">
+            {group.name} <MartText variant="meta" color={MART.inkQuiet}>({groupWords(group)})</MartText>
+          </MartText>
           <View style={styles.chips}>
             {group.options.map((option) => (
-              <Chip
+              <CashierChip
                 key={option.id}
                 label={option.extraCents > 0 ? `${option.name}  +${formatMoney(option.extraCents)}` : option.name}
                 selected={choice.optionIds.includes(option.id)}
@@ -121,9 +122,9 @@ function SheetBody({ service, performers, onCancel, onAdd }: Omit<ServiceSheetPr
 
       {service.variablePrice ? (
         <View>
-          <Text variant="body" style={styles.heading} accessibilityRole="header">
+          <MartText variant="heading" style={styles.heading} accessibilityRole="header">
             {box.heading}
-          </Text>
+          </MartText>
           <TextInput
             style={styles.input}
             value={priceText}
@@ -138,21 +139,21 @@ function SheetBody({ service, performers, onCancel, onAdd }: Omit<ServiceSheetPr
             accessibilityLabel={box.heading}
           />
           {entry && !entry.ok ? (
-            <Text variant="caption" style={styles.problem}>
+            <MartText variant="meta" style={styles.problem}>
               {entry.words}
-            </Text>
+            </MartText>
           ) : null}
         </View>
       ) : null}
 
       <View style={styles.quantity}>
-        <Text variant="body">How many</Text>
+        <MartText variant="body">How many</MartText>
         <View style={styles.stepper}>
-          <Button title="-" variant="secondary" onPress={() => change({ ...choice, quantity: choice.quantity - 1 })} disabled={choice.quantity <= 1} style={styles.step} />
-          <Text variant="h2" accessibilityLabel={`How many: ${choice.quantity}`}>
+          <CashierButton title="-" variant="secondary" onPress={() => change({ ...choice, quantity: choice.quantity - 1 })} disabled={choice.quantity <= 1} style={styles.step} />
+          <MartText variant="title" accessibilityLabel={`How many: ${choice.quantity}`}>
             {choice.quantity}
-          </Text>
-          <Button
+          </MartText>
+          <CashierButton
             title="+"
             variant="secondary"
             onPress={() => change({ ...choice, quantity: choice.quantity + 1 })}
@@ -162,44 +163,44 @@ function SheetBody({ service, performers, onCancel, onAdd }: Omit<ServiceSheetPr
         </View>
       </View>
 
-      {sum ? <Text variant="caption">{sum}</Text> : null}
+      {sum ? <MartText variant="meta">{sum}</MartText> : null}
       {total !== null ? (
-        <Text variant="h2" accessibilityLiveRegion="polite">
+        <MartText variant="title" accessibilityLiveRegion="polite">
           Total: {formatMoney(total)}
-        </Text>
+        </MartText>
       ) : !plan.ok && readable ? (
-        <Text variant="muted">{plan.why}</Text>
+        <MartText variant="meta" color={MART.inkQuiet}>{plan.why}</MartText>
       ) : null}
       {refused ? (
-        <Text variant="caption" style={styles.problem} accessibilityRole="alert">
+        <MartText variant="meta" style={styles.problem} accessibilityRole="alert">
           {refused}
-        </Text>
+        </MartText>
       ) : null}
 
       <View style={styles.buttons}>
-        <Button title="Cancel" variant="secondary" onPress={onCancel} style={styles.button} />
-        <Button title="Add to basket" onPress={add} disabled={!canAdd} style={styles.button} />
+        <CashierButton title="Cancel" variant="secondary" onPress={onCancel} style={styles.button} />
+        <CashierButton title="Add to basket" onPress={add} disabled={!canAdd} style={styles.button} />
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  body: { gap: theme.spacing.sm },
-  heading: { marginTop: theme.spacing.sm },
+  body: { gap: SPACE.sm },
+  heading: { marginTop: SPACE.sm },
   chips: { flexDirection: 'row', flexWrap: 'wrap' },
   input: {
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.md,
-    padding: theme.spacing.md,
+    borderColor: MART.border,
+    borderRadius: RADIUS.md,
+    padding: SPACE.md,
     minHeight: 56,
     fontSize: 24,
   },
-  problem: { color: theme.colors.danger },
-  quantity: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: theme.spacing.sm },
-  stepper: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
+  problem: { color: MART.danger },
+  quantity: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: SPACE.sm },
+  stepper: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
   step: { minWidth: 56 },
-  buttons: { flexDirection: 'row', gap: theme.spacing.sm, marginTop: theme.spacing.sm },
+  buttons: { flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.sm },
   button: { flex: 1 },
 });

@@ -7,34 +7,39 @@
   "iconBackground": "#28a745",
   "apps": {
     "shopper": {
-      "name": "Kiosk Ke Shopper",
+      "name": "Kiosk Shoppers",
       "expoSlug": "kiosk-shopper",
       "iosBundleId": "com.kioskke.shopper",
-      "androidPackage": "com.kioskke.shopper"
+      "androidPackage": "com.kioskke.shopper",
+      "easProjectId": "41614221-007a-4244-88ef-f007f861c352"
     },
     "cashier": {
-      "name": "Kiosk Ke Cashier",
+      "name": "KIOSK CASHIER",
       "expoSlug": "kiosk-cashier",
       "iosBundleId": "com.kioskke.cashier",
-      "androidPackage": "com.kioskke.cashier"
+      "androidPackage": "com.kioskke.cashier",
+      "easProjectId": "a9bab5ec-cacb-4d59-b0a2-4acd1d1fbf41"
     },
     "grocery": {
-      "name": "Kiosk Ke Grocery",
+      "name": "KIOSK CLERK",
       "expoSlug": "kiosk-grocery",
       "iosBundleId": "com.kioskke.grocery",
-      "androidPackage": "com.kioskke.grocery"
+      "androidPackage": "com.kioskke.grocery",
+      "easProjectId": "960ab79f-eb42-4c71-8e62-7fafdfcbfa98"
     },
     "admin": {
-      "name": "Kiosk Ke Admin",
+      "name": "Kiosk Admin",
       "expoSlug": "kiosk-admin",
       "iosBundleId": "com.kioskke.admin",
-      "androidPackage": "com.kioskke.admin"
+      "androidPackage": "com.kioskke.admin",
+      "easProjectId": "1b18d89d-8223-413f-8855-8e130e78ad0f"
     },
     "stock": {
-      "name": "Kiosk Ke Stock",
+      "name": "KIOSK STOCK",
       "expoSlug": "kiosk-stock",
       "iosBundleId": "com.kioskke.stock",
-      "androidPackage": "com.kioskke.stock"
+      "androidPackage": "com.kioskke.stock",
+      "easProjectId": "1151f82a-a4e0-4888-85c1-478af3288493"
     }
   }
 }

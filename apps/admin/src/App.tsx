@@ -15,14 +15,7 @@ import {
   PlusJakartaSans_700Bold,
   PlusJakartaSans_800ExtraBold,
 } from '@expo-google-fonts/plus-jakarta-sans';
-import {
-  Poppins_400Regular,
-  Poppins_500Medium,
-  Poppins_600SemiBold,
-  Poppins_700Bold,
-  Poppins_800ExtraBold,
-} from '@expo-google-fonts/poppins';
-import { StaffShell, type StaffSession } from '@kiosk/staff';
+import { DM_SANS, StaffShell, type StaffSession } from '@kiosk/staff';
 import { setupNotifications } from '@kiosk/notifications';
 import { OwnerNavigator } from './navigation/OwnerNavigator';
 import { API_BASE_URL } from './lib/config';
@@ -44,6 +37,7 @@ export function App() {
   // The typeface is bundled, so this resolves in a frame or two. If it ever fails the app still
   // opens, in the system face.
   const [fontsLoaded, fontsError] = useFonts({
+    ...DM_SANS,
     SchibstedGrotesk_400Regular,
     SchibstedGrotesk_500Medium,
     SchibstedGrotesk_600SemiBold,
@@ -54,11 +48,6 @@ export function App() {
     PlusJakartaSans_600SemiBold,
     PlusJakartaSans_700Bold,
     PlusJakartaSans_800ExtraBold,
-    Poppins_400Regular,
-    Poppins_500Medium,
-    Poppins_600SemiBold,
-    Poppins_700Bold,
-    Poppins_800ExtraBold,
   });
   if (!fontsLoaded && !fontsError) {
     return <View style={{ flex: 1, backgroundColor: MART.paper }} />;

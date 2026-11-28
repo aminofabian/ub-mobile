@@ -7,6 +7,7 @@ import {
   writeTenantValue,
 } from '@kiosk/core';
 import { toKenyanLocal07 } from './phone';
+import { randomSecret } from './secret';
 
 export type ShopperProfile = {
   name: string;
@@ -58,11 +59,7 @@ export async function clearDeviceSecret(): Promise<void> {
   await removeTenantSecret('deviceSecret');
 }
 
+/** The password the join makes for the account, which the shopper never sees. See `secret.ts`. */
 export function randomDeviceSecret(): string {
-  const alphabet = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let out = '';
-  for (let i = 0; i < 18; i += 1) {
-    out += alphabet[Math.floor(Math.random() * alphabet.length)];
-  }
-  return out;
+  return randomSecret(24).value;
 }

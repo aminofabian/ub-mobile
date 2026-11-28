@@ -416,8 +416,8 @@ export function describeServiceLine(line: CartLine): string | null {
 
 /** What a listed service says about its price on the list: "500.00", or "from 500.00" / "price set at the till". */
 export function priceWords(service: Service): string {
-  if (!service.variablePrice) return formatMoney(service.priceCents);
-  return service.priceCents > 0 ? `from ${formatMoney(service.priceCents)}` : 'price set at the till';
+  if (!service.variablePrice) return `KES ${formatMoney(service.priceCents)}`;
+  return service.priceCents > 0 ? `from KES ${formatMoney(service.priceCents)}` : 'price set at the till';
 }
 
 /** How long a service takes, for the list: "45 min", "1 h 30 min", "" when it does not say. */

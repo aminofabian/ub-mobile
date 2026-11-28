@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { ApiClient } from '@kiosk/core';
 import { MART, RADIUS, SPACE, onFill, MartText } from '@kiosk/staff';
 import { recordDrawout } from '../api/pos-api';
+import { BottomSheet } from './BottomSheet';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 /** The cash pay-out reasons a till reaches for. The value is what the server records; the label is shown. */
@@ -79,17 +80,23 @@ export function DrawoutSheet({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView style={styles.wrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close" />
-        <View style={styles.sheet}>
-          <View style={styles.handle} />
-          <MartText variant="title">Cash pay-out</MartText>
-          <MartText variant="meta" color={MART.inkQuiet}>
-            Take cash out of the till and write down why.
-          </MartText>
+    <BottomSheet visible={visible} onClose={onClose}>
+          <View style={styles.head}>
+            <View style={styles.headMark}>
+              <Ionicons name="cash-outline" size={18} color={MART.fallbackPrimary} />
+            </View>
+            <View style={styles.headText}>
+              <MartText variant="title">Cash pay-out</MartText>
+              <MartText variant="meta" color={MART.inkQuiet}>
+                Cash leaves the till now, and the shift records why.
+              </MartText>
+            </View>
+          </View>
 
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: SPACE.sm, paddingTop: SPACE.md }}>
+            <MartText variant="shelf" color={MART.inkQuiet} style={styles.amountLabel}>
+              HOW MUCH
+            </MartText>
             <View style={styles.amountRow}>
               <MartText variant="title" color={MART.inkQuiet}>
                 KES
@@ -158,25 +165,32 @@ export function DrawoutSheet({
               )}
             </Pressable>
           </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+    </BottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: 'rgba(22,24,15,0.4)', justifyContent: 'flex-end' },
+  // A native page sheet fills the card the system hands it; its own scrim, grip and top radius are gone.
   sheet: {
+    flex: 1,
     backgroundColor: MART.paper,
-    borderTopLeftRadius: RADIUS.xl,
-    borderTopRightRadius: RADIUS.xl,
     paddingHorizontal: SPACE.lg,
-    paddingBottom: SPACE.xl,
     paddingTop: SPACE.sm,
-    maxHeight: '88%',
+    paddingBottom: SPACE.xl,
     gap: SPACE.xs,
   },
-  handle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: MART.borderStrong, marginBottom: SPACE.md },
+  head: { flexDirection: 'row', alignItems: 'flex-start', gap: SPACE.sm },
+  headMark: {
+    width: 38,
+    height: 38,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(20,83,45,0.08)',
+  },
+  headText: { flex: 1, gap: 2 },
+  amountLabel: { letterSpacing: 1.2, marginTop: SPACE.md },
   amountRow: {
     flexDirection: 'row',
     alignItems: 'center',

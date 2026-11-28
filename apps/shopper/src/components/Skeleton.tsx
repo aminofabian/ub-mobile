@@ -101,10 +101,7 @@ export function ProductCardSkeleton() {
       <View style={styles.productCopy}>
         <Bone h={12} w="88%" />
         <Bone h={12} w="62%" />
-        <View style={styles.productFooter}>
-          <Bone h={14} w={64} />
-          <Bone h={28} w={28} r={14} />
-        </View>
+        <Bone h={16} w={84} />
       </View>
     </View>
   );
@@ -125,22 +122,18 @@ export function ProductGridSkeleton({ count = 6 }: { count?: number }) {
 export function StorefrontBodySkeleton() {
   return (
     <SkeletonScope label="Loading the store" style={styles.storefront}>
-      <Bone h={196} style={styles.hero} />
-      <View style={styles.serviceStack}>
-        <Bone h={60} />
-        <Bone h={60} />
-      </View>
+      <Bone h={212} r={RADIUS.xl} style={styles.hero} />
       <View style={styles.sectionHead}>
-        <Bone h={16} w={128} />
+        <Bone h={24} w={150} />
       </View>
       <View style={styles.aisleRow}>
-        <Bone h={116} w={116} />
-        <Bone h={116} w={116} />
-        <Bone h={116} w={116} />
-        <Bone h={116} w={116} />
+        <Bone h={92} w={92} r={46} />
+        <Bone h={92} w={92} r={46} />
+        <Bone h={92} w={92} r={46} />
+        <Bone h={92} w={92} r={46} />
       </View>
       <View style={styles.sectionHead}>
-        <Bone h={16} w={104} />
+        <Bone h={24} w={180} />
       </View>
       <ProductGridSkeleton count={4} />
     </SkeletonScope>
@@ -150,7 +143,6 @@ export function StorefrontBodySkeleton() {
 export function AisleBodySkeleton() {
   return (
     <SkeletonScope label="Loading this aisle" style={styles.aisleBody}>
-      <Bone h={168} r={0} />
       <View style={styles.aislePad}>
         <ProductGridSkeleton count={6} />
       </View>
@@ -211,16 +203,10 @@ export function AccountHubSkeleton() {
 const styles = StyleSheet.create({
   storefront: {
     flex: 1,
-    paddingTop: SPACE.md,
     backgroundColor: MART.paper,
   },
   hero: {
     marginHorizontal: GUTTER,
-  },
-  serviceStack: {
-    marginTop: SPACE.lg,
-    paddingHorizontal: GUTTER,
-    gap: SPACE.sm,
   },
   sectionHead: {
     marginTop: SPACE.xxl,
@@ -230,7 +216,7 @@ const styles = StyleSheet.create({
   aisleRow: {
     paddingHorizontal: GUTTER,
     flexDirection: 'row',
-    gap: SPACE.sm,
+    gap: SPACE.md,
   },
   grid: {
     flexDirection: 'row',
@@ -238,32 +224,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: GUTTER - SPACE.xs,
   },
   gridCell: {
-    width: '50%',
+    width: '33.333%',
     padding: SPACE.xs,
   },
-  productCard: {
-    backgroundColor: MART.paperElevated,
-    borderWidth: 1,
-    borderColor: MART.border,
-    borderRadius: RADIUS.md,
-    overflow: 'hidden',
-  },
+  productCard: {},
   productImage: {
     width: '100%',
     aspectRatio: 1,
+    borderRadius: RADIUS.lg,
     backgroundColor: MART.paperSunken,
   },
   productCopy: {
-    paddingHorizontal: SPACE.md,
+    paddingHorizontal: SPACE.xs,
     paddingTop: SPACE.md,
     paddingBottom: SPACE.md,
     gap: SPACE.sm,
-  },
-  productFooter: {
-    marginTop: 4,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
   },
   aisleBody: {
     flex: 1,

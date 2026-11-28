@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Modal, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { ApiClient } from '@kiosk/core';
 import { GUTTER, MART, RADIUS, SPACE, tint, MartText } from '@kiosk/staff';
 import { cancelDraft, listDrafts, openDraft, type DraftSummary } from '../api/draft-api';
 import type { CartLine } from '../lib/cart';
+import { BottomSheet } from './BottomSheet';
 
 function kes(amount: number): string {
   return `KES ${amount.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -100,11 +101,8 @@ export function ParkedSalesSheet({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.wrap}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close" />
-        <View style={styles.sheet}>
-          <View style={styles.handle} />
+    <BottomSheet visible={visible} onClose={onClose}>
+        <View style={styles.content}>
           <View style={styles.head}>
             <View>
               <MartText variant="title">Parked sales</MartText>
@@ -189,23 +187,16 @@ export function ParkedSalesSheet({
             }}
           />
         </View>
-      </View>
-    </Modal>
+    </BottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: 'rgba(22,24,15,0.4)', justifyContent: 'flex-end' },
-  sheet: {
-    backgroundColor: MART.paper,
-    borderTopLeftRadius: RADIUS.xl,
-    borderTopRightRadius: RADIUS.xl,
-    paddingHorizontal: GUTTER,
-    paddingBottom: SPACE.xl,
-    paddingTop: SPACE.sm,
-    maxHeight: '80%',
-  },
-  handle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: MART.borderStrong, marginBottom: SPACE.md },
+  // A native page sheet fills the card the system hands it; its own scrim, grip and top radius are gone.
+  // The shell owns the ground, the padding and the grabber; this is just the column inside it.
+  content: { gap: SPACE.xs },
+
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACE.md },
   refresh: {
     width: 36,

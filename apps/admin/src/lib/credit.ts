@@ -1,5 +1,6 @@
 import { classifyWrite, cleanDisplayText, isApiError } from '@kiosk/core';
 import { centsToAmount, kesOrDash, signedCents, typedCents } from './owner-money';
+import { readCustomerCard, type CustomerCard, type ApiClient } from '@kiosk/core';
 import { dialable, phoneSearchDigits } from './phone';
 
 /**
@@ -17,6 +18,10 @@ export type CreditTab = {
   owedCents: number;
   /** The shop has stopped further credit for this customer. */
   suspended: boolean;
+  /** A number on this customer has been verified, by a person or by their own code. */
+  verified: boolean;
+  /** The number to verify or revoke, when the row carries one. */
+  phoneId: string | null;
 };
 
 /** The most tabs the list holds. The server's list is not paged; a shop with more than this narrows it by searching. */
@@ -53,6 +58,8 @@ function readTab(raw: unknown): CreditTab | null {
     phone: dialable(row.primaryPhone),
     owedCents: owed,
     suspended: row.creditSuspended === true,
+    verified: row.verified === true,
+    phoneId: typeof row.primaryPhoneId === 'string' && row.primaryPhoneId.trim() ? row.primaryPhoneId.trim() : null,
   };
 }
 
@@ -279,4 +286,19 @@ export function reminderText(input: { shop: string; name: string; owedCents: num
   const first = firstNameOf(input.name) ?? 'there';
   const shop = cleanDisplayText(input.shop, 60) || 'the shop';
   return `Hello ${first}, a friendly reminder from ${shop}: your tab is ${kesOrDash(input.owedCents)}. Please settle when you can. Thank you.`;
+}
+
+
+/**
+ * One customer, as the server holds them: their numbers, and which of those have been verified.
+ *
+ * Read by the tab screen so the badge and the manual toggle are about this person right now — not about what the list
+ * said when it was opened.
+ */
+export async function fetchCustomerCard(
+  api: ApiClient,
+  customerId: string
+): Promise<CustomerCard | null> {
+  const raw = await api.get<unknown>(customerPath(customerId));
+  return readCustomerCard(raw);
 }

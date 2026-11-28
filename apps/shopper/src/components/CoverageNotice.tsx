@@ -19,10 +19,10 @@ export function CoverageNotice({ tenant }: { tenant: TenantContext }) {
 
   return (
     <View style={styles.box} accessibilityRole="summary">
-      <Text style={styles.head}>WHAT THIS APP COVERS</Text>
+      <Text style={styles.head}>What this app covers</Text>
       {limits.map((line) => (
         <View key={line} style={styles.line}>
-          <Ionicons name="information-circle-outline" size={16} color={MART.inkMuted} style={styles.icon} />
+          <Ionicons name="information-circle-outline" size={16} color={MART.info} style={styles.icon} />
           <Text style={styles.text}>{line}</Text>
         </View>
       ))}
@@ -34,7 +34,7 @@ export function CoverageNotice({ tenant }: { tenant: TenantContext }) {
           style={styles.link}
         >
           <Text style={styles.linkText}>Open {tenant.host} in your browser</Text>
-          <Ionicons name="open-outline" size={14} color={MART.fallbackPrimary} />
+          <Ionicons name="open-outline" size={14} color={MART.ink} />
         </Pressable>
       ) : null}
     </View>
@@ -45,21 +45,21 @@ const styles = StyleSheet.create({
   box: {
     marginHorizontal: GUTTER,
     marginTop: SPACE.lg,
-    padding: SPACE.md,
+    padding: SPACE.lg,
     gap: SPACE.sm,
-    borderRadius: RADIUS.md,
-    backgroundColor: MART.paperSunken,
+    borderRadius: RADIUS.lg,
+    backgroundColor: MART.infoSurface,
   },
   head: {
-    ...TYPE.shelf,
-    color: MART.inkMuted,
+    ...TYPE.heading,
+    color: MART.ink,
   },
   line: {
     flexDirection: 'row',
     gap: SPACE.sm,
   },
   icon: {
-    marginTop: 2,
+    marginTop: 3,
   },
   text: {
     ...TYPE.body,
@@ -70,10 +70,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACE.xs,
-    minHeight: 32,
+    minHeight: 44,
   },
   linkText: {
     ...TYPE.label,
-    color: MART.fallbackPrimary,
+    color: MART.ink,
+    textDecorationLine: 'underline',
   },
 });

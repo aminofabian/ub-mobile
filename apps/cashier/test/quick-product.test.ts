@@ -20,13 +20,41 @@ function form(change: Partial<ProductForm> = {}): ProductForm {
   return { ...EMPTY_FORM, name: 'Beef fillet', price: '650', typeId: 't-2', ...change };
 }
 
-test('the kinds of product are read from a bare list or a page, sorted, and rows that are not kinds are left out', () => {
+/** A kind as the server sends it (`ItemTypeResponse`). */
+const served = (id: string, label: string, more: Record<string, unknown> = {}) => ({
+  id,
+  key: label.toLowerCase(),
+  label,
+  icon: null,
+  color: null,
+  sortOrder: 0,
+  active: true,
+  isDefault: false,
+  defaultMarkupPct: null,
+  ...more,
+});
+
+test('the kinds of product are read as the server sends them: a bare list of rows with a label', () => {
+  assert.deepEqual(parseItemTypes([served('t-2', 'Meat'), served('t-1', 'Groceries')]), TYPES);
+});
+
+test('a kind the owner has switched off is not offered, and one with no word about it is', () => {
+  assert.deepEqual(parseItemTypes([served('t-1', 'Groceries'), served('t-9', 'Old range', { active: false })]), [TYPES[0]]);
+  assert.deepEqual(parseItemTypes([{ id: 't-1', label: 'Groceries' }]), [TYPES[0]]);
+  assert.deepEqual(parseItemTypes([served('t-1', 'Groceries', { active: 'no' })]), [TYPES[0]], 'only a real false switches it off');
+});
+
+test('an older shape that said name is still read, and a label wins over a name', () => {
   assert.deepEqual(parseItemTypes([{ id: 't-2', name: 'Meat' }, { id: 't-1', name: 'Groceries' }]), TYPES);
-  assert.deepEqual(parseItemTypes({ content: [{ id: 't-1', name: 'Groceries' }] }), [TYPES[0]]);
-  assert.deepEqual(parseItemTypes([null, 'x', {}, { id: '', name: 'x' }, { id: 't-3' }, { id: 't-4', name: '  ' }, { id: 7, name: 'x' }]), []);
+  assert.deepEqual(parseItemTypes([{ id: 't-1', label: 'Groceries', name: 'Old name' }]), [TYPES[0]]);
+});
+
+test('the kinds are read from a page too, sorted, and rows that are not kinds are left out', () => {
+  assert.deepEqual(parseItemTypes({ content: [served('t-1', 'Groceries')] }), [TYPES[0]]);
+  assert.deepEqual(parseItemTypes([null, 'x', {}, { id: '', label: 'x' }, { id: 't-3' }, { id: 't-4', label: '  ' }, { id: 7, label: 'x' }]), []);
   for (const nothing of [null, undefined, 'x', 7, {}, { content: 'no' }]) assert.deepEqual(parseItemTypes(nothing), []);
-  assert.equal(parseItemTypes([{ id: 't-1', name: 'Gro‮ceries\n' }])[0]?.name, 'Groceries');
-  assert.equal(parseItemTypes([{ id: 'x'.repeat(65), name: 'Long id' }]).length, 0);
+  assert.equal(parseItemTypes([served('t-1', 'Gro‮ceries\n')])[0]?.name, 'Groceries');
+  assert.equal(parseItemTypes([served('x'.repeat(65), 'Long id')]).length, 0);
 });
 
 test('a product with a name, a kind and a price is what the server takes, at this branch', () => {
@@ -112,16 +140,32 @@ test('a price is strict, above zero, and a comma is a thousands mark and never a
   assert.equal(ok.ok && ok.body.unitPrice, 0.01);
 });
 
-test('a barcode is plain, or empty', () => {
-  for (const barcode of ['abc', 'a b c d', '123\n45', '<script>', 'x'.repeat(65), '12 345', 'é1234']) {
+test('a barcode is digits, as the server keeps it, or empty', () => {
+  // The server keeps only digits, and drops anything else without a word: the till refuses it up front.
+  for (const barcode of ['abc', 'AB-1234', 'AB-12.cd_9', 'a b c d', '<script>', '6'.repeat(65), 'é1234', '123', '1-2 3']) {
     assert.equal(checkProduct(form({ barcode }), 'b-1', TYPES).ok, false, JSON.stringify(barcode));
   }
-  for (const barcode of ['6001', 'AB-12.cd_9', '6'.repeat(64)]) {
-    assert.equal(checkProduct(form({ barcode }), 'b-1', TYPES).ok, true, barcode);
+  for (const barcode of ['6001', '6'.repeat(64), '', '   ']) {
+    assert.equal(checkProduct(form({ barcode }), 'b-1', TYPES).ok, true, JSON.stringify(barcode));
   }
-  // A scanner ends what it read with Enter: whitespace around a barcode is not part of it.
-  const scanned = checkProduct(form({ barcode: '6001234567890\n' }), 'b-1', TYPES);
-  assert.equal(scanned.ok && scanned.body.barcode, '6001234567890');
+});
+
+test('a barcode is sent as the server will keep it: without spaces, dashes, dots and underscores', () => {
+  for (const [typed, kept] of [
+    ['6001234567890', '6001234567890'],
+    ['6001 2345 67890', '6001234567890'],
+    ['6001-2345.67890_', '6001234567890'],
+    ['6001234567890\n', '6001234567890'],
+    [' 4-0-0-6 ', '4006'],
+  ] as const) {
+    const checked = checkProduct(form({ barcode: typed }), 'b-1', TYPES);
+    assert.equal(checked.ok && checked.body.barcode, kept, JSON.stringify(typed));
+  }
+});
+
+test('a barcode of nothing but punctuation is no barcode, as it is to the server', () => {
+  const checked = checkProduct(form({ barcode: ' - . _ ' }), 'b-1', TYPES);
+  assert.equal(checked.ok && 'barcode' in checked.body, false);
 });
 
 test('the number on the shelf is a whole number of units, or empty to leave it to the server', () => {
@@ -169,5 +213,5 @@ test('a clash with a product that already exists is a refusal, not a doubt', () 
 });
 
 test('a kind of product is read with its id trimmed', () => {
-  assert.deepEqual(parseItemTypes([{ id: ' t-1 ', name: 'Dairy' }]), [{ id: 't-1', name: 'Dairy' }]);
+  assert.deepEqual(parseItemTypes([{ id: ' t-1 ', label: 'Dairy' }]), [{ id: 't-1', name: 'Dairy' }]);
 });

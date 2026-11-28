@@ -29,17 +29,33 @@ export const DEFAULT_STOCK_SETTINGS: StockSettings = { spoils: true, stockEdit: 
  * The switches from `GET /api/v1/businesses/me` (`inventory.stockLevels`). Only a switch that is plainly `false` turns a
  * job off; a missing one, or one of the wrong type, leaves it on, as the web does.
  */
-export function parseStockSettings(body: unknown): StockSettings {
-  if (!body || typeof body !== 'object') return DEFAULT_STOCK_SETTINGS;
+function stockLevels(body: unknown): Record<string, unknown> | null {
+  if (!body || typeof body !== 'object') return null;
   const inventory = (body as { inventory?: unknown }).inventory;
   const levels = inventory && typeof inventory === 'object' ? (inventory as { stockLevels?: unknown }).stockLevels : null;
-  if (!levels || typeof levels !== 'object') return DEFAULT_STOCK_SETTINGS;
-  const switches = levels as Record<string, unknown>;
+  if (!levels || typeof levels !== 'object') return null;
+  return levels as Record<string, unknown>;
+}
+
+export function parseStockSettings(body: unknown): StockSettings {
+  const switches = stockLevels(body);
+  if (!switches) return DEFAULT_STOCK_SETTINGS;
   return {
     spoils: switches.allowSpoilsForGroceryClerk !== false,
     stockEdit: switches.allowStockEditForGroceryClerk !== false,
     orderPad: switches.allowOrderPadForGroceryClerk !== false,
   };
+}
+
+/**
+ * Whether a stock manager may change stock. The server delegates `inventory.write` through
+ * `allowStockEditForStockManager`, and only a switch that is plainly `false` turns it off. A missing answer leaves it
+ * on, the same way the grocery switches do.
+ */
+export function stockManagerMayEdit(body: unknown): boolean {
+  const switches = stockLevels(body);
+  if (!switches) return true;
+  return switches.allowStockEditForStockManager !== false;
 }
 
 export const INVENTORY_WRITE = 'inventory.write';
@@ -100,10 +116,12 @@ export function counterModes(user: AccessUser, settings: StockSettings): Counter
 
 /**
  * In the Stock app: whether this person may set stock and write it off. The grocery counter's switches are about
- * grocery clerks and do not apply here. A stock manager has the right by default (the server delegates it).
+ * grocery clerks and do not apply here. A stock manager has the right when the shop allows it
+ * (`stockManagerMayEdit`); someone who holds `inventory.write` on the role has it either way.
  */
-export function stockAppMayWrite(user: AccessUser): boolean {
-  return has(user, INVENTORY_WRITE) || (user.roleKey ?? '').trim().toLowerCase() === 'stock_manager';
+export function stockAppMayWrite(user: AccessUser, managerMayEdit = true): boolean {
+  if (has(user, INVENTORY_WRITE)) return true;
+  return managerMayEdit && (user.roleKey ?? '').trim().toLowerCase() === 'stock_manager';
 }
 
 /** Whether this person may start and count a stock take. */

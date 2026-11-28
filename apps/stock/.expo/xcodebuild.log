@@ -1,0 +1,6 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -workspace /Users/mac/02-DEVELOPMENT/01-REPOS/github.com/aminofabian/palmart/mobile/apps/stock/ios/KioskKeStock.xcworkspace -configuration Debug -scheme KioskKeStock -destination id=4B11D812-14F6-4E40-AB10-E9B7B73A508F
+
+Build Preparation
+Couldn't create workspace arena folder '/Users/mac/Library/Developer/Xcode/DerivedData/KioskKeStock-cqqcgxhffiakcicnyypxliownbof': Unable to write to info file '<DVTFilePath:0xcb3454ba0:'/Users/mac/Library/Developer/Xcode/DerivedData/KioskKeStock-cqqcgxhffiakcicnyypxliownbof/info.plist'>'.
+

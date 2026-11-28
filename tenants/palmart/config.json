@@ -32,7 +32,8 @@
       "name": "Palmart Grocery",
       "expoSlug": "palmart-grocery",
       "iosBundleId": "com.palmart.grocery",
-      "androidPackage": "com.palmart.grocery"
+      "androidPackage": "com.palmart.grocery",
+      "easProjectId": "28442135-f93a-47a2-b543-7f604580aa1b"
     },
     "admin": {
       "name": "Palmart Admin",

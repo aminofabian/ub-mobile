@@ -117,17 +117,22 @@ function openShop(): string | undefined {
  * The four apps used to carry their own copy of this; they now render their screens inside it.
  */
 export function StaffShell({ app, baseURL, allowPassword = false, isTill = false, exportUnsent, onRemoved, renderScanner, children }: StaffShellProps) {
-  // The mart look is set in Plus Jakarta Sans, the face the web dashboard already uses. Loading it here means every
-  // staff app (Cashier, Grocery, Stock, Admin) gets it without each one wiring it up; the face is bundled, so this
-  // resolves in a frame or two. Poppins stays loaded for the `@kiosk/ui` components some apps still render, so no
-  // screen silently falls back to the system font. If loading ever fails the app still opens, in the system face.
+  // UI type is the device face (SF Pro / Roboto) — same as the soft POS mockups. Custom faces stay
+  // loaded only for leftover call sites that still name them. If loading fails, nothing breaks.
   const [fontsLoaded, fontsError] = useFonts({
+    SandeMore_400Regular: require('../../assets/fonts/SandeMore-Regular.otf'),
+    SandeMore_500Medium: require('../../assets/fonts/SandeMore-Medium.otf'),
+    SandeMore_700Bold: require('../../assets/fonts/SandeMore-Bold.otf'),
+    SandeMore_800ExtraBold: require('../../assets/fonts/SandeMore-ExtraBold.otf'),
+    DMSans_400Regular: require('../../assets/fonts/DMSans-Regular.ttf'),
+    DMSans_500Medium: require('../../assets/fonts/DMSans-Medium.ttf'),
+    DMSans_600SemiBold: require('../../assets/fonts/DMSans-SemiBold.ttf'),
+    DMSans_700Bold: require('../../assets/fonts/DMSans-Bold.ttf'),
     PlusJakartaSans_400Regular,
     PlusJakartaSans_500Medium,
     PlusJakartaSans_600SemiBold,
     PlusJakartaSans_700Bold,
     PlusJakartaSans_800ExtraBold,
-    // The brand face (TT Norms Pro's stand-in) — headers and banners only; everything else is the device's own.
     SchibstedGrotesk_600SemiBold,
     SchibstedGrotesk_700Bold,
     SchibstedGrotesk_800ExtraBold,

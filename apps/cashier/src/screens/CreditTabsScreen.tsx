@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ApiClient } from '@kiosk/core';
 import { GUTTER, MART, RADIUS, SPACE, tint, onFill, MartText } from '@kiosk/staff';
+import { TABULAR_NUMS } from '../components/CashierPrimitives';
 import {
   fetchOutstandingTabs,
   fetchCustomerTabPurchases,
@@ -115,6 +116,18 @@ export function CreditTabsScreen({ api }: Props) {
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        ListHeaderComponent={
+          tabs && tabs.length > 0 ? (
+            <View style={styles.summary}>
+              <MartText variant="shelf" color={MART.inkQuiet} style={styles.summaryLabel}>
+                {tabs.length === 1 ? '1 CUSTOMER OWES' : `${tabs.length} CUSTOMERS OWE`}
+              </MartText>
+              <MartText variant="title" color={MART.danger} style={TABULAR_NUMS}>
+                {kes(tabs.reduce((sum, item) => sum + item.balanceOwed, 0))}
+              </MartText>
+            </View>
+          ) : null
+        }
         ListEmptyComponent={
           tabs === null ? (
             <View style={styles.center}>
@@ -483,6 +496,14 @@ const styles = StyleSheet.create({
     backgroundColor: MART.paperElevated,
   },
   searchInput: { flex: 1, fontSize: 15, color: MART.ink },
+  summary: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACE.xs,
+    paddingBottom: SPACE.sm,
+  },
+  summaryLabel: { letterSpacing: 1.1 },
   list: { paddingBottom: SPACE.xxxl, gap: SPACE.sm },
   row: {
     flexDirection: 'row',
@@ -490,9 +511,12 @@ const styles = StyleSheet.create({
     gap: SPACE.md,
     padding: SPACE.md,
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: MART.border,
     backgroundColor: MART.paperElevated,
+    shadowColor: MART.ink,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   rowPressed: { backgroundColor: MART.paperSunken },
   avatar: { width: 44, height: 44, borderRadius: RADIUS.pill, alignItems: 'center', justifyContent: 'center' },

@@ -1,12 +1,19 @@
+import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import React from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { phase_15_storefront_public } from '@kiosk/types';
+import { aisleIcon, titleCase } from '../lib/aisle-icon';
 import { categoryIconImageUrl, itemCountLabel } from '../lib/media';
-import { GUTTER, MART, RADIUS, SPACE, TYPE, tint } from '../theme/mart';
+import { GUTTER, MART, SPACE, TYPE, zoneFor } from '../theme/mart';
+import { PressScale } from './Capsule';
+import { Lobe, LobeFrame, lobeIndex } from './Coast';
 
 type Category = phase_15_storefront_public.components['schemas']['PublicCategoryResponse'] & {
   itemCount?: number;
 };
+
+const LOBE = 92;
 
 function rootAisles(categories: Category[]): Category[] {
   const roots = categories.filter((c) => !c.parentId?.trim());
@@ -15,53 +22,57 @@ function rootAisles(categories: Category[]): Category[] {
   );
 }
 
+/**
+ * The aisles, drawn the way a guide map draws its areas: each one a lobe in its own zone colour. An
+ * aisle keeps that colour and outline on every screen. A photograph, where the shop has one, is cropped
+ * to the lobe.
+ */
 export function AislePhotoRail({
   categories,
-  primary,
-  accent,
   onSelect,
+  ground = MART.paper,
 }: {
   categories: Category[];
-  primary: string;
-  accent: string;
   onSelect: (category: Category) => void;
+  /** The colour behind the rail, which photographs are cropped against. */
+  ground?: string;
+  /** Kept so callers written for the old rail still compile. Aisles take zone colours now. */
+  primary?: string;
+  accent?: string;
 }) {
   const aisles = rootAisles(categories);
   if (aisles.length === 0) return null;
 
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.row}
-    >
-      {aisles.map((aisle, index) => {
-        const shade = index % 2 === 0 ? primary : accent;
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+      {aisles.map((aisle) => {
+        const key = aisle.id ?? aisle.slug ?? aisle.name ?? '';
         const image = categoryIconImageUrl(aisle.icon);
-        const name = aisle.name ?? 'Aisle';
+        const name = titleCase(aisle.name ?? 'Category');
+        const shape = lobeIndex(key);
         return (
-          <Pressable
-            key={aisle.id ?? aisle.slug ?? name}
+          <PressScale
+            key={key}
+            to={0.94}
             onPress={() => onSelect(aisle)}
             accessibilityRole="button"
             accessibilityLabel={`${name}${aisle.itemCount != null ? `, ${itemCountLabel(aisle.itemCount)}` : ''}`}
-            style={({ pressed }) => [styles.tile, pressed && styles.pressed]}
+            style={styles.aisle}
           >
-            <View style={[styles.fill, { backgroundColor: tint(shade, 0.85) }]}>
+            <Lobe color={zoneFor(key)} size={LOBE} shape={shape}>
               {image ? (
-                <Image source={{ uri: image }} style={styles.photo} resizeMode="cover" />
-              ) : null}
-              <View style={styles.scrim} />
-              <View style={styles.caption}>
-                <Text numberOfLines={2} style={styles.name}>
-                  {name.toUpperCase()}
-                </Text>
-                {typeof aisle.itemCount === 'number' ? (
-                  <Text style={styles.count}>{itemCountLabel(aisle.itemCount)}</Text>
-                ) : null}
-              </View>
-            </View>
-          </Pressable>
+                <>
+                  <Image source={{ uri: image }} style={styles.photo} contentFit="cover" transition={180} />
+                  <LobeFrame size={LOBE} shape={shape} ground={ground} />
+                </>
+              ) : (
+                <Ionicons name={aisleIcon(name)} size={34} color={MART.ink} />
+              )}
+            </Lobe>
+            <Text numberOfLines={2} style={styles.name}>
+              {name}
+            </Text>
+          </PressScale>
         );
       })}
     </ScrollView>
@@ -71,48 +82,19 @@ export function AislePhotoRail({
 const styles = StyleSheet.create({
   row: {
     paddingHorizontal: GUTTER,
-    gap: SPACE.sm,
+    gap: SPACE.md,
   },
-  tile: {
-    width: 116,
-    height: 116,
-    borderRadius: RADIUS.md,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: MART.border,
-  },
-  pressed: {
-    opacity: 0.86,
-  },
-  fill: {
-    flex: 1,
+  aisle: {
+    width: LOBE,
+    alignItems: 'center',
   },
   photo: {
     ...StyleSheet.absoluteFillObject,
   },
-  scrim: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 62,
-    backgroundColor: 'rgba(9,14,11,0.68)',
-  },
-  caption: {
-    position: 'absolute',
-    left: SPACE.sm,
-    right: SPACE.sm,
-    bottom: SPACE.sm,
-  },
   name: {
-    ...TYPE.shelf,
-    color: '#ffffff',
-  },
-  count: {
-    ...TYPE.shelf,
-    marginTop: SPACE.xxs,
-    fontWeight: '500',
-    letterSpacing: 0.2,
-    color: 'rgba(255,255,255,0.82)',
+    ...TYPE.label,
+    marginTop: SPACE.sm,
+    textAlign: 'center',
+    color: MART.ink,
   },
 });

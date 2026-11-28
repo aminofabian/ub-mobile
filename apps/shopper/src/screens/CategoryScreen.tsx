@@ -1,38 +1,28 @@
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
-import React, { useCallback } from 'react';
-import {
-  FlatList,
-  Image,
-  Pressable,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { Image } from 'expo-image';
+import React, { useCallback, useLayoutEffect, useState } from 'react';
+import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { phase_15_storefront_public } from '@kiosk/types';
 import { useTenant } from '../lib/TenantContext';
 import { useInfiniteItems } from '../hooks/useInfiniteItems';
 import { ProductCard } from '../components/ProductCard';
 import { AisleBodySkeleton, ProductGridSkeleton, SkeletonScope } from '../components/Skeleton';
+import { Coast, COAST_SWELL, Lobe, LobeFrame, lobeIndex } from '../components/Coast';
+import { StateBlock } from '../components/StateBlock';
+import { titleCase } from '../lib/aisle-icon';
 import { categoryIconImageUrl, itemCountLabel } from '../lib/media';
 import { useBasketFloatReserve } from '../components/BasketFloat';
 import { RootStackParamList } from '../navigation/AppNavigator';
-import {
-  GUTTER,
-  MART,
-  martFromTenant,
-  ON_BRAND,
-  RADIUS,
-  SPACE,
-  TYPE,
-  tint,
-} from '../theme/mart';
+import { GUTTER, MART, martFromTenant, onFill, SPACE, TYPE, zoneFor } from '../theme/mart';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Category'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type Item = phase_15_storefront_public.components['schemas']['PublicCatalogItemCard'];
+
+const CELL_PAD = SPACE.sm - 2;
+const LIST_PAD = GUTTER - CELL_PAD;
+const PHOTO = 84;
 
 export function CategoryScreen() {
   const tenant = useTenant();
@@ -43,6 +33,19 @@ export function CategoryScreen() {
   const mart = martFromTenant(tenant);
   const catalog = useInfiniteItems(tenant.slug, { categoryId });
   const photo = categoryIconImageUrl(categoryIcon);
+  // The aisle keeps the colour and outline it has on Home, and its land runs from the status bar down.
+  const zone = zoneFor(categoryId);
+  const shape = lobeIndex(categoryId);
+  const on = onFill(zone);
+  const [landHeight, setLandHeight] = useState(96);
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      title: '',
+      headerStyle: { backgroundColor: zone },
+      headerTintColor: on.primary,
+    });
+  }, [navigation, zone, on.primary]);
 
   const handleItemPress = useCallback(
     (item: Item) => {
@@ -65,16 +68,17 @@ export function CategoryScreen() {
 
   if (catalog.error && catalog.items.length === 0) {
     return (
-      <View style={styles.centered}>
-        <Ionicons name="alert-circle-outline" size={26} color={MART.danger} />
-        <Text style={styles.error}>We could not load this aisle.</Text>
-        <Pressable
-          onPress={() => void catalog.refetch()}
-          style={[styles.retry, { backgroundColor: mart.primary }]}
-          accessibilityRole="button"
-        >
-          <Text style={styles.retryText}>Try again</Text>
-        </Pressable>
+      <View style={styles.list}>
+        <StateBlock
+          tone="problem"
+          icon="cloud-offline"
+          title={`We could not load ${titleCase(categoryName)}`}
+          body="Check your connection, then try again."
+          actionLabel="Try again"
+          actionChip="refresh"
+          onAction={() => void catalog.refetch()}
+          fill={mart.primary}
+        />
       </View>
     );
   }
@@ -86,7 +90,7 @@ export function CategoryScreen() {
     <FlatList
       data={catalog.items}
       keyExtractor={(item, index) => item.id ?? `${item.name ?? 'item'}-${index}`}
-      numColumns={2}
+      numColumns={3}
       style={styles.list}
       contentContainerStyle={[styles.listContent, { paddingBottom: SPACE.xxxl + basketReserve }]}
       onEndReached={loadMore}
@@ -95,18 +99,31 @@ export function CategoryScreen() {
         <RefreshControl
           refreshing={Boolean(catalog.isRefetching && catalog.items.length > 0)}
           onRefresh={() => void catalog.refetch()}
-          tintColor={mart.primary}
+          tintColor={on.primary}
+          colors={[mart.primary]}
         />
       }
       ListHeaderComponent={
-        <View style={[styles.banner, { backgroundColor: mart.primary }]}>
-          {photo ? <Image source={{ uri: photo }} style={styles.bannerPhoto} resizeMode="cover" /> : null}
-          <View style={styles.bannerScrim} />
-          <View style={styles.bannerCopy}>
-            <Text style={styles.bannerName}>{categoryName}</Text>
-            <Text style={styles.bannerMeta}>
-              {itemCountLabel(count)} on the shelf
-            </Text>
+        <View style={styles.land}>
+          {/* Pulling down shows more land, not the water behind it. */}
+          <View style={[styles.landAbove, { backgroundColor: zone }]} />
+          <Coast color={zone} height={landHeight} />
+          <View
+            style={styles.landCopy}
+            onLayout={(event) => setLandHeight(event.nativeEvent.layout.height)}
+          >
+            <View style={styles.landText}>
+              <Text accessibilityRole="header" style={[styles.landName, { color: on.primary }]}>
+                {titleCase(categoryName)}
+              </Text>
+              <Text style={[styles.landMeta, { color: on.secondary }]}>{itemCountLabel(count)}</Text>
+            </View>
+            {photo ? (
+              <Lobe color={MART.paper} size={PHOTO} shape={shape}>
+                <Image source={{ uri: photo }} style={styles.photo} contentFit="cover" transition={180} />
+                <LobeFrame size={PHOTO} shape={shape} ground={zone} />
+              </Lobe>
+            ) : null}
           </View>
         </View>
       }
@@ -121,29 +138,25 @@ export function CategoryScreen() {
         </View>
       )}
       ListEmptyComponent={
-        <View style={styles.empty}>
-          <View style={[styles.emptyIcon, { backgroundColor: tint(mart.primary, 0.08) }]}>
-            <Ionicons name="basket-outline" size={26} color={mart.primary} />
-          </View>
-          <Text style={styles.emptyTitle}>This aisle is being restocked</Text>
-          <Text style={styles.emptyBody}>Check another aisle, or search for a product by name.</Text>
-          <Pressable
-            onPress={() => navigation.navigate('Search')}
-            style={[styles.retry, { backgroundColor: mart.primary }]}
-            accessibilityRole="button"
-          >
-            <Text style={styles.retryText}>Search the shop</Text>
-          </Pressable>
-        </View>
+        <StateBlock
+          icon="basket"
+          title="Nothing here right now"
+          body="Look in another section, or search for a product by name."
+          actionLabel="Search the shop"
+          actionChip="search"
+          onAction={() => navigation.navigate('Search')}
+          fill={mart.primary}
+          style={styles.empty}
+        />
       }
       ListFooterComponent={
         <View style={styles.footer}>
           {catalog.isFetchingNextPage ? (
-            <SkeletonScope label="Loading more from this aisle">
-              <ProductGridSkeleton count={2} />
+            <SkeletonScope label="Loading more products">
+              <ProductGridSkeleton count={3} />
             </SkeletonScope>
           ) : catalog.items.length > 0 && !catalog.hasNextPage ? (
-            <Text style={styles.endText}>End of the aisle.</Text>
+            <Text style={styles.endText}>That is everything.</Text>
           ) : null}
         </View>
       }
@@ -157,88 +170,50 @@ const styles = StyleSheet.create({
     backgroundColor: MART.paper,
   },
   listContent: {
-    paddingBottom: SPACE.xxxl,
+    paddingHorizontal: LIST_PAD,
   },
-  banner: {
-    height: 168,
-    marginBottom: SPACE.md,
-    justifyContent: 'flex-end',
-    overflow: 'hidden',
+  land: {
+    marginHorizontal: -LIST_PAD,
+    marginBottom: SPACE.lg,
+    paddingBottom: COAST_SWELL * 2,
   },
-  bannerPhoto: {
-    ...StyleSheet.absoluteFillObject,
+  landAbove: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: -800,
+    height: 800,
   },
-  bannerScrim: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(9,14,11,0.66)',
-  },
-  bannerCopy: {
+  landCopy: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACE.lg,
     paddingHorizontal: GUTTER,
+    paddingTop: SPACE.xs,
     paddingBottom: SPACE.lg,
   },
-  bannerName: {
-    ...TYPE.display,
-    color: ON_BRAND.primary,
+  landText: {
+    flex: 1,
+    minWidth: 0,
   },
-  bannerMeta: {
+  landName: {
+    ...TYPE.display,
+  },
+  landMeta: {
     ...TYPE.label,
-    marginTop: SPACE.xs,
-    color: ON_BRAND.secondary,
+    marginTop: SPACE.sm,
+  },
+  photo: {
+    ...StyleSheet.absoluteFillObject,
   },
   itemWrapper: {
-    width: '50%',
-    padding: SPACE.xs,
-    paddingHorizontal: SPACE.sm,
-  },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: SPACE.xl,
-    backgroundColor: MART.paper,
-    gap: SPACE.sm,
-  },
-  error: {
-    ...TYPE.body,
-    color: MART.danger,
-    textAlign: 'center',
-  },
-  retry: {
-    marginTop: SPACE.md,
-    minHeight: 46,
-    paddingHorizontal: SPACE.xl,
-    borderRadius: RADIUS.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  retryText: {
-    ...TYPE.label,
-    fontWeight: '700',
-    color: ON_BRAND.primary,
+    width: '33.333%',
+    paddingHorizontal: CELL_PAD,
+    paddingBottom: SPACE.md,
   },
   empty: {
-    alignItems: 'center',
-    paddingHorizontal: SPACE.xxl,
-    paddingTop: SPACE.xxl,
-  },
-  emptyIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: RADIUS.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyTitle: {
-    ...TYPE.title,
-    marginTop: SPACE.lg,
-    color: MART.ink,
-    textAlign: 'center',
-  },
-  emptyBody: {
-    ...TYPE.body,
-    marginTop: SPACE.sm,
-    color: MART.inkMuted,
-    textAlign: 'center',
+    paddingHorizontal: CELL_PAD,
+    paddingTop: SPACE.sm,
   },
   footer: {
     paddingVertical: SPACE.xl,

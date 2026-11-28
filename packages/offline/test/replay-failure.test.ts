@@ -73,3 +73,16 @@ test('any other refusal is a refusal: the server understood and said no', () => 
 test('the marker for a refused sale is its own word', () => {
   assert.equal(REFUSED, 'refused');
 });
+
+test('the server\'s "could not store it" (what the loser of two requests under one key is told) is an attempt, not a refusal', () => {
+  const stored = (type: string, status = 400) => new ApiError('Could not persist the requested change', { status, type });
+  assert.equal(classifyReplayFailure(stored('urn:problem:data-integrity')), 'broken');
+  assert.equal(classifyReplayFailure(stored('https://api.example/problems/data-integrity')), 'broken');
+  // Only that one problem, only as a 400: a refusal that names itself is still a refusal.
+  assert.equal(classifyReplayFailure(stored('urn:problem:out-of-stock')), 'refused');
+  assert.equal(classifyReplayFailure(stored('urn:problem:not-data-integrity')), 'refused');
+  assert.equal(classifyReplayFailure(stored('urn:problem:data-integrity', 422)), 'refused');
+  assert.equal(classifyReplayFailure(stored('urn:problem:data-integrity', 409)), 'conflict');
+  // Said in words alone it is read as what its status says: words never decide.
+  assert.equal(classifyReplayFailure(new ApiError('Could not persist the requested change', { status: 400 })), 'refused');
+});

@@ -2,7 +2,7 @@
   "name": "@kiosk/admin",
   "version": "0.0.1",
   "private": true,
-  "description": "Kiosk Ke Admin — management mobile app",
+  "description": "Kiosk Admin — management mobile app",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
@@ -22,6 +22,7 @@
     "@kiosk/core": "workspace:*",
     "@kiosk/notifications": "workspace:*",
     "@kiosk/orders": "workspace:*",
+    "@kiosk/realtime": "workspace:*",
     "@kiosk/staff": "workspace:*",
     "@kiosk/types": "workspace:*",
     "@kiosk/ui": "workspace:*",

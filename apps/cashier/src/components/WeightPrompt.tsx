@@ -15,6 +15,11 @@ interface WeightPromptProps {
   onCancel: () => void;
   /** Answers with words when the weight cannot be taken, and null once it has been. */
   onConfirm: (thousandths: number) => string | null;
+  /**
+   * Offered when the product is not really sold by weight: stops treating it that way. Answers with words on failure, or
+   * null once the item has been changed.
+   */
+  onNotWeighed?: () => Promise<string | null>;
 }
 
 type By = 'weight' | 'money';
@@ -37,11 +42,12 @@ const QUICK_KG: { label: string; thousandths: number }[] = [
  *     maths, and the price charged always matches the weight on the label.
  * Either way, the live line (weight = amount) is shown before it goes in the basket.
  */
-export function WeightPrompt({ item, inBasket, mode, onCancel, onConfirm }: WeightPromptProps) {
+export function WeightPrompt({ item, inBasket, mode, onCancel, onConfirm, onNotWeighed }: WeightPromptProps) {
   const [by, setBy] = useState<By>('weight');
   const [weightText, setWeightText] = useState('');
   const [moneyText, setMoneyText] = useState('');
   const [refused, setRefused] = useState<string | null>(null);
+  const [fixing, setFixing] = useState(false);
 
   useEffect(() => {
     setBy('weight');
@@ -59,6 +65,16 @@ export function WeightPrompt({ item, inBasket, mode, onCancel, onConfirm }: Weig
       ? previewWeighedLine(item.sellingPrice, weightText)
       : weightForSpend(item.sellingPrice, moneyText);
   }, [item, by, weightText, moneyText]);
+
+  const stopWeighing = () => {
+    if (!onNotWeighed || fixing) return;
+    setFixing(true);
+    setRefused(null);
+    void onNotWeighed().then((problem) => {
+      setFixing(false);
+      setRefused(problem);
+    });
+  };
 
   const confirm = () => {
     if (!preview?.ok || preview.thousandths == null) return;
@@ -206,6 +222,19 @@ export function WeightPrompt({ item, inBasket, mode, onCancel, onConfirm }: Weig
               ) : null}
             </View>
 
+            {onNotWeighed ? (
+              <Pressable
+                onPress={stopWeighing}
+                disabled={fixing}
+                style={styles.notWeighed}
+                accessibilityRole="button"
+              >
+                <MartText variant="meta" color={MART.inkMuted} style={styles.notWeighedText}>
+                  {fixing ? 'Changing this item…' : "This item isn't sold by weight — stop weighing it"}
+                </MartText>
+              </Pressable>
+            ) : null}
+
             {/* Actions */}
             <View style={styles.buttons}>
               <Pressable onPress={onCancel} style={({ pressed }) => [styles.btn, styles.btnGhost, pressed && styles.pressed]}>
@@ -300,6 +329,8 @@ const styles = StyleSheet.create({
     backgroundColor: MART.paperSunken,
   },
   resultRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: SPACE.sm },
+  notWeighed: { alignSelf: 'center', paddingVertical: 6, paddingHorizontal: 10 },
+  notWeighedText: { textDecorationLine: 'underline' },
   buttons: { flexDirection: 'row', gap: SPACE.sm },
   btn: { flex: 1, minHeight: 50, borderRadius: RADIUS.pill, alignItems: 'center', justifyContent: 'center' },
   btnGhost: { borderWidth: 1, borderColor: MART.borderStrong, backgroundColor: MART.paperElevated },

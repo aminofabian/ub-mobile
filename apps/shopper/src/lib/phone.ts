@@ -5,6 +5,8 @@ export function kenyanMobileDigits(raw: string): string {
 }
 
 function local10FromDigits(digits: string): string | null {
+  // "+254 07xx…" keeps the trunk 0, so the digits are 2540… (13), not 2547… (12). The website reads it too.
+  if (/^2540([17]\d{8})$/.test(digits)) return `0${digits.slice(4)}`;
   if (/^254[17]\d{8}$/.test(digits)) return `0${digits.slice(3)}`;
   if (/^0[17]\d{8}$/.test(digits)) return digits;
   if (/^[17]\d{8}$/.test(digits)) return `0${digits}`;

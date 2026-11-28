@@ -133,6 +133,28 @@ declare function postGrnSupplierInvoice(api: ApiClient, goodsReceiptId: string, 
 opts?: {
     idempotencyKey?: string;
 }): Promise<GrnSupplierInvoiceResult>;
+/**
+ * Says the delivery has arrived, before anything is unpacked.
+ *
+ * The shop runs on two steps: marking arrived records that the lorry came, and the goods receipt afterwards says what
+ * was actually in it and moves the stock. A shop with two-step delivery off does the same in one call (`overrideArrival`
+ * on the receipt), which is why this is a separate, optional step rather than part of the count.
+ */
+declare function markPurchaseOrderArrived(api: ApiClient, purchaseOrderId: string): Promise<PurchaseOrderDetail | null>;
+/**
+ * Puts part of a delivery into the **store room** instead of the shelf.
+ *
+ * The web counter offers the same two put-away choices at unpacking: *Sellable stock* — "Ready to sell, the till rises"
+ * — and *Store room* — "Back room, the till does not rise". Stock lines go through the goods receipt; store lines go
+ * here, and the shelf count is deliberately left alone.
+ */
+declare function postStoreRoomInheritOrder(api: ApiClient, body: {
+    purchaseOrderId: string;
+    lines: {
+        purchaseOrderLineId: string;
+        quantity: number;
+    }[];
+}): Promise<unknown>;
 
 type TillPrintCashier = {
     id: string;
@@ -183,6 +205,56 @@ declare function toNum(value: unknown): number;
 /** "KES 1,250.50" — manual grouping so it works on any Hermes build. */
 declare function formatMoney(amount: number): string;
 declare function formatQty(value: number | string | null | undefined): string;
+
+/**
+ * How a delivery line was counted, and where it goes afterwards — the same model the web counter's unpack sheet uses.
+ *
+ * Stock does not move until put-away, and two of the four decisions never move it at all: a line that **didn't come** or
+ * arrived **damaged** stays off the shelf, and the order stays partially delivered so the supplier can be shown the
+ * difference. That is why the decision is kept beside the quantity rather than folded into it.
+ */
+declare const ARRIVAL_AS_ORDERED = "as_ordered";
+declare const ARRIVAL_MISSING = "missing";
+declare const ARRIVAL_SHORT = "short";
+declare const ARRIVAL_DAMAGED = "damaged";
+type ArrivalDecision = typeof ARRIVAL_AS_ORDERED | typeof ARRIVAL_MISSING | typeof ARRIVAL_SHORT | typeof ARRIVAL_DAMAGED;
+declare const PUT_AWAY_STOCK = "stock";
+declare const PUT_AWAY_STORE = "store";
+type PutAwayDestination = typeof PUT_AWAY_STOCK | typeof PUT_AWAY_STORE;
+type ArrivalMap = Record<string, ArrivalDecision | undefined>;
+/** The decisions, in the order the sheet offers them. */
+declare const ARRIVAL_DECISIONS: readonly {
+    id: ArrivalDecision;
+    label: string;
+}[];
+/**
+ * What the count implies, when the clerk has not chosen.
+ *
+ * Nothing counted is "didn't come"; less than the rest is "short"; the rest is "as ordered". A line already marked
+ * damaged stays damaged whatever the number says — the damage is a fact the count cannot overrule.
+ */
+declare function retargetArrival(current: ArrivalMap, lineId: string, qty: number, remaining: number): ArrivalMap;
+/** Mark a line damaged, or clear that mark. */
+declare function toggleDamaged(current: ArrivalMap, lineId: string, remaining: number, qty: number): ArrivalMap;
+/** What the line says under its name. */
+declare function arrivalLabel(decision: ArrivalDecision | undefined, qty: number, ordered: number): string | null;
+type PutAwayPlan = {
+    stockLines: {
+        id: string;
+        qty: number;
+    }[];
+    storeLines: {
+        id: string;
+        qty: number;
+    }[];
+};
+/**
+ * Which lines leave the dock, and where to. Missing and damaged lines are in neither list: they are held, and the shelf
+ * is left alone.
+ */
+declare function planPutAway(openLineIds: readonly string[], decisions: ArrivalMap, qtyByLine: Record<string, number>, destByLine: Record<string, PutAwayDestination>): PutAwayPlan;
+/** How the delivery came in, as one line: "12 as ordered · 2 short · 1 didn't come". */
+declare function tallyWords(openLineIds: readonly string[], decisions: ArrivalMap): string;
 
 /**
  * What to tell the clerk after an order/receipt slip was queued for one or more
@@ -251,12 +323,14 @@ type Props$1 = {
 declare function ReceiveScreen({ api, onOpenOrder }: Props$1): react_jsx_runtime.JSX.Element;
 
 type Props = {
+    /** Height of the bar under this screen (a tab bar), so the confirm bar and the last line clear it. */
+    bottomInset?: number;
     api: ApiClient;
     branchId: string;
     purchaseOrderId: string;
     /** Called when the user finishes (confirm receipt or cancel) and leaves the screen. */
     onDone: () => void;
 };
-declare function ReceiveOrderScreen({ api, branchId, purchaseOrderId, onDone }: Props): react_jsx_runtime.JSX.Element;
+declare function ReceiveOrderScreen({ api, branchId, purchaseOrderId, onDone, bottomInset }: Props): react_jsx_runtime.JSX.Element;
 
-export { type DispatchTillPrintResult, type GoodsReceiptResult, type GrnSupplierInvoiceResult, OrdersScreen, type PurchaseOrderDetail, type PurchaseOrderLine, type PurchaseOrderListRow, ReceiveOrderScreen, ReceiveScreen, type SupplierItemLinkRecord, type SupplierRecord, type TillPrintCashier, type TillPrintPendingJob, type TillPrintSlip, type TillPrintSlipLine, type TillPrintTarget, type TillSlip, type TillSlipKind, type TillSlipLine, addPurchaseOrderLine, buildTillSlipEscPos, cancelPurchaseOrder, claimTillPrint, createPurchaseOrder, describeTillSend, dispatchTillPrint, fetchPendingTillPrints, fetchPurchaseOrder, fetchPurchaseOrders, fetchSupplierItemLinks, fetchSuppliers, fetchTillCashiers, formatMoney, formatQty, postGoodsReceipt, postGrnSupplierInvoice, sendPurchaseOrder, sendPurchaseOrderToSupplier, toNum };
+export { ARRIVAL_AS_ORDERED, ARRIVAL_DAMAGED, ARRIVAL_DECISIONS, ARRIVAL_MISSING, ARRIVAL_SHORT, type ArrivalDecision, type ArrivalMap, type DispatchTillPrintResult, type GoodsReceiptResult, type GrnSupplierInvoiceResult, OrdersScreen, PUT_AWAY_STOCK, PUT_AWAY_STORE, type PurchaseOrderDetail, type PurchaseOrderLine, type PurchaseOrderListRow, type PutAwayDestination, type PutAwayPlan, ReceiveOrderScreen, ReceiveScreen, type SupplierItemLinkRecord, type SupplierRecord, type TillPrintCashier, type TillPrintPendingJob, type TillPrintSlip, type TillPrintSlipLine, type TillPrintTarget, type TillSlip, type TillSlipKind, type TillSlipLine, addPurchaseOrderLine, arrivalLabel, buildTillSlipEscPos, cancelPurchaseOrder, claimTillPrint, createPurchaseOrder, describeTillSend, dispatchTillPrint, fetchPendingTillPrints, fetchPurchaseOrder, fetchPurchaseOrders, fetchSupplierItemLinks, fetchSuppliers, fetchTillCashiers, formatMoney, formatQty, markPurchaseOrderArrived, planPutAway, postGoodsReceipt, postGrnSupplierInvoice, postStoreRoomInheritOrder, retargetArrival, sendPurchaseOrder, sendPurchaseOrderToSupplier, tallyWords, toNum, toggleDamaged };

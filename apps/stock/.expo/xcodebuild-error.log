@@ -1,0 +1,10 @@
+** BUILD FAILED **
+
+
+The following build commands failed:
+	Building workspace KioskKeStock with scheme KioskKeStock and configuration Debug
+(1 failure)
+2026-11-27 21:25:31.812 xcodebuild[61963:2279420] Error saving log: Error Domain=NSPOSIXErrorDomain Code=1 "Operation not permitted" UserInfo={NSFilePath=/Users/mac/Library/Developer/Xcode/DerivedData/KioskKeStock-cqqcgxhffiakcicnyypxliownbof/Logs/Build/37183DED-090F-456F-A17C-174DB51E40FB.xcactivitylog, NSLocalizedDescription=Operation not permitted} | User info: {
+    NSFilePath = "/Users/mac/Library/Developer/Xcode/DerivedData/KioskKeStock-cqqcgxhffiakcicnyypxliownbof/Logs/Build/37183DED-090F-456F-A17C-174DB51E40FB.xcactivitylog";
+    NSLocalizedDescription = "Operation not permitted";
+}

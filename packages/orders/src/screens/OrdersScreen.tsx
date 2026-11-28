@@ -14,6 +14,7 @@ import {
 import { Button, Card, Text, theme } from '@kiosk/ui';
 import type { ApiClient } from '@kiosk/core';
 import { cache } from '@kiosk/offline';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   addPurchaseOrderLine,
   createPurchaseOrder,
@@ -112,6 +113,7 @@ export function OrdersScreen({
   /** True when a printer is paired so "Print here" is offered. */
   hasLocalPrinter?: boolean;
 }) {
+  const insets = useSafeAreaInsets();
   const [suppliers, setSuppliers] = useState<SupplierRecord[]>([]);
   const [supplierId, setSupplierId] = useState<string | null>(null);
   const [links, setLinks] = useState<SupplierItemLinkRecord[]>([]);
@@ -176,7 +178,11 @@ export function OrdersScreen({
       .then((rows) => {
         if (cancelled) return;
         const active = rows.filter(
-          (s) => s.status?.toLowerCase() === 'active' && !s.deletedAt
+          (s) =>
+            s.status?.toLowerCase() === 'active' &&
+            !s.deletedAt &&
+            // "Unassigned (migrate)" is where the migration parks unfiled products: not a supplier to order from
+            !/^unassigned/i.test((s.name ?? '').trim())
         );
         setSuppliers(active);
         setSupplierId((current) => {
@@ -688,8 +694,10 @@ export function OrdersScreen({
         </View>
       ) : sections.length === 0 ? (
         <View style={styles.center}>
-          <Text variant="muted">
-            {links.length === 0 ? 'No products linked to this supplier' : 'No matching products'}
+          <Text variant="muted" style={styles.emptyWords}>
+            {links.length === 0
+              ? 'This supplier has no products linked yet. Link them on the web dashboard, then order here.'
+              : 'Nothing here matches that search.'}
           </Text>
         </View>
       ) : (
@@ -712,7 +720,7 @@ export function OrdersScreen({
               onChange={(qty) => setQty(item.itemId, qty)}
             />
           )}
-          ListFooterComponent={<View style={{ height: 96 }} />}
+          ListFooterComponent={<View style={{ height: 96 + insets.bottom }} />}
           contentContainerStyle={styles.listContent}
         />
       )}
@@ -1049,12 +1057,12 @@ function ItemRow({
           <Text
             variant="caption"
             style={
-              low
+              stock < 0 || low
                 ? { ...styles.stockPill, ...styles.stockLow }
                 : { ...styles.stockPill, ...styles.stockOk }
             }
           >
-            {low ? `Low · ${stock}` : `${stock} in stock`}
+            {stock < 0 ? `${stock} in stock` : low ? `Low · ${stock}` : `${stock} in stock`}
           </Text>
         </View>
         <Text variant="caption" style={styles.itemCost}>
@@ -1067,6 +1075,15 @@ function ItemRow({
 }
 
 function Stepper({ qty, onChange }: { qty: number; onChange: (qty: number) => void }) {
+  // Typed and tapped: the field shows the number the buttons are changing, and a hand-typed figure is taken as it is.
+  const [typed, setTyped] = useState<string | null>(null);
+  const commit = () => {
+    if (typed === null) return;
+    const next = Math.max(0, Math.floor(Number(typed.replace(/[^0-9]/g, '')) || 0));
+    onChange(next);
+    setTyped(null);
+  };
+
   return (
     <View style={styles.stepper}>
       <Pressable
@@ -1080,9 +1097,18 @@ function Stepper({ qty, onChange }: { qty: number; onChange: (qty: number) => vo
           −
         </Text>
       </Pressable>
-      <Text variant="body" style={styles.stepperQty}>
-        {qty}
-      </Text>
+      <TextInput
+        value={typed ?? String(qty)}
+        onChangeText={(next) => setTyped(next.replace(/[^0-9]/g, ''))}
+        onBlur={commit}
+        onSubmitEditing={commit}
+        keyboardType="number-pad"
+        returnKeyType="done"
+        selectTextOnFocus
+        maxLength={5}
+        accessibilityLabel="Quantity"
+        style={styles.stepperQtyInput}
+      />
       <Pressable
         style={styles.stepperBtn}
         onPress={() => onChange(qty + 1)}
@@ -1199,7 +1225,15 @@ const styles = StyleSheet.create({
   },
   stepperBtnMuted: { opacity: 0.4 },
   stepperBtnText: { fontSize: 18, fontWeight: '600' },
-  stepperQty: { minWidth: 24, textAlign: 'center', fontVariant: ['tabular-nums'] },
+  stepperQtyInput: {
+    minWidth: 44,
+    paddingVertical: 2,
+    textAlign: 'center',
+    fontSize: 15,
+    fontWeight: '600',
+    color: theme.colors.text,
+    fontVariant: ['tabular-nums'],
+  },
   cartBar: {
     position: 'absolute',
     left: 12,
@@ -1208,17 +1242,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: theme.colors.primaryDark,
-    borderRadius: theme.borderRadius.lg,
-    padding: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
+    gap: 8,
+    backgroundColor: theme.colors.surface,
+    borderRadius: 26,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    paddingVertical: 10,
+    paddingLeft: 16,
+    paddingRight: 8,
+    shadowColor: '#7A5A2E',
+    shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.25,
     shadowRadius: 6,
     elevation: 6,
   },
-  cartBarQty: { color: '#ffffff', fontWeight: '700' },
-  cartBarTotal: { color: 'rgba(255,255,255,0.85)' },
+  emptyWords: { textAlign: 'center', maxWidth: 280, lineHeight: 20 },
+  cartBarQty: { color: theme.colors.text, fontWeight: '700', fontSize: 16 },
+  cartBarTotal: { color: theme.colors.textMuted },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   modalOverlay: {
     flex: 1,

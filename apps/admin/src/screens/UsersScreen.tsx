@@ -1,11 +1,14 @@
 import React, { useCallback, useState } from 'react';
-import { StyleSheet, View, FlatList } from 'react-native';
-import { Card, Text, theme } from '@kiosk/ui';
+import { StyleSheet, FlatList } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ApiClient } from '@kiosk/core';
 import { fetchUsers, type UserRecord } from '../api/admin-api';
+import { MART, GUTTER, SPACE } from '../theme/mart';
+import { MartText, Screen, Tile } from '../theme/mart-ui';
 
 export function UsersScreen({ api }: { api: ApiClient }) {
   const [users, setUsers] = useState<UserRecord[]>([]);
+  const insets = useSafeAreaInsets();
 
   const load = useCallback(async () => {
     setUsers(await fetchUsers(api));
@@ -16,25 +19,45 @@ export function UsersScreen({ api }: { api: ApiClient }) {
   }, [load]);
 
   return (
-    <View style={styles.container}>
+    <Screen>
       <FlatList
         data={users}
         keyExtractor={(u) => u.id}
         onRefresh={load}
         refreshing={false}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: insets.bottom + SPACE.xxl },
+        ]}
         renderItem={({ item }) => (
-          <Card style={styles.card}>
-            <Text variant="body">{item.name ?? item.email}</Text>
-            <Text variant="caption">{item.roleName ?? 'Staff'}</Text>
-          </Card>
+          <Tile style={styles.row}>
+            <MartText variant="heading">{item.name ?? item.email}</MartText>
+            <MartText variant="meta" color={MART.inkQuiet}>
+              {item.roleName ?? 'Staff'}
+            </MartText>
+          </Tile>
         )}
-        ListEmptyComponent={<Text variant="muted">No users</Text>}
+        ListEmptyComponent={
+          <MartText variant="body" color={MART.inkQuiet} style={styles.empty}>
+            No users yet.
+          </MartText>
+        }
       />
-    </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16, backgroundColor: theme.colors.background },
-  card: { marginBottom: 12 },
+  content: {
+    paddingHorizontal: GUTTER,
+    paddingTop: SPACE.xl,
+    gap: SPACE.sm,
+  },
+  row: {
+    gap: SPACE.xxs,
+  },
+  empty: {
+    marginTop: SPACE.xxl,
+    textAlign: 'center',
+  },
 });

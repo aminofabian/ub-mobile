@@ -1,162 +1,125 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Animated,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import { MART, RADIUS, SPACE, TYPE } from '../theme/mart';
+import React, { useEffect } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, {
+  interpolate,
+  useAnimatedStyle,
+  useSharedValue,
+  withSequence,
+  withSpring,
+} from 'react-native-reanimated';
+import { landFeel, stepFeel } from '../lib/haptics';
+import { FONT, onFill, RADIUS, SPRING } from '../theme/mart';
 import { useTenant } from '../lib/TenantContext';
 import { useCart } from '../hooks/useCart';
 
 type Props = {
   itemId: string;
   name: string;
+  /** The shop's colour: the fill of the control. */
   accent: string;
+  /** What the product showed, so a new line has a price and a picture before the shop has answered. */
+  price?: number | null;
+  imageUrl?: string | null;
+  variantName?: string | null;
 };
 
-export function QuickAddButton({ itemId, name, accent }: Props) {
+const CHIP = 40;
+const OPEN = 116;
+
+/**
+ * A round plus that rides the corner of a product photo. The first tap puts one in the basket and the
+ * chip opens along the photo's edge into a stepper; taking the last one out closes it again.
+ */
+export function QuickAddButton({ itemId, name, accent, price, imageUrl, variantName }: Props) {
   const tenant = useTenant();
-  const { quantityFor, setLineQty } = useCart(tenant.slug);
+  const { quantityFor, addToBasket } = useCart(tenant.slug);
   const qty = quantityFor(itemId);
   const inCart = qty > 0;
-  const busy = setLineQty.isPending;
-  const [justAdded, setJustAdded] = useState(false);
-  const pop = useRef(new Animated.Value(1)).current;
+  const facts = { itemId, name, unitPrice: price ?? null, imageUrl: imageUrl ?? null, variantName: variantName ?? null };
+  const on = onFill(accent);
 
+  const open = useSharedValue(inCart ? 1 : 0);
+  const pop = useSharedValue(1);
   useEffect(() => {
-    if (!justAdded) return;
-    const timer = setTimeout(() => setJustAdded(false), 700);
-    return () => clearTimeout(timer);
-  }, [justAdded]);
+    open.value = withSpring(inCart ? 1 : 0, SPRING);
+  }, [inCart, open]);
 
-  function bump() {
-    pop.setValue(0.86);
-    Animated.spring(pop, {
-      toValue: 1,
-      friction: 5,
-      tension: 220,
-      useNativeDriver: true,
-    }).start();
+  const shell = useAnimatedStyle(() => ({
+    width: interpolate(open.value, [0, 1], [CHIP, OPEN]),
+    transform: [{ scale: pop.value }],
+  }));
+  const inner = useAnimatedStyle(() => ({ opacity: interpolate(open.value, [0.4, 1], [0, 1], 'clamp') }));
+
+  // The basket takes the tap at once, and tells the shop a moment later, so there is nothing to wait for.
+  function addOne() {
+    if (inCart) stepFeel();
+    else landFeel();
+    pop.value = withSequence(withSpring(1.08, { duration: 120 }), withSpring(1, SPRING));
+    addToBasket(facts, 1);
   }
 
-  async function addOne() {
-    if (busy) return;
-    bump();
-    await setLineQty.mutateAsync({ itemId, quantity: qty + 1 });
-    setJustAdded(true);
-  }
-
-  async function minus() {
-    if (busy) return;
-    bump();
-    await setLineQty.mutateAsync({ itemId, quantity: qty - 1 });
-  }
-
-  if (inCart) {
-    return (
-      <Animated.View style={[styles.stepper, { transform: [{ scale: pop }] }]}>
-        <Pressable
-          onPress={minus}
-          disabled={busy}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel={`Remove one ${name}`}
-          style={styles.stepHit}
-        >
-          <Ionicons name="remove" size={16} color={MART.inkMuted} />
-        </Pressable>
-        <Text style={styles.qty} accessibilityLiveRegion="polite">
-          {qty}
-        </Text>
-        <Pressable
-          onPress={addOne}
-          disabled={busy}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel={`Add another ${name}`}
-          style={styles.stepHit}
-        >
-          <Ionicons name="add" size={16} color={MART.inkMuted} />
-        </Pressable>
-      </Animated.View>
-    );
+  function minus() {
+    stepFeel();
+    addToBasket(facts, -1);
   }
 
   return (
-    <Animated.View style={{ transform: [{ scale: pop }] }}>
+    <Animated.View style={[styles.shell, { backgroundColor: accent }, shell]}>
+      {inCart ? (
+        <Animated.View style={[styles.stepper, inner]}>
+          <Pressable
+            onPress={minus}
+            hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel={`Remove one ${name}`}
+            style={styles.hit}
+          >
+            <Ionicons name={qty === 1 ? 'trash-outline' : 'remove'} size={18} color={on.primary} />
+          </Pressable>
+          <Text style={[styles.qty, { color: on.primary }]} accessibilityLiveRegion="polite">
+            {qty}
+          </Text>
+        </Animated.View>
+      ) : null}
       <Pressable
         onPress={addOne}
-        disabled={busy}
+        hitSlop={6}
         accessibilityRole="button"
-        accessibilityLabel={`Add ${name} to cart`}
-        style={({ pressed }) => [
-          styles.add,
-          justAdded && { borderColor: accent, backgroundColor: `${accent}14` },
-          pressed && styles.pressed,
-        ]}
+        accessibilityLabel={inCart ? `Add another ${name}` : `Add ${name} to basket`}
+        style={styles.hit}
       >
-        {busy ? (
-          <ActivityIndicator size="small" color={MART.inkMuted} />
-        ) : (
-          <>
-            <Ionicons
-              name={justAdded ? 'checkmark' : 'add'}
-              size={14}
-              color={justAdded ? accent : MART.inkMuted}
-            />
-            <Text style={[styles.addLabel, justAdded && { color: accent }]}>ADD</Text>
-          </>
-        )}
+        <Ionicons name="add" size={22} color={on.primary} />
       </Pressable>
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
-  add: {
-    minHeight: 34,
-    minWidth: 66,
-    paddingHorizontal: SPACE.md,
+  shell: {
+    height: CHIP,
+    borderRadius: RADIUS.pill,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACE.xs,
-    borderWidth: 1,
-    borderColor: MART.borderStrong,
-    backgroundColor: MART.paperElevated,
-    borderRadius: RADIUS.sm,
-  },
-  addLabel: {
-    ...TYPE.shelf,
-    color: MART.inkMuted,
+    justifyContent: 'flex-end',
+    overflow: 'hidden',
   },
   stepper: {
-    minHeight: 34,
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: MART.borderStrong,
-    backgroundColor: MART.paper,
-    borderRadius: RADIUS.sm,
   },
-  stepHit: {
-    width: 32,
-    height: 32,
+  hit: {
+    width: CHIP,
+    height: CHIP,
     alignItems: 'center',
     justifyContent: 'center',
   },
   qty: {
-    ...TYPE.label,
-    minWidth: 22,
+    flex: 1,
     textAlign: 'center',
-    fontWeight: '700',
-    color: MART.ink,
-  },
-  pressed: {
-    transform: [{ scale: 0.97 }],
+    fontFamily: FONT.bold,
+    fontSize: 15,
+    lineHeight: 20,
   },
 });

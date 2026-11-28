@@ -1,7 +1,8 @@
 import React from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
-import { Button, Text, theme } from '@kiosk/ui';
+import { MART, MartText, SPACE } from '@kiosk/staff';
 import { describeBasket, type HeldBasket } from '../lib/holds';
+import { CashierButton, CashierIconButton, EmptyOrErrorState } from './CashierPrimitives';
 import { Prompt } from './Prompt';
 
 interface HeldBasketsSheetProps {
@@ -30,34 +31,65 @@ export function HeldBasketsSheet({ visible, baskets, now, busy, onClose, onRecal
 
   return (
     <Prompt visible={visible} title="Held baskets" onClose={busy ? () => undefined : onClose}>
-      {baskets.length === 0 ? <Text variant="muted">Nothing is on hold.</Text> : null}
+      {baskets.length === 0 ? (
+        <EmptyOrErrorState
+          icon="albums-outline"
+          title="Nothing is on hold"
+          message="A basket you put on hold waits here until you pick it up or throw it away."
+        />
+      ) : null}
       {baskets.map((basket) => {
         const words = describeBasket(basket, now);
         return (
           <View key={basket.id} style={styles.basket}>
-            <Text variant="body">{words.title}</Text>
-            <Text variant="muted">{words.detail}</Text>
-            <Text variant="caption">{contents(basket)}</Text>
-            <View style={styles.buttons}>
-              <Button title="Throw away" variant="secondary" disabled={busy} onPress={() => throwAway(basket)} style={styles.button} />
-              <Button title={busy ? 'Checking prices...' : 'Pick up'} disabled={busy} onPress={() => onRecall(basket.id)} style={styles.button} />
+            <View style={styles.head}>
+              <MartText variant="heading" style={styles.grow}>
+                {words.title}
+              </MartText>
+              {/* The destructive act is an icon in the corner, away from the thumb's path to "Pick up". */}
+              <CashierIconButton
+                icon="trash-outline"
+                tone="danger"
+                accessibilityLabel={`Throw away ${basket.label}`}
+                onPress={() => throwAway(basket)}
+                disabled={busy}
+              />
+            </View>
+            <MartText variant="meta" color={MART.inkMuted}>
+              {words.detail}
+            </MartText>
+            <MartText variant="meta" color={MART.inkQuiet}>
+              {contents(basket)}
+            </MartText>
+            <View style={styles.actions}>
+              <CashierButton
+                title={busy ? 'Checking prices...' : 'Pick up'}
+                variant="ghost"
+                icon="arrow-forward"
+                busy={busy}
+                disabled={busy}
+                onPress={() => onRecall(basket.id)}
+              />
             </View>
           </View>
         );
       })}
-      <Button title="Close" variant="secondary" disabled={busy} onPress={onClose} style={styles.close} />
+      {baskets.length > 0 ? (
+        <CashierButton title="Close" variant="secondary" disabled={busy} onPress={onClose} style={styles.close} />
+      ) : null}
     </Prompt>
   );
 }
 
 const styles = StyleSheet.create({
   basket: {
-    gap: theme.spacing.xs,
-    paddingVertical: theme.spacing.sm,
+    gap: SPACE.xs,
+    paddingVertical: SPACE.md,
     borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    borderBottomColor: MART.border,
   },
-  buttons: { flexDirection: 'row', gap: theme.spacing.sm, marginTop: theme.spacing.xs },
-  button: { flex: 1 },
-  close: { marginTop: theme.spacing.md },
+  head: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm },
+  grow: { flex: 1 },
+  actions: { flexDirection: 'row', marginTop: SPACE.xxs, marginLeft: -SPACE.sm },
+  close: { marginTop: SPACE.lg },
 });

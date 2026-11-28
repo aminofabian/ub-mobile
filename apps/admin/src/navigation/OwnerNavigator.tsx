@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Alert, AppState } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -6,7 +7,10 @@ import { createNavigationContainerRef, DefaultTheme, NavigationContainer } from 
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { ApiClient } from '@kiosk/core';
 import { OrdersScreen, ReceiveOrderScreen, ReceiveScreen } from '@kiosk/orders';
+import { createRealtimeClient } from '@kiosk/realtime';
 import { SetStockScreen, type StaffSession } from '@kiosk/staff';
+import { API_BASE_URL } from '../lib/config';
+import { emitLiveRefresh, type LiveTopic } from '../lib/live-refresh';
 import { ownerAccess, visibleTabs, type OwnerAccess, type OwnerTab } from '../lib/owner-access';
 import { OwnerCreditScreen } from '../screens/owner/OwnerCreditScreen';
 import { OwnerCreditTabScreen } from '../screens/owner/OwnerCreditTabScreen';
@@ -18,9 +22,13 @@ import { OwnerReportsScreen } from '../screens/owner/OwnerReportsScreen';
 import { OwnerSettingsScreen } from '../screens/owner/OwnerSettingsScreen';
 import { OwnerStaffScreen } from '../screens/owner/OwnerStaffScreen';
 import { OwnerStockScreen } from '../screens/owner/OwnerStockScreen';
+import { InvoicesScreen } from '../screens/InvoicesScreen';
+import { SellScreen } from '../screens/SellScreen';
 import { TodayScreen } from '../screens/owner/TodayScreen';
 import { FONT, MART, TYPE } from '../theme/mart';
+import { ensurePushChannels } from '../lib/push-channels';
 import { NotificationTapRouter } from './NotificationTapRouter';
+import { ShopPulse } from './ShopPulse';
 import type { OwnerStackParamList, OwnerTabParamList } from './owner-types';
 
 const NAV_THEME = {
@@ -44,7 +52,9 @@ const screenChrome = {
 } as const;
 
 const TAB_ICONS: Record<OwnerTab, keyof typeof Ionicons.glyphMap> = {
+  Sell: 'pricetag',
   Today: 'pulse',
+  Invoices: 'receipt',
   Orders: 'cart',
   Stock: 'cube',
   Credit: 'wallet',
@@ -52,8 +62,10 @@ const TAB_ICONS: Record<OwnerTab, keyof typeof Ionicons.glyphMap> = {
 };
 
 const TAB_TITLES: Record<OwnerTab, string> = {
+  Sell: 'Sell',
   Today: 'Today',
-  Orders: 'Web orders',
+  Invoices: 'Invoices',
+  Orders: 'Orders',
   Stock: 'Stock',
   Credit: 'Credit',
   More: 'More',
@@ -62,16 +74,20 @@ const TAB_TITLES: Record<OwnerTab, string> = {
 const Tab = createBottomTabNavigator<OwnerTabParamList>();
 const Stack = createNativeStackNavigator<OwnerStackParamList>();
 
-/** Alerts that arrive while the app is open are shown, not swallowed. Said once; saying it again changes nothing. */
+/** A notice while the app is open is our own card. In the background, the phone shows it. */
 function showAlertsWhileOpen(): void {
+  void ensurePushChannels();
   try {
     Notifications.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldShowBanner: true,
-        shouldShowList: true,
-        shouldPlaySound: true,
-        shouldSetBadge: false,
-      }),
+      handleNotification: async () => {
+        const here = AppState.currentState === 'active';
+        return {
+          shouldShowBanner: !here,
+          shouldShowList: true,
+          shouldPlaySound: true,
+          shouldSetBadge: false,
+        };
+      },
     });
   } catch {
     // Alerts are an extra. An app that cannot set them up still works.
@@ -106,6 +122,35 @@ export function OwnerNavigator({ session }: { session: StaffSession }) {
 
   useEffect(showAlertsWhileOpen, []);
 
+  // Live updates: the backend already broadcasts sale.completed, supply.posted and the grocery-invoice
+  // events to the "pos" channel (an owner has sales.read, so the ticket carries it). We connect, and when
+  // one of these fires we nudge the open screen to re-read the figure it affects. Events can arrive in a
+  // burst (several sales at once), so a nudge waits a moment and coalesces them into one refresh.
+  useEffect(() => {
+    const client = createRealtimeClient(API_BASE_URL, api);
+    const timers: Partial<Record<LiveTopic, ReturnType<typeof setTimeout>>> = {};
+    const nudge = (topic: LiveTopic) => {
+      if (timers[topic]) return;
+      timers[topic] = setTimeout(() => {
+        timers[topic] = undefined;
+        emitLiveRefresh(topic);
+      }, 600);
+    };
+    const subs = [
+      client.subscribe('sale.completed', () => nudge('sales')),
+      client.subscribe('supply.posted', () => nudge('suppliers')),
+      client.subscribe('grocery.invoice.paid', () => nudge('suppliers')),
+      client.subscribe('grocery.invoice.created', () => nudge('suppliers')),
+      client.subscribe('grocery.invoice.cancelled', () => nudge('suppliers')),
+    ];
+    void client.connect();
+    return () => {
+      for (const unsub of subs) unsub();
+      for (const t of Object.values(timers)) if (t) clearTimeout(t);
+      client.disconnect();
+    };
+  }, [api]);
+
   const shop = useMemo<Shop>(
     () => ({ api, name: tenant.displayName, host: tenant.host, branchId, branchName, shiftsDisabled }),
     [api, tenant.displayName, tenant.host, branchId, branchName, shiftsDisabled]
@@ -121,6 +166,13 @@ export function OwnerNavigator({ session }: { session: StaffSession }) {
   return (
     <NavigationContainer ref={navigationRef} theme={NAV_THEME} onReady={() => setReady(true)}>
       <NotificationTapRouter ready={ready} navigationRef={navigationRef} tabs={tabs} />
+      <ShopPulse
+        tabs={tabs}
+        onOpen={(tab) => {
+          if (!navigationRef.isReady()) return;
+          navigationRef.navigate('Main', { screen: tabs.includes(tab) ? tab : 'Today' }, { pop: true });
+        }}
+      />
       <Stack.Navigator screenOptions={screenChrome}>
         <Stack.Screen name="Main" options={{ headerShown: false }}>
           {() => (
@@ -187,6 +239,7 @@ export function OwnerNavigator({ session }: { session: StaffSession }) {
         <Stack.Screen name="Settings" options={{ title: 'Settings', headerTitle: '' }}>
           {() => (
             <OwnerSettingsScreen
+              api={api}
               host={tenant.host}
               shopName={tenant.displayName}
               branchName={branchName}
@@ -247,6 +300,18 @@ function MainTabs({
         tabBarIcon: ({ color, size }) => <Ionicons name={TAB_ICONS[route.name]} color={color} size={size} />,
       })}
     >
+      {tabs.includes('Sell') ? (
+        <Tab.Screen name="Sell" options={{ title: TAB_TITLES.Sell }}>
+          {() => (
+            <SellScreen
+              api={api}
+              branchId={branchId}
+              canCredit={access.credit}
+              onSold={(words) => Alert.alert('Sale taken', words, [{ text: 'Done' }])}
+            />
+          )}
+        </Tab.Screen>
+      ) : null}
       {tabs.includes('Today') ? (
         <Tab.Screen name="Today" options={{ title: TAB_TITLES.Today }}>
           {() => (
@@ -261,6 +326,11 @@ function MainTabs({
               onReceive={open.receive}
             />
           )}
+        </Tab.Screen>
+      ) : null}
+      {tabs.includes('Invoices') ? (
+        <Tab.Screen name="Invoices" options={{ title: TAB_TITLES.Invoices }}>
+          {() => <InvoicesScreen api={api} branchId={branchId} />}
         </Tab.Screen>
       ) : null}
       {tabs.includes('Orders') ? (

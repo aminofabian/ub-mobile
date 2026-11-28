@@ -32,7 +32,7 @@ import {
   subscribeOutbox,
   summarizeOutbox,
 } from '../src/index';
-import { EXPORT_ERROR_LIMIT, EXPORT_UNREADABLE_LIMIT, clipText } from '../src/outbox';
+import { EXPORT_ERROR_LIMIT, EXPORT_UNREADABLE_LIMIT, STORED_ERROR_LIMIT, clipText, storedError } from '../src/outbox';
 
 type Handle = { calls: Array<{ url: string; method: string; headers: Record<string, string>; body?: unknown }>; restore(): void };
 let net: Handle | null = null;
@@ -144,7 +144,10 @@ test('an export keeps what the server said about a sale short, and leaves the sa
   await open('acme');
   await outbox.enqueue(sale('a1'));
   await outbox.enqueue(sale('a2'));
-  await outbox.markRetry('a1', 'x'.repeat(EXPORT_ERROR_LIMIT * 10));
+  // An answer queued before answers were shortened on the way in (they are now): put one in by hand.
+  const queue = rawQueue(ACME.tenantId);
+  queue[0]!.lastError = 'x'.repeat(EXPORT_ERROR_LIMIT * 10);
+  asyncStore.__store.set(K.outboxKey(ACME.tenantId), JSON.stringify(queue));
   await outbox.markRetry('a2', 'Shift required');
 
   const exported = JSON.parse(await exportOutbox());
@@ -636,4 +639,61 @@ test('the whole round: a sale is queued offline, leaving is refused, it is sent,
 
   assert.deepEqual(await switchStore(null), { kind: 'switched', store: null });
   assert.equal(await getAccessToken(ACME.tenantId), null);
+});
+
+test('what a server says about a queued sale is shortened on the way in, and a web page is not kept at all', async () => {
+  serve(shops());
+  await open('acme');
+  for (const id of ['a1', 'a2', 'a3', 'a4']) await outbox.enqueue(sale(id));
+  await outbox.markRetry('a1', 'x'.repeat(STORED_ERROR_LIMIT * 40));
+  await outbox.markRetry('a2', `<html><body>${'p'.repeat(5000)}</body></html>`);
+  await outbox.update('a3', { conflictType: 'refused', lastError: '  Out of stock: Milk  ' });
+  await outbox.update('a4', { conflictType: 'refused', lastError: `\n\n<!DOCTYPE html>${'q'.repeat(9000)}` });
+
+  const [a1, a2, a3, a4] = rawQueue(ACME.tenantId);
+  assert.equal(String(a1?.lastError).length, STORED_ERROR_LIMIT + 1, 'the limit, and the mark that more was said');
+  assert.equal(String(a1?.lastError).endsWith('…'), true);
+  assert.equal(a2?.lastError, 'The server sent a web page instead of an answer.');
+  assert.equal(a3?.lastError, 'Out of stock: Milk');
+  assert.equal(a4?.lastError, 'The server sent a web page instead of an answer.');
+  assert.deepEqual(a1?.body, { n: 'a1' }, 'the sale itself is never touched');
+  assert.equal(a1?.idempotencyKey, 'key-a1');
+});
+
+test('shortening an answer never cuts through a character, and leaves a short one exactly as it was', () => {
+  assert.equal(storedError(undefined), undefined);
+  assert.equal(storedError(''), '');
+  assert.equal(storedError('Shift required'), 'Shift required');
+  const emoji = '😀'.repeat(STORED_ERROR_LIMIT + 5);
+  const cut = storedError(emoji) ?? '';
+  assert.equal(cut, `${'😀'.repeat(STORED_ERROR_LIMIT)}…`);
+  assert.equal(storedError('x'.repeat(STORED_ERROR_LIMIT)), 'x'.repeat(STORED_ERROR_LIMIT), 'exactly the limit is kept whole');
+  assert.equal(storedError('a < b and b > c'), 'a < b and b > c', 'only text that opens like a web page is dropped');
+});
+
+test('an update that leaves the server\'s answer alone keeps it, and one that clears it clears it', async () => {
+  serve(shops());
+  await open('acme');
+  await outbox.enqueue(sale('a1'));
+  await outbox.markRetry('a1', 'Shift required');
+  await outbox.update('a1', { conflictType: 'refused' });
+  assert.equal(rawQueue(ACME.tenantId)[0]?.lastError, 'Shift required');
+  await outbox.update('a1', { lastError: undefined });
+  assert.equal(rawQueue(ACME.tenantId)[0]?.lastError, undefined);
+});
+
+test('what the app knows about a queued sale is kept with it, comes back after a restart, and is not lost by a retry', async () => {
+  serve(shops());
+  await open('acme');
+  const facts = { rungBy: 'Amina', mpesaTyped: true, pricesAsOf: 1_700_000_000_000 };
+  await outbox.enqueue({ ...sale('a1'), facts });
+  await outbox.markRetry('a1', 'offline');
+  await outbox.update('a1', { conflictType: 'refused' });
+  assert.deepEqual((await outbox.pending())[0]?.facts, facts);
+  // After a restart the queue is read from the phone again.
+  configureStorage(null);
+  assert.deepEqual((await outbox.pending())[0]?.facts, facts);
+  // "Try again" lets a stuck sale go again; what the app knew about it stays.
+  await retryStuck();
+  assert.deepEqual((await outbox.pending())[0]?.facts, facts);
 });

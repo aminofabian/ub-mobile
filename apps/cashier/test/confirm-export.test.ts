@@ -26,5 +26,8 @@ test('the question says what is in the copy and who it is for', async () => {
   assert.match(EXPORT_WARNING, /what was sold/);
   assert.match(EXPORT_WARNING, /how it was paid/);
   assert.match(EXPORT_WARNING, /M-Pesa/);
+  assert.match(EXPORT_WARNING, /full M-Pesa codes/);
+  assert.match(EXPORT_WARNING, /customers the sales are for/);
+  assert.match(EXPORT_WARNING, /key each sale is sent under/);
   assert.match(EXPORT_WARNING, /only with your manager or Kiosk support/i);
 });

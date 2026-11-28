@@ -1,51 +1,52 @@
+import { Image } from 'expo-image';
 import React, { useState } from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
-import { MART, RADIUS } from '../theme/mart';
-import { readableTextOn, type StoreCardView } from '../lib/store-card';
+import { Text } from 'react-native';
+import { FONT, MART, onFill, zoneFor } from '../theme/mart';
+import type { StoreCardView } from '../lib/store-card';
+import { Lobe, lobeIndex } from './Coast';
 
-/** A shop's logo, or a tile with its first letter when it has none or the logo will not load. */
+/**
+ * A shop's mark: a lobe in the shop's own colour with its first letter, or its logo resting on a quiet
+ * lobe. A shop with no colour of its own takes a zone colour, and always the same one.
+ */
 export function StoreAvatar({ card, size = 44 }: { card: StoreCardView; size?: number }) {
   const [failed, setFailed] = useState(false);
-  const radius = size >= 56 ? RADIUS.lg : RADIUS.md;
+  const key = card.address || card.name;
+  const shape = lobeIndex(key);
 
   if (card.logoUrl && !failed) {
+    const inner = Math.round(size * 0.6);
     return (
-      <View style={[styles.logoFrame, { width: size, height: size, borderRadius: radius }]}>
+      <Lobe color={MART.paperSunken} size={size} shape={shape}>
         <Image
           source={{ uri: card.logoUrl }}
-          style={{ width: size - 8, height: size - 8 }}
-          resizeMode="contain"
+          style={{ width: inner, height: inner }}
+          contentFit="contain"
+          transition={160}
           onError={() => setFailed(true)}
-          accessibilityIgnoresInvertColors
+          accessible={false}
         />
-      </View>
+      </Lobe>
     );
   }
 
-  const background = card.color ?? MART.fallbackPrimary;
+  // A shop may send a three-digit colour; the ink is worked out from six.
+  const sent = card.color && card.color.length === 4 ? `#${card.color[1]}${card.color[1]}${card.color[2]}${card.color[2]}${card.color[3]}${card.color[3]}` : card.color;
+  const fill = sent ?? zoneFor(key);
   return (
-    <View style={[styles.tile, { width: size, height: size, borderRadius: radius, backgroundColor: background }]}>
+    <Lobe color={fill} size={size} shape={shape}>
       <Text
-        style={{ fontSize: Math.round(size * 0.42), fontWeight: '700', color: readableTextOn(background) }}
+        style={{
+          fontFamily: FONT.black,
+          fontSize: Math.round(size * 0.42),
+          lineHeight: Math.round(size * 0.52),
+          color: onFill(fill).primary,
+        }}
         accessibilityElementsHidden
         importantForAccessibility="no"
       >
         {card.monogram}
       </Text>
-    </View>
+    </Lobe>
   );
 }
-
-const styles = StyleSheet.create({
-  logoFrame: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: MART.border,
-    backgroundColor: MART.paperElevated,
-  },
-  tile: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});

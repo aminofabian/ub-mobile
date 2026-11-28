@@ -10,6 +10,7 @@ import {
   maySellAtCounter,
   parseStockSettings,
   stockAppMayWrite,
+  stockManagerMayEdit,
 } from '../src/stock-access';
 
 const ON = { spoils: true, stockEdit: true, orderPad: true };
@@ -74,9 +75,14 @@ test('a stock-only clerk is offered no selling, only the stock jobs they are all
   assert.deepEqual(counterModes({ roleKey: 'cashier', permissions: ['sales.sell'] }, ON), []);
 });
 
-test('in the Stock app a stock manager may write, and the grocery switches do not apply', () => {
+test('in the Stock app a stock manager may write, unless the shop has turned that off', () => {
   assert.equal(stockAppMayWrite({ roleKey: 'stock_manager', permissions: ['inventory.read'] }), true);
   assert.equal(stockAppMayWrite({ roleKey: ' Stock_Manager', permissions: [] }), true);
+  assert.equal(stockAppMayWrite({ roleKey: 'stock_manager', permissions: [] }, false), false);
+  assert.equal(stockAppMayWrite({ roleKey: 'custom', permissions: ['inventory.write'] }, false), true);
+  assert.equal(stockManagerMayEdit({ inventory: { stockLevels: { allowStockEditForStockManager: false } } }), false);
+  assert.equal(stockManagerMayEdit({ inventory: { stockLevels: {} } }), true);
+  assert.equal(stockManagerMayEdit(null), true);
   assert.equal(stockAppMayWrite({ roleKey: 'custom', permissions: ['inventory.write'] }), true);
   assert.equal(stockAppMayWrite({ roleKey: 'grocery_clerk', permissions: [] }), false);
   assert.equal(stockAppMayWrite({ roleKey: 'cashier', permissions: ['sales.sell'] }), false);

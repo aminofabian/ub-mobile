@@ -3,6 +3,8 @@ import { ordersKey } from './shop-storage';
 
 export interface StoredOrder {
   orderId: string;
+  /** The short code the shop and the shopper both read out, when the shop gave one. */
+  orderCode?: string;
   slug: string;
   grandTotal: number;
   currency: string;

@@ -2,9 +2,11 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Modal, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { ApiClient } from '@kiosk/core';
 import { GUTTER, MART, PressableScale, RADIUS, SPACE, tint, MartText, onFill } from '@kiosk/staff';
 import { CARD_SURFACE, CashierField, TABULAR_NUMS } from '../components/CashierPrimitives';
+import { BottomSheet } from '../components/BottomSheet';
 import {
   fetchGroceryInvoice,
   fetchPendingGroceryInvoices,
@@ -14,8 +16,13 @@ import {
 } from '../api/pos-api';
 import { normalizeKenyanPhone } from '../lib/phone';
 import { describeInvoiceFailure } from '../lib/till-words';
+import type { CashierStackParamList } from '../navigation/AppNavigator';
+import { usePosStore } from '../store/pos-store';
+
 type Props = {
   api: ApiClient;
+  /** Parent stack: used after cash pay to open the Receipt screen for print/share. */
+  navigation?: NativeStackNavigationProp<CashierStackParamList>;
 };
 
 /** How often the list is re-read, so a sale forwarded from the counter shows up without the cashier doing anything. */
@@ -61,10 +68,8 @@ function PaySheet({
   const [phone, setPhone] = useState(invoice.customerPhone ?? '');
   const phoneOk = normalizeKenyanPhone(phone) !== null;
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={[styles.sheet, { paddingBottom: Math.max(SPACE.xxl, insets.bottom + SPACE.md) }]} onPress={() => undefined}>
-          <View style={styles.sheetGrip} />
+    <BottomSheet visible onClose={onClose}>
+        <View style={styles.sheet}>
           <MartText variant="shelf" color={MART.inkQuiet}>
             TAKE PAYMENT
           </MartText>
@@ -124,9 +129,8 @@ function PaySheet({
               Not now
             </MartText>
           </PressableScale>
-        </Pressable>
-      </Pressable>
-    </Modal>
+        </View>
+    </BottomSheet>
   );
 }
 
@@ -205,7 +209,8 @@ function InvoiceCard({
   );
 }
 
-export function GroceryInvoicesScreen({ api }: Props) {
+export function GroceryInvoicesScreen({ api, navigation }: Props) {
+  const setLastSale = usePosStore((s) => s.setLastSale);
   const [invoices, setInvoices] = useState<GroceryInvoice[]>([]);
   const [loading, setLoading] = useState(false);
   const [first, setFirst] = useState(true);
@@ -259,9 +264,17 @@ export function GroceryInvoicesScreen({ api }: Props) {
     async (invoice: GroceryInvoice) => {
       setPayBusy('cash');
       try {
-        await payGroceryInvoice(api, invoice.id, [{ method: 'cash', amount: invoice.grandTotal ?? 0 }]);
+        const paid = await payGroceryInvoice(api, invoice.id, [
+          { method: 'cash', amount: invoice.grandTotal ?? 0 },
+        ]);
         setPaying(null);
         setInvoices((list) => list.filter((inv) => inv.id !== invoice.id));
+        // Same as a till sale: show the receipt so the cashier can print/share.
+        if (paid.receipt && navigation) {
+          setLastSale(paid.receipt);
+          navigation.navigate('Receipt', { soldAt: paid.paidAt });
+          return;
+        }
         Alert.alert('Paid', `${invoice.customerName ?? 'Walk-in'} · ${kes(invoice.grandTotal)} in cash.`);
       } catch (e) {
         Alert.alert('Payment', describeInvoiceFailure(e, 'pay'));
@@ -269,7 +282,7 @@ export function GroceryInvoicesScreen({ api }: Props) {
         setPayBusy(null);
       }
     },
-    [api]
+    [api, navigation, setLastSale]
   );
 
   const onMpesa = useCallback(
@@ -407,12 +420,13 @@ const styles = StyleSheet.create({
   lines: {
     paddingHorizontal: SPACE.lg,
     paddingBottom: SPACE.md,
-    gap: SPACE.xs,
+    gap: 0,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: MART.border,
     paddingTop: SPACE.md,
   },
-  lineRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: SPACE.md },
+  lineRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: SPACE.md, paddingVertical: 3 },
+  lineRowRule: { borderTopWidth: 1, borderTopColor: MART.border, paddingTop: SPACE.sm },
   payRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -432,7 +446,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: SPACE.xs,
   },
-  backdrop: { flex: 1, backgroundColor: 'rgba(28,29,27,0.45)', justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: MART.paperElevated,
     borderTopLeftRadius: RADIUS.xl,
@@ -441,7 +454,6 @@ const styles = StyleSheet.create({
     paddingBottom: SPACE.xxl,
     gap: SPACE.sm,
   },
-  sheetGrip: { alignSelf: 'center', width: 40, height: 4, borderRadius: RADIUS.pill, backgroundColor: MART.border, marginBottom: SPACE.sm },
   payBtn: {
     minHeight: 54,
     borderRadius: RADIUS.pill,

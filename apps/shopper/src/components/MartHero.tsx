@@ -1,8 +1,9 @@
-import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { GUTTER, ON_BRAND, RADIUS, SPACE, TYPE, type MartPalette } from '../theme/mart';
+import { StyleSheet, Text, View } from 'react-native';
+import { GUTTER, MART, RADIUS, SPACE, TYPE, ZONE, type MartPalette } from '../theme/mart';
+import { Capsule } from './Capsule';
 
+/** The shop's own words about itself, on a field of sun yellow: the first area below the coast. */
 export function MartHero({
   mart,
   onShopNow,
@@ -18,25 +19,20 @@ export function MartHero({
     'Fresh products, fair prices, and fast delivery from your neighbourhood store.';
 
   return (
-    <View style={[styles.hero, { backgroundColor: mart.primary }]}>
+    <View style={styles.hero}>
       <Text style={styles.headline}>{headline}</Text>
       <Text numberOfLines={3} style={styles.body}>
         {body}
       </Text>
-      <View style={[styles.rule, { backgroundColor: mart.gold }]} />
-      <Pressable
+      <Capsule
+        label="Start shopping"
+        chip="arrow-down"
+        size="md"
+        fill={MART.ink}
+        stretch={false}
         onPress={onShopNow}
-        accessibilityRole="button"
-        accessibilityLabel="Start shopping"
-        style={({ pressed }) => [
-          styles.cta,
-          { backgroundColor: mart.accent },
-          pressed && styles.ctaPressed,
-        ]}
-      >
-        <Text style={styles.ctaLabel}>Start shopping</Text>
-        <Ionicons name="arrow-forward" size={14} color="#1a1204" />
-      </Pressable>
+        style={styles.cta}
+      />
     </View>
   );
 }
@@ -44,45 +40,25 @@ export function MartHero({
 const styles = StyleSheet.create({
   hero: {
     marginHorizontal: GUTTER,
-    paddingHorizontal: SPACE.xl,
-    paddingTop: SPACE.xl,
-    paddingBottom: SPACE.xl,
-    borderRadius: RADIUS.md,
+    padding: SPACE.xl,
+    paddingTop: SPACE.xl + SPACE.xs,
+    borderRadius: RADIUS.xl,
+    backgroundColor: ZONE.sun,
   },
   headline: {
     ...TYPE.display,
-    fontSize: 27,
+    fontSize: 30,
     lineHeight: 32,
-    color: ON_BRAND.primary,
+    letterSpacing: -0.8,
+    color: MART.ink,
   },
   body: {
     ...TYPE.body,
-    marginTop: SPACE.sm,
-    color: ON_BRAND.secondary,
-    maxWidth: 340,
-  },
-  rule: {
-    marginTop: SPACE.lg,
-    width: 44,
-    height: 2,
+    marginTop: SPACE.md,
+    color: MART.ink,
+    maxWidth: 320,
   },
   cta: {
-    alignSelf: 'flex-start',
-    marginTop: SPACE.lg,
-    minHeight: 44,
-    paddingHorizontal: SPACE.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACE.sm,
-    borderRadius: RADIUS.md,
-  },
-  ctaPressed: {
-    opacity: 0.88,
-  },
-  ctaLabel: {
-    ...TYPE.label,
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1a1204',
+    marginTop: SPACE.xl,
   },
 });

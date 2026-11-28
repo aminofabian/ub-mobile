@@ -1,16 +1,33 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import {
+  AccessibilityInfo,
+  Animated,
+  FlatList,
+  Modal,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Button, Text } from '@kiosk/ui';
 import { BarcodeScanner } from '@kiosk/barcode';
-import { generateIdempotencyKey, type ApiClient } from '@kiosk/core';
+import { generateIdempotencyKey, setItemWeighed, type ApiClient } from '@kiosk/core';
 import { FRESH_AT_ONCE, FRESH_WAIT_MS, fetchCategories, fetchFreshItems, fetchShopFlags, fetchWebOrders, searchItems, setShelfPrice, type Category } from '../api/pos-api';
 import { CategoryFilter } from '../components/CategoryFilter';
 import { fetchServiceBook } from '../api/service-api';
 import { CartBar } from '../components/CartBar';
-import { CARD_SURFACE, EmptyOrErrorState, TABULAR_NUMS } from '../components/CashierPrimitives';
+import { CARD_SURFACE, CashierButton, EmptyOrErrorState, TABULAR_NUMS } from '../components/CashierPrimitives';
 import { InvoiceBell } from '../components/InvoiceBell';
+import { FlyToCart, type Flight } from '../components/FlyToCart';
+import { FirstRun } from '../components/FirstRun';
+import { markFirstRunSeen, needsFirstRun } from '../lib/first-run';
+import { Gloss } from '../components/Gloss';
+import { formatMoney } from '../lib/money';
+import { feel } from '../lib/feel';
 import { ToolChip } from '../components/ToolChip';
 import { ProductTile } from '../components/ProductTile';
 import { HeldBasketsSheet } from '../components/HeldBasketsSheet';
@@ -22,8 +39,8 @@ import { useCatalogCopy } from '../hooks/useCatalogCopy';
 import { cannotAdd, cartCents, handPriced, lineThousandths, weighedItemOf, type CartItem, type CartLine } from '../lib/cart';
 import { catalogCopyFor } from '../lib/catalog-storage';
 import { Ionicons } from '@expo/vector-icons';
-import { FONT, MART, PressableScale, RADIUS, SPACE, onFill, tint, MartText } from '@kiosk/staff';
-import { compactCopyLine, copyLine, fromPhoneWords, NO_PRICE_LIST_WORDS } from '../lib/catalog-words';
+import { FONT, MART, PressableScale, RADIUS, SPACE, onFill, tint, MartText, WEIGHT } from '@kiosk/staff';
+import { fromPhoneWords, NO_PRICE_LIST_WORDS, priceListLine } from '../lib/catalog-words';
 import { findItems, NoPriceList, reloadAfterReconnect, type Want } from '../lib/find-items';
 import { readStoredFlags } from '../lib/flags-keeper';
 import { holdKeeperFor } from '../lib/hold-storage';
@@ -45,7 +62,16 @@ import {
 import { prepareRecall } from '../lib/recall-flow';
 import { pickScanned } from '../lib/scan-result';
 import { describeChanges, servicesChangedBeforePay } from '../lib/service-check';
-import { mayChangePrice, mayCreateProduct, mayListWebOrders, maySellAirtime, mayShowServices, mayUseDrafts, type ShopFlags } from '../lib/shop-flags';
+import {
+  mayChangePrice,
+  mayCreateProduct,
+  mayListWebOrders,
+  maySellAirtime,
+  mayShowServices,
+  maySellWhenOutOfStock,
+  mayUseDrafts,
+  type ShopFlags,
+} from '../lib/shop-flags';
 import { parkDraft } from '../api/draft-api';
 import { ParkedSalesSheet } from '../components/ParkedSalesSheet';
 import { holderOf, type TillPerson } from '../lib/till-person';
@@ -108,6 +134,7 @@ export function PosWorkspaceScreen({ navigation, route, api, branchId, tenantId,
 
   const [search, setSearch] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
+  const searchRef = useRef<TextInput>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -127,6 +154,26 @@ export function PosWorkspaceScreen({ navigation, route, api, branchId, tenantId,
   const [holdsUnreadable, setHoldsUnreadable] = useState(false);
   const [holdsUnsaved, setHoldsUnsaved] = useState(false);
   const [waiting, setWaiting] = useState(0);
+  /** The line that just went in, shown by name in the cart bar for a moment. */
+  const [justAdded, setJustAdded] = useState<{ name: string; at: number } | null>(null);
+  /** How many lines the basket had, so a new one can be told from a change of quantity. */
+  const linesBefore = useRef(0);
+  /** The tile just pressed: where it was on screen, and what it looked like. Cleared once its ghost is away. */
+  const pressed = useRef<{ id: string; hit: { x: number; y: number; w: number; h: number; initials: string; colour: string } } | null>(null);
+  /** The line the bar's confirmation is about: what Undo takes back out, if the cashier asks. */
+  const undoLine = useRef<{ itemId: string; name: string } | null>(null);
+  /** The first-day tips: -1 when there is nothing to show, else the step being shown. */
+  const [firstRunStep, setFirstRunStep] = useState<number>(-1);
+  const offered = useRef(false);
+  /** Ghosts in the air, each carrying a product's initials to the basket. */
+  const [flights, setFlights] = useState<Flight[]>([]);
+  const flightId = useRef(0);
+  /** Reduced motion: no ghosts, no travel — the basket's own line is the feedback. */
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const screen = useRef<View>(null);
+  const screenOrigin = useRef({ x: 0, y: 0 });
+  const barRef = useRef<View>(null);
+  const barOrigin = useRef<{ x: number; y: number } | null>(null);
   // Set while the products on screen are the phone's own saved list, and not what the shop just answered.
   const [fromPhone, setFromPhone] = useState<{ asOf: number; cut: boolean } | null>(null);
   const offline = useReach((state) => state.offline);
@@ -144,6 +191,8 @@ export function PosWorkspaceScreen({ navigation, route, api, branchId, tenantId,
       services: mayShowServices(flags, person.permissions),
       airtime: maySellAirtime(person.permissions),
       drafts: mayUseDrafts(person.permissions),
+      // An empty shelf the shop allows to be sold from is one tap, like anything else.
+      outOfStock: maySellWhenOutOfStock(flags),
     }),
     [flags, person.permissions]
   );
@@ -154,7 +203,112 @@ export function PosWorkspaceScreen({ navigation, route, api, branchId, tenantId,
     () => (canHold ? basketsOf(holds, holderOf(person, branchId), heldAt) : []),
     [canHold, holds, person, branchId, heldAt]
   );
+  const { width: screenWidth } = useWindowDimensions();
+  // The shelf uses the screen it is given: three across a phone, more across a tablet — never a stretched phone.
+  /** Quick shelf: only the products this till reaches for most, larger, for when the queue is long. */
+  const [quick, setQuick] = useState(false);
+  const allColumns = screenWidth >= 1180 ? 7 : screenWidth >= 980 ? 6 : screenWidth >= 760 ? 5 : screenWidth >= 560 ? 4 : 3;
+  const columns = quick ? (screenWidth >= 760 ? 4 : 2) : allColumns;
+  const shelf = quick ? items.slice(0, 12) : items;
   const totalCents = useMemo(() => cartCents(cart), [cart]);
+
+  /** The way back out of a slipped finger: take back the line the bar is showing, and say so. */
+  const undoAdd = useCallback(() => {
+    const line = undoLine.current;
+    if (!line) return;
+    undoLine.current = null;
+    removeFromCart(line.itemId);
+    setJustAdded(null);
+    feel.tap();
+    AccessibilityInfo.announceForAccessibility(`${line.name} removed.`);
+  }, [removeFromCart, setJustAdded]);
+
+  useEffect(() => {
+    // Offered once per visit to the till, and only when the shelf is ready and nothing else wants attention.
+    if (offered.current || loading || problem) return;
+    let alive = true;
+    void needsFirstRun(tenantId, person.userId).then((needed) => {
+      if (alive && needed) {
+        offered.current = true;
+        setFirstRunStep(0);
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, [tenantId, person.userId, loading, problem]);
+
+  useEffect(() => {
+    let alive = true;
+    void AccessibilityInfo.isReduceMotionEnabled().then((on) => {
+      if (alive) setReducedMotion(on);
+    });
+    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReducedMotion);
+    return () => {
+      alive = false;
+      sub.remove();
+    };
+  }, []);
+
+  /** Both coordinates must be in the screen's own space, not the window's, or the ghost lands on the wrong line. */
+  const remeasure = useCallback(() => {
+    screen.current?.measureInWindow((x, y) => {
+      screenOrigin.current = { x, y };
+    });
+    barRef.current?.measureInWindow((x, y) => {
+      barOrigin.current = { x, y };
+    });
+  }, []);
+
+  // A tap that puts a new line in the basket is answered in the cart bar, by name. More of a line that is
+  // already there is answered on its own tile (which steps and pops), so the bar stays quiet for that.
+  useEffect(() => {
+    const before = linesBefore.current;
+    linesBefore.current = cart.length;
+    if (cart.length <= before) {
+      // A line left: there is nothing to take back.
+      if (cart.length < before) undoLine.current = null;
+      return;
+    }
+    const newest = cart[cart.length - 1];
+    if (newest) {
+      setJustAdded({ name: newest.name, at: Date.now() });
+      undoLine.current = { itemId: newest.itemId, name: newest.name };
+      // For a cashier with the screen reader on: say what went in, and where the basket now stands.
+      const total = cartCents(cart);
+      AccessibilityInfo.announceForAccessibility(
+        `${newest.name} added. ${cart.length} ${cart.length === 1 ? 'item' : 'items'}${total === null ? '' : `, ${formatMoney(total)}`}`
+      );
+    }
+
+    // The tap, answered in space: only for the tile that was just pressed, only for a new line, and never when the
+    // phone asks for reduced motion. The product is already in the basket; this is a second telling of that fact.
+    const hit = pressed.current;
+    pressed.current = null;
+    if (!hit || !newest || reducedMotion || hit.id !== newest.itemId) return;
+    const bar = barOrigin.current;
+    if (!bar) {
+      remeasure();
+      return;
+    }
+    const from = {
+      x: hit.hit.x - screenOrigin.current.x,
+      y: hit.hit.y - screenOrigin.current.y,
+      w: hit.hit.w,
+      h: hit.hit.h,
+    };
+    // Land on the basket's own line of figures, not the middle of the bar.
+    const to = { x: bar.x - screenOrigin.current.x + 54, y: bar.y - screenOrigin.current.y + 44 };
+    flightId.current += 1;
+    const flight: Flight = { id: flightId.current, initials: hit.hit.initials, colour: hit.hit.colour, from, to };
+    setFlights((current) => [...current, flight]);
+  }, [cart, reducedMotion, remeasure]);
+
+  useEffect(() => {
+    if (!justAdded) return undefined;
+    const note = setTimeout(() => setJustAdded(null), 1800);
+    return () => clearTimeout(note);
+  }, [justAdded]);
 
   const tell = useCallback((notes: string[], tone: 'info' | 'warning' = 'info', barcode?: string) => {
     setNotice(notes.length > 0 ? { notes, tone, ...(barcode ? { barcode } : {}) } : null);
@@ -384,6 +538,7 @@ export function PosWorkspaceScreen({ navigation, route, api, branchId, tenantId,
       }
       const why = cannotAdd(item);
       if (why) {
+        pressed.current = null;
         tell([why], 'warning');
         return;
       }
@@ -421,11 +576,16 @@ export function PosWorkspaceScreen({ navigation, route, api, branchId, tenantId,
         item={item}
         quantity={cartQtyById.get(item.id) ?? 0}
         weighed={howToSell(item).kind === 'kg'}
+        oneTapWhenOut={may.outOfStock}
+        columns={columns}
+        onPressRect={(hit) => {
+          pressed.current = { id: item.id, hit };
+        }}
         onAdd={() => add(item)}
         onSetQuantity={(n) => setQty(item.id, n)}
       />
     ),
-    [cartQtyById, add, setQty]
+    [cartQtyById, add, setQty, may.outOfStock]
   );
 
   const onBarcode = async (value: string) => {
@@ -442,6 +602,16 @@ export function PosWorkspaceScreen({ navigation, route, api, branchId, tenantId,
     } else {
       tell(['More than one product could be this one. Pick the right one from the list.'], 'warning');
     }
+  };
+
+  const stopWeighingItem = async (): Promise<string | null> => {
+    const target = weighing?.item;
+    if (!target) return null;
+    const result = await setItemWeighed(api, target.id, false);
+    if (!result.ok) return result.words;
+    setWeighing(null);
+    tell([`${target.name} is no longer sold by weight.`], 'info');
+    return null;
   };
 
   const confirmWeight = (thousandths: number): string | null => {
@@ -610,19 +780,26 @@ export function PosWorkspaceScreen({ navigation, route, api, branchId, tenantId,
             },
           }
         : undefined;
-  const copyText = copyLine(copyState, Date.now());
-  // The short "7 items · 08:36" on a normal day; the full sentence only when something needs saying.
-  const copyShort = compactCopyLine(copyState, Date.now());
+  const listLine = priceListLine(copyState, Date.now());
 
   const weighingLine = weighing ? cart.find((line) => line.itemId === weighing.item.id) : undefined;
   const inBasket = weighingLine?.weighed ? lineThousandths(weighingLine) : 0;
 
   return (
-    <View style={styles.container}>
+    <View ref={screen} style={styles.container} onLayout={remeasure}>
+      {/* The ground is lit, the cards are white: the shelf floats instead of sitting flat. */}
+      <Gloss />
       <View style={styles.searchRow}>
-        <View style={[styles.searchField, searchFocused && styles.searchFieldFocused]}>
+        {/* The whole 50pt box is the field: a tap on the padding, the glyph or the space beside the caret puts
+            the cursor in. Before, only the 18pt strip of text itself could be tapped. */}
+        <Pressable
+          onPress={() => searchRef.current?.focus()}
+          accessible={false}
+          style={[styles.searchField, searchFocused && styles.searchFieldFocused]}
+        >
           <Ionicons name="search" size={18} color={searchFocused ? MART.fallbackPrimary : MART.inkQuiet} />
           <TextInput
+            ref={searchRef}
             style={styles.searchInput}
             placeholder="Search products"
             placeholderTextColor={MART.inkQuiet}
@@ -639,7 +816,7 @@ export function PosWorkspaceScreen({ navigation, route, api, branchId, tenantId,
               <Ionicons name="close-circle" size={18} color={MART.inkQuiet} />
             </Pressable>
           ) : null}
-        </View>
+        </Pressable>
         <PressableScale
           onPress={() => setShowScanner(true)}
           scaleTo={0.95}
@@ -656,31 +833,18 @@ export function PosWorkspaceScreen({ navigation, route, api, branchId, tenantId,
         <CategoryFilter categories={categories} selected={categoryId} onSelect={pickCategory} />
       ) : null}
 
-      {copyShort ? (
-        // Normal day: a quiet one-liner with an icon refresh — "Synced 7 items · 08:36".
-        <View style={styles.syncRow}>
-          <Ionicons name="cloud-done-outline" size={14} color={MART.inkQuiet} />
-          <MartText variant="meta" color={MART.inkMuted} style={styles.syncText}>
-            {copyShort}
-          </MartText>
-          <PressableScale
-            onPress={() => void copy.make()}
-            disabled={copyState.making !== null}
-            accessibilityLabel="Refresh price list"
-            accessibilityRole="button"
-            hitSlop={8}
-            style={[styles.syncBtn, copyState.making !== null && styles.syncBtnBusy]}
-          >
-            <Ionicons name="refresh" size={16} color={MART.fallbackPrimary} />
-          </PressableScale>
-        </View>
-      ) : copyText ? (
-        // Something to explain (offline, saving, cut list…): keep the full sentence and the button.
+      {listLine ? (
+        // One short line, only when there is something to say; the pull-to-refresh gesture does the rest.
         <View style={styles.copyRow}>
-          <MartText variant="meta" color={MART.inkMuted} style={styles.copyText}>
-            {copyText}
+          <MartText
+            variant="meta"
+            color={listLine.warn ? MART.warning : MART.inkQuiet}
+            numberOfLines={2}
+            style={styles.copyText}
+          >
+            {listLine.text}
           </MartText>
-          <Button
+          <CashierButton
             title="Update"
             variant="secondary"
             onPress={() => void copy.make()}
@@ -737,30 +901,43 @@ export function PosWorkspaceScreen({ navigation, route, api, branchId, tenantId,
         <NoticeBar notes={notice.notes} tone={notice.tone} action={noticeAction} onDismiss={() => setNotice(null)} />
       ) : null}
       {holdsUnreadable ? (
-        <Text variant="caption" style={styles.problem}>
+        <MartText variant="meta" style={styles.problem}>
           {HOLDS_NOT_READ}
-        </Text>
+        </MartText>
       ) : null}
       {holdsUnsaved ? (
-        <Text variant="caption" style={styles.problem}>
+        <MartText variant="meta" style={styles.problem}>
           {HOLD_NOT_SAVED}
-        </Text>
+        </MartText>
       ) : null}
       {fromPhone ? (
         <View style={styles.stale} accessibilityRole="alert">
-          <Text variant="caption">{fromPhoneWords(fromPhone.asOf, Date.now(), fromPhone.cut)}</Text>
+          <MartText variant="meta">{fromPhoneWords(fromPhone.asOf, Date.now(), fromPhone.cut)}</MartText>
         </View>
       ) : null}
 
       <FlatList
-        data={items}
+        data={shelf}
         keyExtractor={(item) => item.id}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        numColumns={3}
+        key={`shelf-${columns}`}
+        numColumns={columns}
         columnWrapperStyle={styles.gridRow}
         contentContainerStyle={styles.grid}
         showsVerticalScrollIndicator={false}
+        // The price list is pulled fresh, the way any native list is: the gesture replaces a permanent
+        // refresh button, and the one line that used to sit above the grid only shows when something is wrong.
+        refreshControl={
+          <RefreshControl
+            refreshing={loading || copyState.making !== null}
+            onRefresh={() => {
+              void copy.make();
+              void loadItems(lastWant.current, { askShop: true });
+            }}
+            tintColor={MART.fallbackPrimary}
+          />
+        }
         // Smooth scrolling: render a little ahead, recycle off-screen tiles, and batch work so a flick never stutters.
         // Three to a row means more tiles per screen, so the first render and each batch cover whole rows.
         initialNumToRender={12}
@@ -770,10 +947,37 @@ export function PosWorkspaceScreen({ navigation, route, api, branchId, tenantId,
         ListHeaderComponent={
           items.length > 0 ? (
             <View style={styles.gridHeader}>
-              <MartText variant="title">{search.trim() ? 'Results' : categoryId ? 'In this aisle' : 'Best sellers'}</MartText>
-              <MartText variant="meta" color={MART.inkQuiet} style={TABULAR_NUMS}>
-                {items.length === 1 ? '1 product' : `${items.length} products`}
+              <MartText variant="title">
+                {search.trim() ? 'Results' : quick ? 'Quick shelf' : categoryId ? 'In this aisle' : 'Best sellers'}
               </MartText>
+              {search.trim() ? (
+                <MartText variant="meta" color={MART.inkQuiet} style={TABULAR_NUMS}>
+                  {items.length === 1 ? '1 product' : `${items.length} products`}
+                </MartText>
+              ) : (
+                <View style={styles.segmented}>
+                  {(['all', 'quick'] as const).map((mode) => {
+                    const on = (mode === 'quick') === quick;
+                    return (
+                      <Pressable
+                        key={mode}
+                        onPress={() => {
+                          feel.select();
+                          setQuick(mode === 'quick');
+                        }}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: on }}
+                        accessibilityLabel={mode === 'quick' ? 'Show the quick shelf' : 'Show the whole shelf'}
+                        style={[styles.segment, on && styles.segmentOn]}
+                      >
+                        <MartText variant="meta" color={on ? onFill(MART.fallbackPrimary).primary : MART.inkMuted}>
+                          {mode === 'quick' ? 'Quick' : 'All'}
+                        </MartText>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              )}
             </View>
           ) : null
         }
@@ -803,31 +1007,47 @@ export function PosWorkspaceScreen({ navigation, route, api, branchId, tenantId,
               actionIcon="refresh"
               onAction={() => void loadItems({ search }, { askShop: true })}
             />
-          ) : (
+          ) : search.trim() ? (
+            // A search that found nothing is the moment a cashier most needs a next step: write the product down, with
+            // what they typed already in the form, rather than making them clear the search and start again.
             <EmptyOrErrorState
-              icon="basket-outline"
-              title={search.trim() ? 'Nothing matches' : 'No products yet'}
-              message={search.trim() ? 'Try another name, or scan the barcode.' : 'Add a product, or pull the price list.'}
-              actionLabel={search.trim() ? 'Clear search' : may.create && !offline ? 'Add product' : undefined}
-              actionIcon={search.trim() ? 'close-circle-outline' : 'add-circle-outline'}
+              icon="search-outline"
+              title={`Nothing matches “${search.trim()}”`}
+              message={
+                may.create && !offline
+                  ? 'It may not be on the shelf yet. Add it, and it is ready to sell.'
+                  : 'Check the spelling, or scan the barcode.'
+              }
+              actionLabel={may.create && !offline ? `Add “${search.trim()}”` : 'Clear search'}
+              actionIcon={may.create && !offline ? 'add-circle-outline' : 'close-circle-outline'}
               onAction={
-                search.trim()
-                  ? () => {
+                may.create && !offline
+                  ? () => navigation.navigate('NewProduct', { name: search.trim() })
+                  : () => {
                       setSearch('');
                       void loadItems(categoryId ? { categoryId } : {});
                     }
-                  : may.create && !offline
-                    ? () => navigation.navigate('NewProduct')
-                    : undefined
               }
+            />
+          ) : (
+            <EmptyOrErrorState
+              icon="basket-outline"
+              title="No products yet"
+              message="Add a product, or pull the price list."
+              actionLabel={may.create && !offline ? 'Add product' : undefined}
+              actionIcon="add-circle-outline"
+              onAction={may.create && !offline ? () => navigation.navigate('NewProduct') : undefined}
             />
           )
         }
       />
 
+      <View ref={barRef} onLayout={remeasure} collapsable={false}>
       <CartBar
         count={cart.length}
         totalCents={totalCents}
+        lastAdded={justAdded}
+        onUndo={undoAdd}
         canHold={canHold && !busy}
         heldCount={mine.length}
         checking={verifying}
@@ -835,12 +1055,34 @@ export function PosWorkspaceScreen({ navigation, route, api, branchId, tenantId,
         onShowHeld={openHeld}
         onCheckout={() => void checkout()}
       />
+      </View>
+
+      {firstRunStep >= 0 ? (
+        <FirstRun
+          step={firstRunStep}
+          onNext={() => {
+            if (firstRunStep >= 2) {
+              setFirstRunStep(-1);
+              void markFirstRunSeen(tenantId, person.userId);
+              return;
+            }
+            setFirstRunStep(firstRunStep + 1);
+          }}
+          onSkip={() => {
+            setFirstRunStep(-1);
+            void markFirstRunSeen(tenantId, person.userId);
+          }}
+        />
+      ) : null}
+
+      <FlyToCart flights={flights} onDone={(id) => setFlights((current) => current.filter((f) => f.id !== id))} />
 
       <WeightPrompt
         item={weighing?.item ?? null}
         inBasket={inBasket}
         mode={weighing?.mode ?? 'add'}
         onCancel={() => setWeighing(null)}
+        onNotWeighed={stopWeighingItem}
         onConfirm={confirmWeight}
       />
       <VariantPicker
@@ -891,6 +1133,16 @@ const styles = StyleSheet.create({
     backgroundColor: MART.paper,
   },
   gridRow: { gap: SPACE.sm, marginBottom: SPACE.sm },
+  segmented: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    padding: 2,
+    borderRadius: RADIUS.pill,
+    backgroundColor: MART.paperSunken,
+  },
+  segment: { minHeight: 28, justifyContent: 'center', paddingHorizontal: SPACE.md, borderRadius: RADIUS.pill },
+  segmentOn: { backgroundColor: MART.fallbackPrimary },
   gridHeader: {
     flexDirection: 'row',
     alignItems: 'baseline',
@@ -962,11 +1214,20 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
-  searchInput: { flex: 1, fontFamily: FONT.regular, fontSize: 15, color: MART.ink, paddingVertical: 0 },
+  searchInput: {
+    flex: 1,
+    alignSelf: 'stretch',
+    fontFamily: FONT.regular,
+    fontWeight: WEIGHT.regular,
+    fontSize: 15,
+    color: MART.ink,
+    paddingVertical: 0,
+  },
+  // One icon-control shape across the app: a circle at 50pt, lifted in the brand colour when it is the primary act.
   scanBtn: {
     width: 50,
     height: 50,
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.pill,
     backgroundColor: MART.fallbackPrimary,
     alignItems: 'center',
     justifyContent: 'center',
@@ -981,7 +1242,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: SPACE.sm,
     paddingHorizontal: SPACE.md,
-    paddingBottom: SPACE.sm,
+    paddingBottom: SPACE.xs,
   },
   productRow: {
     padding: SPACE.md,
@@ -1000,25 +1261,6 @@ const styles = StyleSheet.create({
   },
   copyText: { flex: 1 },
   update: { minHeight: 40, paddingVertical: SPACE.sm },
-  syncRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: SPACE.md,
-    paddingBottom: SPACE.sm,
-  },
-  syncText: { flex: 1, color: MART.inkMuted, fontSize: 13 },
-  syncBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: MART.paperElevated,
-    borderWidth: 1,
-    borderColor: MART.border,
-  },
-  syncBtnBusy: { opacity: 0.5 },
   needs: { paddingHorizontal: SPACE.md, paddingBottom: SPACE.sm },
   stale: {
     marginHorizontal: SPACE.md,

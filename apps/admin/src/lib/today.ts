@@ -1,13 +1,33 @@
 import type { CreditSummary } from './credit';
 import { kesOrDash } from './owner-money';
 import { awaitingCount, type OwnerOrder } from './orders';
+import type { Breakdown } from './payments';
 import type { Pulse } from './pulse';
+import type { SupplierBills } from './supplier-bills';
 
 /** What one tile on Today shows: the figure, a line under it, and how loudly to say it. */
 export type Tone = 'ok' | 'ask' | 'warn' | 'quiet';
 /** A real today-vs-yesterday move, shown next to the headline figure. Never invented: null when there is no yesterday. */
 export type Trend = { dir: 'up' | 'down' | 'flat'; label: string; spoken: string };
-export type TileView = { value: string; note: string | null; tone: Tone; trend?: Trend | null };
+/** One line of the takings split: a payment method, how many sales, how much. */
+export type BreakdownLine = { label: string; count: number | null; value: string };
+export type TileView = {
+  value: string;
+  note: string | null;
+  tone: Tone;
+  trend?: Trend | null;
+  /** On the takings tile only: how the figure splits by M-Pesa and cash. */
+  breakdown?: BreakdownLine[] | null;
+};
+
+/** Turns the raw M-Pesa/cash split into display lines for the takings tile. Null when there is no split to show. */
+export function breakdownLines(b: Breakdown | null): BreakdownLine[] | null {
+  if (b === null) return null;
+  const rows = [b.mpesa, b.cash, ...(b.other ? [b.other] : [])];
+  // Nothing to show if every method is empty (no sales yet).
+  if (rows.every((r) => (r.count ?? 0) === 0 && (r.amountCents ?? 0) === 0)) return null;
+  return rows.map((r) => ({ label: r.method, count: r.count, value: kesOrDash(r.amountCents) }));
+}
 
 /** The change from yesterday as a whole-percent move, or "flat" when it barely moved and null when there is nothing to compare. */
 function trendFrom(todayCents: number | null, yesterdayCents: number | null): Trend | null {
@@ -74,4 +94,14 @@ export function creditView(summary: CreditSummary): TileView {
   const collected = summary.collectedCents !== null && summary.collectedCents > 0 ? `${kesOrDash(summary.collectedCents)} paid today` : null;
   const note = [people, collected].filter((part): part is string => part !== null).join(' · ') || null;
   return { value: kesOrDash(owed), note, tone: owed !== null && owed > 0 ? 'warn' : 'quiet' };
+}
+
+/** What the shop owes suppliers: the total of the pending bills, with how many there are underneath. */
+export function suppliersView(bills: SupplierBills): TileView {
+  if (bills.count === 0) return { value: kesOrDash(bills.totalCents ?? 0), note: 'Nothing to pay', tone: 'ok' };
+  return {
+    value: kesOrDash(bills.totalCents),
+    note: plural(bills.count, 'bill to pay', 'bills to pay'),
+    tone: 'warn',
+  };
 }

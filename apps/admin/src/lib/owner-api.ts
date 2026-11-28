@@ -19,7 +19,9 @@ import {
   type PaymentBody,
 } from './credit';
 import { readOrders, type OwnerOrder, type StepTarget } from './orders';
+import { readBreakdown, type Breakdown } from './payments';
 import { readPulse, type Pulse } from './pulse';
+import { readSupplierBills, type SupplierBills } from './supplier-bills';
 import { readStaff, STAFF_LIST_SIZE, type StaffPerson } from './staff';
 
 /**
@@ -42,9 +44,23 @@ export async function fetchPulse(api: ApiClient, date?: string): Promise<Pulse |
   return readPulse(await read(api, path));
 }
 
+/**
+ * How a day's sales split by payment method (`GET /api/v1/sales/intelligence/payments-by-method`), read into
+ * M-Pesa, cash and the rest. The date is the pulse's own business date, so the split matches the takings figure.
+ */
+export async function fetchBreakdown(api: ApiClient, date: string): Promise<Breakdown | null> {
+  const day = encodeURIComponent(date);
+  return readBreakdown(await read(api, `/api/v1/sales/intelligence/payments-by-method?from=${day}&to=${day}`));
+}
+
 /** What the shop's customers owe, and what was paid in on tabs today. */
 export async function fetchCreditSummary(api: ApiClient): Promise<CreditSummary | null> {
   return readCreditSummary(await read(api, '/api/v1/credits/activity-summary'));
+}
+
+/** What the shop still owes suppliers: the pending grocery invoices, as a count and total. */
+export async function fetchSupplierBills(api: ApiClient): Promise<SupplierBills | null> {
+  return readSupplierBills(await read(api, '/api/v1/grocery/invoices?status=PENDING'));
 }
 
 /** The open tabs, narrowed by a search when one is typed. */

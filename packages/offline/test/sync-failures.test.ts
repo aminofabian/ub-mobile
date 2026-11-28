@@ -256,3 +256,60 @@ test('a server error that says "conflict" is still a server error and counts as 
   assert.equal(queued()[0]?.conflictType, undefined);
   assert.equal(queued()[0]?.retries, 1);
 });
+
+test('the loser of two requests under one key is told "could not store it": it counts as an attempt, is not refused, and goes through next time', async () => {
+  let asked = 0;
+  const server = salesServer(() =>
+    asked++ === 0
+      ? problem(400, { type: 'urn:problem:data-integrity', title: 'Invalid data', detail: 'Could not persist the requested change' })
+      : { status: 201, body: { id: 'sale-1' } }
+  );
+  serve([...shops(), server.route]);
+  await openAcme();
+  await outbox.enqueue(sale('a1'));
+  const refused: string[] = [];
+  const engine = createSyncEngine({ api: createApiClient({ baseURL: API }), onNeedsAttention: (i) => refused.push(i.id) });
+
+  await engine.sync();
+  const [after] = queued();
+  assert.equal(after?.conflictType, undefined, 'a sale the server has is not parked as one it refused');
+  assert.equal(after?.retries, 1, 'it counts as an attempt, so a real failure still ends up in front of a person');
+  assert.deepEqual(refused, []);
+
+  await engine.sync();
+  assert.deepEqual(queued(), [], 'the next try is answered with the sale that was recorded');
+});
+
+test('a problem that keeps saying "could not store it" ends up in front of a person after the attempts, not forever', async () => {
+  const server = salesServer(() => problem(400, { type: 'urn:problem:data-integrity', title: 'Invalid data' }));
+  serve([...shops(), server.route]);
+  await openAcme();
+  await outbox.enqueue(sale('a1'));
+  const attention: string[] = [];
+  const engine = createSyncEngine({ api: createApiClient({ baseURL: API }), maxRetries: 3, onNeedsAttention: (i) => attention.push(`${i.id}:${i.retries}`) });
+
+  await passes(engine, 6);
+
+  assert.equal(server.asked(), 3, 'three tries and then it is left to a person');
+  assert.deepEqual(attention, ['a1:3']);
+});
+
+test('a sale the server took reports what the server answered, and a listener that fails does not undo that', async () => {
+  const server = salesServer(() => ({ status: 201, body: { id: 'sale-1', grandTotal: 540 } }));
+  serve([...shops(), server.route]);
+  await openAcme();
+  await outbox.enqueue({ ...sale('a1'), facts: { rungBy: 'Amina' } });
+  const heard: unknown[] = [];
+  const engine = createSyncEngine({
+    api: createApiClient({ baseURL: API }),
+    onSynced: (item, response) => {
+      heard.push([item.id, item.facts, response]);
+      throw new Error('the listener broke');
+    },
+  });
+
+  await engine.sync();
+
+  assert.deepEqual(heard, [['a1', { rungBy: 'Amina' }, { id: 'sale-1', grandTotal: 540 }]]);
+  assert.deepEqual(queued(), [], 'the sale was sent and is gone from the queue');
+});

@@ -13,8 +13,15 @@ export type RootStackParamList = {
   Category: { categoryId: string; categoryName: string; categoryIcon?: string | null };
   Search: undefined;
   Checkout: undefined;
-  Payment: { orderId: string; grandTotal: number; currency: string; customerPhone: string };
-  OrderConfirmation: { orderId: string };
+  Payment: {
+    orderId: string;
+    grandTotal: number;
+    currency: string;
+    customerPhone: string;
+    orderCode?: string;
+    pickup?: boolean;
+  };
+  OrderConfirmation: { orderId: string; orderCode?: string; payLater?: boolean; pickup?: boolean };
   OrderDetail: { orderId: string };
   Airtime: undefined;
   Kplc: undefined;

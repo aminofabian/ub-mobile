@@ -1,15 +1,20 @@
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, StyleSheet, Text, View } from 'react-native';
 import type { PlatformSupport } from '@kiosk/core';
 import { supportLinks, type SupportLink } from '../lib/support-links';
-import { MART, RADIUS, SPACE, TYPE } from '../theme/mart';
+import { MART, RADIUS, SPACE, TYPE, ZONE } from '../theme/mart';
+import { PressScale } from './Capsule';
+import { Lobe } from './Coast';
 
-const ICONS: Record<SupportLink['kind'], React.ComponentProps<typeof Ionicons>['name']> = {
-  phone: 'call-outline',
-  whatsapp: 'logo-whatsapp',
-  email: 'mail-outline',
-  web: 'help-circle-outline',
+const MARKS: Record<
+  SupportLink['kind'],
+  { icon: React.ComponentProps<typeof Ionicons>['name']; zone: string; shape: number }
+> = {
+  phone: { icon: 'call', zone: ZONE.leaf, shape: 0 },
+  whatsapp: { icon: 'logo-whatsapp', zone: ZONE.leaf, shape: 1 },
+  email: { icon: 'mail', zone: ZONE.pond, shape: 2 },
+  web: { icon: 'help-circle', zone: ZONE.lilac, shape: 3 },
 };
 
 /**
@@ -29,58 +34,63 @@ export function HelpRow({ support }: { support: PlatformSupport | undefined }) {
   }
 
   return (
-    <View style={styles.row} accessibilityRole="summary">
-      <Text style={styles.label}>Need help?</Text>
-      <View style={styles.links}>
-        {links.map((link) => (
-          <Pressable
-            key={link.kind}
-            onPress={() => open(link)}
-            accessibilityRole="link"
-            accessibilityLabel={link.label}
-            style={({ pressed }) => [styles.link, pressed && styles.pressed]}
-          >
-            <Ionicons name={ICONS[link.kind]} size={16} color={MART.fallbackPrimary} />
-            <Text style={styles.linkText}>{link.label}</Text>
-          </Pressable>
-        ))}
+    <View style={styles.block} accessibilityRole="summary">
+      <Text accessibilityRole="header" style={styles.label}>
+        Need help?
+      </Text>
+      <View style={styles.tile}>
+        {links.map((link, index) => {
+          const mark = MARKS[link.kind];
+          return (
+            <PressScale
+              key={link.kind}
+              onPress={() => open(link)}
+              accessibilityRole="link"
+              accessibilityLabel={link.label}
+              style={[styles.row, index > 0 && styles.rule]}
+            >
+              <Lobe color={mark.zone} size={36} shape={mark.shape}>
+                <Ionicons name={mark.icon} size={17} color={MART.ink} />
+              </Lobe>
+              <Text numberOfLines={1} style={styles.linkText}>
+                {link.label}
+              </Text>
+              <Ionicons name="arrow-forward" size={18} color={MART.ink} />
+            </PressScale>
+          );
+        })}
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: {
-    gap: SPACE.sm,
+  block: {
+    gap: SPACE.md,
     paddingTop: SPACE.lg,
+  },
+  label: {
+    ...TYPE.heading,
+    color: MART.ink,
+  },
+  tile: {
+    borderRadius: RADIUS.lg,
+    backgroundColor: MART.paperElevated,
+    paddingHorizontal: SPACE.lg,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACE.md,
+    minHeight: 56,
+  },
+  rule: {
     borderTopWidth: 1,
     borderTopColor: MART.border,
   },
-  label: {
-    ...TYPE.label,
-    color: MART.inkMuted,
-  },
-  links: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACE.sm,
-  },
-  link: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACE.xs,
-    minHeight: 44,
-    paddingHorizontal: SPACE.md,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: MART.border,
-    backgroundColor: MART.paperElevated,
-  },
-  pressed: {
-    backgroundColor: MART.paperSunken,
-  },
   linkText: {
     ...TYPE.label,
-    color: MART.fallbackPrimary,
+    flex: 1,
+    color: MART.ink,
   },
 });

@@ -8,6 +8,7 @@ import { kesOrDash } from '../../lib/owner-money';
 import { useLoaded } from '../../lib/use-loaded';
 import { GUTTER, MART, SPACE } from '../../theme/mart';
 import { MartText } from '../../theme/mart-ui';
+import { VerifiedBadge } from '@kiosk/staff';
 
 const REFRESH_MS = 60_000;
 /** How long the owner stops typing before the list is asked for again. */
@@ -99,6 +100,7 @@ export function OwnerCreditScreen({ api, onOpenTab }: Props) {
           right={
             <>
               <MartText variant="price">{kesOrDash(item.owedCents)}</MartText>
+              {item.verified ? <VerifiedBadge verified /> : null}
               {item.suspended ? <Chip label="Credit stopped" tone="warn" /> : null}
             </>
           }

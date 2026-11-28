@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { MART, RADIUS, SPACE, TYPE } from '../theme/mart';
 import type { StoreCardView } from '../lib/store-card';
+import { PressScale } from './Capsule';
 import { StoreAvatar } from './StoreAvatar';
 
 /** One shop in a list: a search result, a recent shop, a shop in the switcher. */
@@ -26,39 +27,34 @@ export function StoreRow({
   hint?: string;
 }) {
   return (
-    <Pressable
+    <PressScale
       onPress={onPress}
       disabled={busy || disabled}
       accessibilityRole="button"
       accessibilityLabel={`${card.name}, ${card.address}${current ? ', open now' : ''}`}
       accessibilityHint={hint}
       accessibilityState={{ busy, disabled: busy || disabled, selected: current }}
-      style={({ pressed }) => [
-        styles.row,
-        current && styles.rowCurrent,
-        (dimmed || (disabled && !busy)) && styles.dimmed,
-        pressed && styles.pressed,
-      ]}
+      style={[styles.row, (dimmed || (disabled && !busy)) && styles.dimmed]}
     >
-      <StoreAvatar card={card} size={44} />
+      <StoreAvatar card={card} size={48} />
       <View style={styles.copy}>
         <Text numberOfLines={1} style={styles.name}>
           {card.name}
         </Text>
         <Text numberOfLines={1} style={styles.address}>
-          {card.address}
+          {current ? `Open now · ${card.address}` : card.address}
         </Text>
       </View>
       {busy ? (
-        <ActivityIndicator size="small" color={MART.inkQuiet} />
+        <ActivityIndicator size="small" color={MART.ink} />
       ) : current ? (
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>OPEN NOW</Text>
+        <View style={styles.check}>
+          <Ionicons name="checkmark" size={18} color={MART.paper} />
         </View>
       ) : (
-        <Ionicons name="chevron-forward" size={18} color={MART.inkQuiet} />
+        <Ionicons name="chevron-forward" size={18} color={MART.ink} />
       )}
-    </Pressable>
+    </PressScale>
   );
 }
 
@@ -67,22 +63,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACE.md,
-    minHeight: 68,
-    paddingHorizontal: SPACE.md,
-    paddingVertical: SPACE.sm,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: MART.border,
+    minHeight: 72,
+    paddingLeft: SPACE.md,
+    paddingRight: SPACE.lg,
+    paddingVertical: SPACE.md,
+    borderRadius: RADIUS.lg,
     backgroundColor: MART.paperElevated,
   },
-  rowCurrent: {
-    borderColor: MART.fallbackPrimary,
-  },
   dimmed: {
-    opacity: 0.55,
-  },
-  pressed: {
-    backgroundColor: MART.paperSunken,
+    opacity: 0.5,
   },
   copy: {
     flex: 1,
@@ -94,17 +83,14 @@ const styles = StyleSheet.create({
   },
   address: {
     ...TYPE.meta,
-    marginTop: SPACE.xxs,
     color: MART.inkQuiet,
   },
-  badge: {
-    paddingHorizontal: SPACE.sm,
-    paddingVertical: SPACE.xxs,
-    borderRadius: RADIUS.sm,
-    backgroundColor: MART.successSurface,
-  },
-  badgeText: {
-    ...TYPE.shelf,
-    color: MART.success,
+  check: {
+    width: 30,
+    height: 30,
+    borderRadius: RADIUS.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: MART.ink,
   },
 });

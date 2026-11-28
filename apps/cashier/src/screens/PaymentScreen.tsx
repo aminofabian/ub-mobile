@@ -3,14 +3,15 @@ import { ActivityIndicator, Alert, ScrollView, StyleSheet, TextInput, View } fro
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Button, Card, Text } from '@kiosk/ui';
 import { FONT, MART, RADIUS, SHADOW, SPACE, tint, MartText } from '@kiosk/staff';
-import { CARD_SURFACE, CashierChip, CashierField, EmptyOrErrorState, TABULAR_NUMS } from '../components/CashierPrimitives';
+import { CARD_SURFACE, CashierButton, CashierChip, CashierField, EmptyOrErrorState, TABULAR_NUMS } from '../components/CashierPrimitives';
+import { Landed } from '../components/Landed';
+import { OpenShiftSheet } from '../components/OpenShiftSheet';
 import { initiateStkPush, waitForStk } from '@kiosk/payments';
 import { REFUSED, holdWhileSending, outbox } from '@kiosk/offline';
-import { generateIdempotencyKey } from '@kiosk/core';
+import { generateIdempotencyKey, isApiError } from '@kiosk/core';
 import type { ApiClient, SetupContext } from '@kiosk/core';
-import { createSale, ensureCustomerByPhone, findCustomerByPhone, markWeighed } from '../api/pos-api';
+import { createSale, ensureCustomerByPhone, fetchCurrentShift, findCustomerByPhone, markWeighed } from '../api/pos-api';
 import { setLineWeighed, type CartLine } from '../lib/cart';
 import { mayMarkWeighed } from '../lib/shop-flags';
 import { CheckoutLines } from '../components/CheckoutLines';
@@ -18,8 +19,9 @@ import { describeLookupFailure } from '../lib/lookup-failure';
 import { formatMoney, fromCents, totalCents as basketTotal } from '../lib/money';
 import { priceAgeCaption } from '../lib/catalog-words';
 import { OFFLINE_NO_CREDIT, OFFLINE_NO_PROMPT, TYPED_CODE_NOTE } from '../lib/offline-words';
+import { mustOpenShift, refusedForShift, type ShiftRead } from '../lib/shift-gate';
 import { oldestMark } from '../lib/phone-prices';
-import { isNoAnswer, SALE_WAIT_OFFLINE_MS } from '../lib/reach';
+import { CHECK_WAIT_MS, isNoAnswer, SALE_WAIT_OFFLINE_MS, waitFor } from '../lib/reach';
 import { checkCash, creditNeedsConnection, sharesFor, type PayMode } from '../lib/pay-inputs';
 import { normalizeKenyanPhone } from '../lib/phone';
 import { describeQueuedSale } from '../lib/queued-sale-notice';
@@ -101,6 +103,14 @@ export function PaymentScreen({ navigation, api, branchId, setupContext, person 
   const [busy, setBusy] = useState(false);
   // The till believes it cannot reach the shop: a prompt cannot be sent and a customer cannot be looked up.
   const offline = useReach((state) => state.offline);
+  /**
+   * A sale stopped for want of an open shift. `retry` — nothing was recorded, so it goes again the moment the shift
+   * is open; `later` — it is saved on the phone and sends itself. Either way the cashier opens the shift here,
+   * where the customer is, instead of being sent to another tab.
+   */
+  const [shiftFor, setShiftFor] = useState<'retry' | 'later' | null>(null);
+  /** A shift was opened for this sale already: a refusal after that is not answered by opening another one. */
+  const shiftedForThisSale = useRef(false);
 
   // The scale toggle on a basket line: tell the shop the product now sells by weight (or by the unit
   // again), then switch the line to match. The record of the product is the server's, so it needs the
@@ -246,6 +256,24 @@ export function PaymentScreen({ navigation, api, branchId, setupContext, person 
     saving.current = true;
     setBusy(true);
     try {
+      // Is a shift open? The till asks before it sends, so a missing one is a step to take (open it here) rather than
+      // a refusal from the shop after the customer has paid. A check that gets no answer holds nothing up.
+      if (!setupContext.shiftsDisabled && !useReach.getState().offline) {
+        const known = usePosStore.getState().currentShift;
+        if (!known) {
+          const read: ShiftRead = await waitFor(() => fetchCurrentShift(api, branchId), CHECK_WAIT_MS, reachSink)
+            .then((shift) => {
+              usePosStore.getState().setShift(shift);
+              return 'open' as ShiftRead;
+            })
+            .catch((error) => (isApiError(error) && error.status === 404 ? ('missing' as ShiftRead) : ('unknown' as ShiftRead)));
+          if (mustOpenShift(false, read)) {
+            usePosStore.getState().setShift(null);
+            setShiftFor('retry');
+            return;
+          }
+        }
+      }
       // Who the sale is for is worked out once and kept, so that trying the same sale again is the same sale. It is
       // worked out again when what decided it changes (the way of paying, the number, the credit customer): a customer
       // found for one way of paying is never carried into another.
@@ -317,6 +345,7 @@ export function PaymentScreen({ navigation, api, branchId, setupContext, person 
 
       if (result.kind === 'sent') {
         finished.current = true;
+        shiftedForThisSale.current = false;
         setLastSale(result.sale);
         clearIfSame();
         const toReceipt = () =>
@@ -338,11 +367,13 @@ export function PaymentScreen({ navigation, api, branchId, setupContext, person 
         clearIfSame();
         // A sale that got no answer in time tells the till the line may be down (the request itself may still finish).
         if (isNoAnswer(result.error)) reachSink.lost();
+        if (notice.action === 'open_shift') {
+          // The one thing to do is open a shift, so the till asks for it right here rather than pointing at a tab.
+          setShiftFor('later');
+          return;
+        }
         // The sale is over: back to the till that is open under this screen, ready for the next one.
         Alert.alert(notice.title, notice.body, [
-          ...(notice.action === 'open_shift'
-            ? [{ text: 'Open shift', onPress: () => steer(() => navigation.popTo('Tabs')) }]
-            : []),
           { text: 'OK', onPress: () => steer(() => navigation.popTo('Pos', { reload: true })) },
         ]);
       } else if (result.kind === 'refused') {
@@ -356,6 +387,11 @@ export function PaymentScreen({ navigation, api, branchId, setupContext, person 
           Alert.alert(notice.title, notice.body, [{ text: 'OK', onPress: () => steer(() => navigation.popTo('Pos', { reload: true })) }], {
             cancelable: false,
           });
+        } else if (refusedForShift(result.error) && !shiftedForThisSale.current) {
+          // Nothing was recorded; the shop only wants a shift first. The basket stays, and opening the shift sends it.
+          usePosStore.getState().setShift(null);
+          setShiftFor('retry');
+          return;
         } else {
           // Nothing was recorded and nothing is kept. The basket stays, so the cashier can put it right and try again.
           say(
@@ -519,6 +555,31 @@ export function PaymentScreen({ navigation, api, branchId, setupContext, person 
     setStk({ stage: 'idle' });
   };
 
+  // Built once, and rendered by both returns below: a sale that was saved clears the basket before the shift
+  // is opened, so the sheet must survive the screen falling back to its empty state.
+  const shiftSheet =
+    shiftFor !== null ? (
+      <OpenShiftSheet
+        visible
+        api={api}
+        branchId={branchId}
+        reason={shiftFor}
+        onClose={() => setShiftFor(null)}
+        onOpened={() => {
+          const how = shiftFor;
+          shiftedForThisSale.current = true;
+          setShiftFor(null);
+          if (how === 'retry') {
+            // The shift is open, so the sale the customer is waiting for goes now, under the same key.
+            void completeSale();
+          } else {
+            // It is saved and sends itself; this sale is over, so the till is ready for the next one.
+            navigation.popTo('Pos', { reload: true });
+          }
+        }}
+      />
+    ) : null;
+
   if (total === null || cart.length === 0) {
     return (
       <View style={styles.emptyScreen}>
@@ -534,6 +595,7 @@ export function PaymentScreen({ navigation, api, branchId, setupContext, person 
           actionIcon="arrow-back"
           onAction={() => navigation.goBack()}
         />
+        {shiftSheet}
       </View>
     );
   }
@@ -548,27 +610,32 @@ export function PaymentScreen({ navigation, api, branchId, setupContext, person 
 
   return (
     <View style={styles.screen}>
-      {/* Scrolls: the amount due and the basket. However long the list, the pay controls stay in reach. */}
-      <ScrollView contentContainerStyle={styles.scrollBody} keyboardShouldPersistTaps="handled">
-      <View style={styles.totalCard}>
-        <View style={styles.totalHead}>
-          <MartText variant="shelf" color={MART.inkQuiet}>
-            AMOUNT DUE
-          </MartText>
-          <View style={styles.totalBadge}>
-            <MartText variant="meta" color={MART.inkMuted} style={TABULAR_NUMS}>
-              {cart.length === 1 ? '1 line' : `${cart.length} lines`}
+      {/* Pinned above the lines: the figure the cashier is answerable for stays on screen however long
+          the basket runs. Only the lines move. */}
+      <View style={styles.stickyTotal}>
+        <View style={[styles.totalCard, styles.pinnedCard]}>
+          <View style={styles.totalHead}>
+            <MartText variant="shelf" color={MART.inkQuiet}>
+              AMOUNT DUE
             </MartText>
+            <View style={styles.totalBadge}>
+              <MartText variant="meta" color={MART.inkMuted} style={TABULAR_NUMS}>
+                {cart.length === 1 ? '1 line' : `${cart.length} lines`}
+              </MartText>
+            </View>
           </View>
+          <MartText variant="hero" color={MART.ink} style={TABULAR_NUMS} numberOfLines={1} adjustsFontSizeToFit>
+            KES {formatMoney(total)}
+          </MartText>
         </View>
-        <MartText variant="hero" color={MART.ink} style={TABULAR_NUMS} numberOfLines={1} adjustsFontSizeToFit>
-          KES {formatMoney(total)}
-        </MartText>
       </View>
+
+      <ScrollView contentContainerStyle={styles.scrollBody} keyboardShouldPersistTaps="handled">
+      <View style={styles.linesBody}>
       {pricesAsOf !== null ? (
-        <Text variant="caption" style={styles.warn}>
+        <MartText variant="meta" style={styles.warn}>
           {priceAgeCaption(pricesAsOf, Date.now())}
-        </Text>
+        </MartText>
       ) : null}
 
       <CheckoutLines
@@ -581,6 +648,7 @@ export function PaymentScreen({ navigation, api, branchId, setupContext, person 
         onReweigh={() => navigation.goBack()}
         onRemove={(itemId) => removeFromCart(itemId)}
       />
+      </View>
       </ScrollView>
 
       {/* Sticks to the foot: how to pay, and the one button that finishes the sale. */}
@@ -622,9 +690,9 @@ export function PaymentScreen({ navigation, api, branchId, setupContext, person 
       ) : null}
 
       {mode === 'mpesa' && shares && shares.ok && shares.cashCents > 0 ? (
-        <Text variant="muted" style={styles.gap}>
+        <MartText variant="meta" color={MART.inkQuiet} style={styles.gap}>
           M-Pesa takes whole shillings: {formatMoney(shares.mpesaCents)} by M-Pesa and {formatMoney(shares.cashCents)} in cash.
-        </Text>
+        </MartText>
       ) : null}
 
       {cashDue > 0 && mode !== 'mpesa' ? (
@@ -659,6 +727,7 @@ export function PaymentScreen({ navigation, api, branchId, setupContext, person 
                   <CashierChip
                     key={cents}
                     label={index === 0 ? 'Exact' : formatMoney(cents)}
+                    tone="soft"
                     selected={index === 0 ? handedText.trim() === '' : Number(handedText) * 100 === cents}
                     onPress={() => setHandedText(index === 0 ? '' : String(cents / 100))}
                     accessibilityLabel={index === 0 ? 'Exact amount' : `Handed over ${formatMoney(cents)}`}
@@ -667,22 +736,22 @@ export function PaymentScreen({ navigation, api, branchId, setupContext, person 
             </ScrollView>
           </View>
           {cash?.kind === 'change' ? (
-            <View style={[styles.changeRow, styles.changeOk]}>
+            <Landed style={[styles.changeRow, styles.changeOk]}>
               <MartText variant="label" color={MART.success}>Change</MartText>
               <MartText variant="title" color={MART.success} style={TABULAR_NUMS}>KES {formatMoney(cash.cents)}</MartText>
-            </View>
+            </Landed>
           ) : null}
           {cash?.kind === 'short' ? (
-            <View style={[styles.changeRow, styles.changeShort]}>
+            <Landed style={[styles.changeRow, styles.changeShort]}>
               <MartText variant="label" color={MART.danger}>Short by</MartText>
               <MartText variant="title" color={MART.danger} style={TABULAR_NUMS}>KES {formatMoney(cash.cents)}</MartText>
-            </View>
+            </Landed>
           ) : null}
         </View>
       ) : null}
 
       {mpesaMode ? (
-        <Card style={styles.card}>
+        <View style={[CARD_SURFACE, styles.card]}>
           <View style={styles.mpesaHead}>
             <MartText variant="label" color={MART.inkMuted}>M-Pesa amount</MartText>
             <MartText variant="heading" color={MART.ink} style={TABULAR_NUMS}>
@@ -725,31 +794,31 @@ export function PaymentScreen({ navigation, api, branchId, setupContext, person 
                   Waiting for the customer to enter their M-Pesa PIN…
                 </MartText>
               </View>
-              <Button title="Stop waiting" variant="secondary" onPress={stopWaiting} style={styles.gap} />
+              <CashierButton title="Stop waiting" variant="secondary" onPress={stopWaiting} style={styles.gap} />
             </View>
           ) : null}
           {stk.stage === 'unconfirmed' ? (
             <View>
-              <Text variant="body" style={styles.warn}>{stk.message}</Text>
-              <Button title="Check again" onPress={() => void checkAgain()} disabled={busy} style={styles.gap} />
-              <Button title="Customer did not pay" variant="secondary" onPress={() => startOver()} style={styles.gap} />
+              <MartText variant="body" style={styles.warn}>{stk.message}</MartText>
+              <CashierButton title="Check again" onPress={() => void checkAgain()} disabled={busy} style={styles.gap} />
+              <CashierButton title="Customer did not pay" variant="secondary" onPress={() => startOver()} style={styles.gap} />
             </View>
           ) : null}
           {stk.stage === 'maybe_sent' ? (
             <View>
-              <Text variant="body" style={styles.warn}>{stk.message}</Text>
-              <Button title="No prompt arrived: start again" variant="secondary" onPress={() => startOver()} style={styles.gap} />
+              <MartText variant="body" style={styles.warn}>{stk.message}</MartText>
+              <CashierButton title="No prompt arrived: start again" variant="secondary" onPress={() => startOver()} style={styles.gap} />
             </View>
           ) : null}
           {stk.stage === 'failed' || stk.stage === 'wrong_amount' || stk.stage === 'code_needed' ? (
-            <Text variant="body" style={styles.warn}>{stk.message}</Text>
+            <MartText variant="body" style={styles.warn}>{stk.message}</MartText>
           ) : null}
           {stk.stage === 'wrong_amount' ? (
-            <Button title="Start the payment again" variant="secondary" onPress={() => startOver('wrong_amount')} style={styles.gap} />
+            <CashierButton title="Start the payment again" variant="secondary" onPress={() => startOver('wrong_amount')} style={styles.gap} />
           ) : null}
 
           {canPrompt ? (
-            <Button
+            <CashierButton
               title={stk.stage === 'failed' ? 'Send the prompt again' : 'Send M-Pesa prompt'}
               onPress={() => void sendPrompt()}
               disabled={busy || mpesaShare <= 0}
@@ -758,16 +827,16 @@ export function PaymentScreen({ navigation, api, branchId, setupContext, person 
           ) : null}
 
           {mpesaMode && promptable && offline ? (
-            <Text variant="muted" style={styles.gap}>
+            <MartText variant="meta" color={MART.inkQuiet} style={styles.gap}>
               {OFFLINE_NO_PROMPT}
-            </Text>
+            </MartText>
           ) : null}
 
           {needsCode ? (
             <View>
-              <Text variant="muted" style={styles.gap}>
+              <MartText variant="meta" color={MART.inkQuiet} style={styles.gap}>
                 Already paid, or no prompt? Type the code from the customer's M-Pesa message.
-              </Text>
+              </MartText>
               <CashierField
                 placeholder="M-Pesa code, like SHK7Y2ABCD"
                 value={codeText}
@@ -786,20 +855,20 @@ export function PaymentScreen({ navigation, api, branchId, setupContext, person 
               />
             </View>
           ) : null}
-        </Card>
+        </View>
       ) : null}
 
       {mode === 'credit' ? (
-        <Card style={styles.card}>
+        <View style={[CARD_SURFACE, styles.card]}>
           {customer ? (
             <View>
               <MartText variant="heading">On credit to {customer.name}</MartText>
               {offline ? (
-                <Text variant="muted" style={styles.gap}>
+                <MartText variant="meta" color={MART.inkQuiet} style={styles.gap}>
                   {OFFLINE_NO_CREDIT}
-                </Text>
+                </MartText>
               ) : null}
-              <Button title="Choose someone else" variant="secondary" onPress={() => setCustomer(null)} style={styles.gap} />
+              <CashierButton title="Choose someone else" variant="secondary" onPress={() => setCustomer(null)} style={styles.gap} />
             </View>
           ) : (
             <View>
@@ -813,23 +882,24 @@ export function PaymentScreen({ navigation, api, branchId, setupContext, person 
                 containerStyle={styles.fieldGap}
               />
               {offline ? (
-                <Text variant="muted" style={styles.gap}>
+                <MartText variant="meta" color={MART.inkQuiet} style={styles.gap}>
                   {OFFLINE_NO_CREDIT}
-                </Text>
+                </MartText>
               ) : null}
-              <Button title="Find customer" variant="secondary" onPress={() => void findCustomer()} disabled={busy || offline} />
+              <CashierButton title="Find customer" variant="secondary" onPress={() => void findCustomer()} disabled={busy || offline} />
             </View>
           )}
-        </Card>
+        </View>
       ) : null}
 
       {shares && !shares.ok && (mode === 'split' || handedText.trim()) ? (
-        <Text variant="muted" style={styles.gap}>{shares.message}</Text>
+        <MartText variant="meta" color={MART.inkQuiet} style={styles.gap}>{shares.message}</MartText>
       ) : null}
         </ScrollView>
 
-        <Button
+        <CashierButton
           title={completeLabel}
+          busy={busy}
           onPress={() => void completeSale(paidCode ?? undefined)}
           disabled={
             busy ||
@@ -844,6 +914,8 @@ export function PaymentScreen({ navigation, api, branchId, setupContext, person 
           style={styles.completeBtn}
         />
       </View>
+
+      {shiftSheet}
     </View>
   );
 }
@@ -851,10 +923,16 @@ export function PaymentScreen({ navigation, api, branchId, setupContext, person 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: MART.paper },
   emptyScreen: { flex: 1, backgroundColor: MART.paper, justifyContent: 'center' },
-  scrollBody: {
-    padding: SPACE.lg,
-    paddingBottom: SPACE.md,
+  // The sticky total carries its own full-bleed ground, so the lines pass cleanly underneath it.
+  stickyTotal: {
+    paddingHorizontal: SPACE.lg,
+    paddingTop: SPACE.lg,
+    paddingBottom: SPACE.sm,
+    backgroundColor: MART.paper,
   },
+  pinnedCard: { marginBottom: 0 },
+  scrollBody: { paddingBottom: SPACE.md },
+  linesBody: { paddingHorizontal: SPACE.lg },
   // The pay panel is pinned to the foot — a raised surface with a hairline top and a soft upward lift.
   footer: {
     backgroundColor: MART.paperElevated,

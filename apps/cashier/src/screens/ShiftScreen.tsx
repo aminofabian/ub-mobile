@@ -4,10 +4,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Button } from '@kiosk/ui';
-import { GUTTER, MART, PressableScale, RADIUS, SPACE, StatTile, tint, MartText } from '@kiosk/staff';
+import { GUTTER, MART, RADIUS, SPACE, tint, MartText } from '@kiosk/staff';
 import { describeFailure, isApiError, type ApiClient, type SetupContext } from '@kiosk/core';
-import { CARD_SURFACE, CashierChip, CashierField, TABULAR_NUMS } from '../components/CashierPrimitives';
+import { CARD_SURFACE, CashierButton, CashierChip, CashierField, CashierRow, TABULAR_NUMS } from '../components/CashierPrimitives';
+import { MilestonePill, MilestoneProgress } from '../components/Recognition';
 import { DenominationSheet } from '../components/DenominationSheet';
 import { closeShift, fetchCurrentShift, fetchLastClosed, logDrawerOpen, openShift } from '../api/pos-api';
 import { formatMoney, toCents } from '../lib/money';
@@ -26,11 +26,20 @@ import {
   unsentAtClose,
   type ClosePlan,
 } from '../lib/shift-cash';
-import { EMPTY_PULSE, loadShiftPulse, recordShiftClosePulse, type ShiftPulse } from '../lib/shift-pulse';
+import {
+  EMPTY_PULSE,
+  loadShiftPulse,
+  milestoneWords,
+  nextMilestone,
+  recordShiftClosePulse,
+  type MilestoneKey,
+  type ShiftPulse,
+} from '../lib/shift-pulse';
 import { formatWhen } from '../lib/when';
 import { usePosStore } from '../store/pos-store';
 import { reachSink, useReach } from '../store/reach-store';
 import { useUnsentSales } from '../hooks/useUnsentSales';
+import { feel } from '../lib/feel';
 import type { CashierStackParamList } from '../navigation/AppNavigator';
 
 type Props = {
@@ -87,7 +96,8 @@ export function ShiftScreen({ navigation, api, tenantId, branchId, tenantName, s
     varianceText: string;
     leftInTill: string;
     clean: boolean;
-    streak: number;
+    allSent: boolean;
+    earned: MilestoneKey[];
   } | null>(null);
 
   // Record that the drawer was opened by hand (to make change) — the shift keeps the log.
@@ -305,18 +315,21 @@ export function ShiftScreen({ navigation, api, tenantId, branchId, tenantName, s
         const expected = typeof closed.expectedClosingCash === 'number' ? toCents(closed.expectedClosingCash) : plan.expectedCents;
         const counted = typeof closed.countedClosingCash === 'number' ? toCents(closed.countedClosingCash) : plan.countedCents;
         const variance = expected !== null && counted !== null ? counted - expected : plan.varianceCents;
-        const { next, clean } = await recordShiftClosePulse(tenantId, branchId, person.userId, {
+        const { next, clean, allSent, earned } = await recordShiftClosePulse(tenantId, branchId, person.userId, {
           varianceCents: variance,
           unsentCount: unsent.total,
           closedAt: new Date().toISOString(),
         });
         setPulse(next);
+        if (allSent && clean) feel.success();
+        else feel.warn();
         setClosedSummary({
           counted: formatMoney(counted ?? plan.countedCents),
           varianceText: describeVariance(variance),
           leftInTill: formatMoney(plan.leftInTillCents),
           clean,
-          streak: next.cleanCloseStreak,
+          allSent,
+          earned,
         });
       } catch (e) {
         // It may have closed and the answer been lost: look before reporting a failure.
@@ -356,60 +369,46 @@ export function ShiftScreen({ navigation, api, tenantId, branchId, tenantName, s
         {tenantName}
       </MartText>
 
+      {!shiftsDisabled && pulse && nextMilestone(pulse) ? (
+        // The shift's progression is the spine of this screen: how far to the next milestone, in one glance.
+        <View style={styles.spine}>
+          <MilestoneProgress
+            label={nextMilestone(pulse)!.milestone.label}
+            have={nextMilestone(pulse)!.have}
+            need={nextMilestone(pulse)!.need}
+          />
+        </View>
+      ) : null}
+
       {closedSummary ? (
         <View style={styles.card}>
           <View style={styles.cardHead}>
-            <View style={[styles.cardIcon, closedSummary.clean && styles.cleanIcon]}>
+            <View style={[styles.cardIcon, closedSummary.allSent && styles.cleanIcon]}>
               <Ionicons
-                name={closedSummary.clean ? 'checkmark-done' : 'lock-closed-outline'}
+                name={closedSummary.allSent ? 'checkmark-done' : 'cloud-upload-outline'}
                 size={18}
-                color={closedSummary.clean ? MART.success : MART.fallbackPrimary}
+                color={closedSummary.allSent ? MART.success : MART.warning}
               />
             </View>
             <View style={{ flex: 1 }}>
               <MartText variant="heading">Shift closed</MartText>
-              <MartText variant="meta" color={closedSummary.clean ? MART.success : MART.inkMuted}>
+              <MartText variant="meta" color={MART.inkMuted}>
+                {closedSummary.allSent ? 'All sales sent. ' : 'Some sales are still sending. '}
                 {closedSummary.varianceText}
               </MartText>
             </View>
-            {closedSummary.clean && closedSummary.streak > 0 ? (
-              <View style={styles.streakBadge}>
-                <View style={styles.streakDot} />
-                <MartText variant="meta" color={MART.ink} style={TABULAR_NUMS}>
-                  {closedSummary.streak} clean
-                </MartText>
-              </View>
-            ) : null}
           </View>
+          {closedSummary.earned.length > 0 ? <MilestonePill label={milestoneWords(closedSummary.earned[0])} /> : null}
           <View style={styles.details}>
             <Detail label="Counted" value={`KES ${closedSummary.counted}`} />
             <Detail label="Stays in the till" value={`KES ${closedSummary.leftInTill}`} strong />
           </View>
-          <Button title="Done" variant="secondary" onPress={() => setClosedSummary(null)} style={styles.action} />
-        </View>
-      ) : null}
-
-      {pulse.salesInShift > 0 || pulse.cleanCloseStreak > 0 ? (
-        <View style={styles.pulseRow}>
-          <StatTile
-            label="Sales this shift"
-            value={String(pulse.salesInShift)}
-            zoneKey="sales"
-          />
-          <StatTile
-            label="Clean close streak"
-            value={
-              pulse.cleanCloseStreak > 0
-                ? `${pulse.cleanCloseStreak} ${pulse.cleanCloseStreak === 1 ? 'shift' : 'shifts'}`
-                : 'Ready'
-            }
-            zoneKey="streak"
-          />
+          <CashierButton title="Done" variant="secondary" onPress={() => setClosedSummary(null)} style={styles.action} />
         </View>
       ) : null}
 
       {shiftsDisabled ? (
-        <Button title="Start selling" onPress={() => navigation.navigate('Pos')} style={styles.action} />
+        <CashierButton title="Start selling" onPress={() => navigation.navigate('Pos')} style={styles.action} />
       ) : (
         <>
           <View style={styles.card}>
@@ -490,8 +489,9 @@ export function ShiftScreen({ navigation, api, tenantId, branchId, tenantName, s
                 />
               </View>
               {offline ? <Note>{SHIFT_NEEDS_CONNECTION}</Note> : null}
-              <Button
+              <CashierButton
                 title={busy ? 'Opening...' : 'Open shift'}
+                busy={busy}
                 onPress={() => void handleOpenShift()}
                 disabled={busy || offline}
               />
@@ -499,13 +499,37 @@ export function ShiftScreen({ navigation, api, tenantId, branchId, tenantName, s
           ) : null}
 
           {check === 'unknown' && !currentShift ? (
-            <Button title="Check again" onPress={() => void refreshShift()} disabled={busy} style={styles.action} />
+            <CashierButton title="Check again" onPress={() => void refreshShift()} disabled={busy} style={styles.action} />
           ) : null}
         </>
       )}
 
-      {!shiftsDisabled && check === 'unknown' && !currentShift ? (
-        <Button
+      {/* The person's own work at this shop, as plain counts — and the next milestone, when there is one. */}
+      {pulse.salesRung > 0 || pulse.closesFinished > 0 ? (
+        <View style={styles.card}>
+          <View style={styles.metrics}>
+            <View style={styles.metric}>
+              <MartText variant="meta" color={MART.inkQuiet}>
+                Sales this shift
+              </MartText>
+              <MartText variant="title" style={TABULAR_NUMS}>
+                {pulse.salesInShift}
+              </MartText>
+            </View>
+            <View style={styles.metric}>
+              <MartText variant="meta" color={MART.inkQuiet}>
+                Closes finished
+              </MartText>
+              <MartText variant="title" style={TABULAR_NUMS}>
+                {pulse.closesFinished}
+              </MartText>
+            </View>
+          </View>
+        </View>
+      ) : null}
+
+            {!shiftsDisabled && check === 'unknown' && !currentShift ? (
+        <CashierButton
           title="Start selling without checking"
           variant="secondary"
           onPress={() => navigation.navigate('Pos')}
@@ -515,12 +539,12 @@ export function ShiftScreen({ navigation, api, tenantId, branchId, tenantName, s
 
       {!shiftsDisabled && sellingKnown && currentShift ? (
         <>
-          <Button title="Start selling" onPress={() => navigation.navigate('Pos')} style={styles.action} />
+          <CashierButton title="Start selling" onPress={() => navigation.navigate('Pos')} style={styles.action} />
 
           {closing === 'idle' ? (
             <>
               {offline ? <Note>{SHIFT_NEEDS_CONNECTION}</Note> : null}
-              <Button
+              <CashierButton
                 title="Close shift"
                 variant="danger"
                 onPress={() => setClosing('counting')}
@@ -572,8 +596,8 @@ export function ShiftScreen({ navigation, api, tenantId, branchId, tenantName, s
                       accessibilityLabel="Nothing taken out"
                     />
                   </View>
-                  <Button title="Review" onPress={() => void review()} disabled={busy} style={styles.action} />
-                  <Button
+                  <CashierButton title="Review" onPress={() => void review()} disabled={busy} style={styles.action} />
+                  <CashierButton
                     title="Cancel"
                     variant="secondary"
                     onPress={() => {
@@ -608,64 +632,50 @@ export function ShiftScreen({ navigation, api, tenantId, branchId, tenantName, s
                     />
                   ) : null}
                   {unsentAtClose(unsent.total) ? <Note tone="warn">{unsentAtClose(unsent.total)}</Note> : null}
-                  <Button
+                  <CashierButton
                     title={busy ? 'Closing...' : 'Close shift'}
+                    busy={busy}
                     variant="danger"
                     onPress={() => void handleCloseShift()}
                     disabled={busy || closePlan.step !== 'ready'}
                     style={styles.action}
                   />
-                  <Button title="Count again" variant="secondary" onPress={() => setClosing('counting')} disabled={busy} style={styles.action} />
+                  <CashierButton title="Count again" variant="secondary" onPress={() => setClosing('counting')} disabled={busy} style={styles.action} />
                 </>
               ) : (
-                <Button title="Count again" variant="secondary" onPress={() => setClosing('counting')} style={styles.action} />
+                <CashierButton title="Count again" variant="secondary" onPress={() => setClosing('counting')} style={styles.action} />
               )}
             </View>
           )}
         </>
       ) : null}
 
-      <View style={styles.links}>
+      {/* Everything secondary, as a list to scan — the two real actions are the buttons above. */}
+      <View style={styles.rowCard}>
         {canManageCredit ? (
-          <Button
-            title="Credit book"
-            variant="secondary"
-            onPress={() => navigation.navigate('CreditTabs')}
-            style={styles.action}
-          />
+          <CashierRow icon="book-outline" title="Credit book" onPress={() => navigation.navigate('CreditTabs')} />
         ) : null}
-        <Button
+        <CashierRow
+          icon="cash-outline"
           title={openingDrawer ? 'Opening…' : 'Open drawer'}
-          variant="secondary"
           onPress={openDrawer}
+          busy={openingDrawer}
           disabled={openingDrawer}
-          style={styles.action}
         />
         {canDrawout && currentShift?.id ? (
-          <Button title="Cash pay-out" variant="secondary" onPress={() => setShowDrawout(true)} style={styles.action} />
+          <CashierRow icon="arrow-up-circle-outline" title="Cash pay-out" onPress={() => setShowDrawout(true)} />
         ) : null}
-        <Button
-          title="Grocery invoices"
-          variant="secondary"
-          onPress={() => navigation.navigate('GroceryInvoices')}
-          style={styles.action}
-        />
-        <Button
+        <CashierRow icon="receipt-outline" title="Grocery invoices" onPress={() => navigation.navigate('GroceryInvoices')} />
+        <CashierRow
+          icon="cloud-upload-outline"
           title={unsent.total > 0 ? `Unsent sales (${unsent.total})` : 'Unsent sales'}
-          variant="secondary"
           onPress={() => navigation.navigate('Conflicts')}
-          style={styles.action}
         />
-        <Button
-          title="Receipt printer"
-          variant="secondary"
-          onPress={() => navigation.navigate('PrinterSettings')}
-          style={styles.action}
-        />
+        <CashierRow icon="print-outline" title="Receipt printer" onPress={() => navigation.navigate('PrinterSettings')} />
         {shiftsDisabled ? null : (
-          <Button title="Refresh" variant="secondary" onPress={() => void refreshShift()} disabled={busy} style={styles.action} />
+          <CashierRow icon="refresh" title="Refresh" onPress={() => void refreshShift()} disabled={busy} />
         )}
-        <Button title="Sign out" variant="secondary" onPress={onLogout} style={styles.action} />
+        <CashierRow icon="log-out-outline" title="Sign out" tone="danger" onPress={onLogout} />
       </View>
 
       {denomSheet ? (
@@ -699,10 +709,16 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     gap: SPACE.md,
   },
+  spine: { gap: SPACE.md, marginBottom: SPACE.lg },
   pageTitle: { marginBottom: SPACE.xs },
-  pulseRow: {
+  // Two plain counts side by side: the label quiet above, the figure leading.
+  metrics: {
     flexDirection: 'row',
-    gap: SPACE.sm,
+    gap: SPACE.lg,
+  },
+  metric: {
+    flex: 1,
+    gap: 2,
   },
   card: {
     ...CARD_SURFACE,
@@ -725,21 +741,6 @@ const styles = StyleSheet.create({
   },
   cleanIcon: {
     backgroundColor: MART.successSurface,
-  },
-  streakBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: SPACE.sm,
-    paddingVertical: 3,
-    borderRadius: RADIUS.pill,
-    backgroundColor: MART.paperSunken,
-  },
-  streakDot: {
-    width: 7,
-    height: 7,
-    borderRadius: RADIUS.pill,
-    backgroundColor: MART.gold,
   },
   loadingRow: {
     flexDirection: 'row',
@@ -774,7 +775,13 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     marginBottom: SPACE.xs,
   },
-  links: { gap: SPACE.xs, marginTop: SPACE.sm },
+  // A card of secondary actions: 8pt of air around quiet rows.
+  rowCard: {
+    ...CARD_SURFACE,
+    padding: SPACE.xs,
+    gap: 2,
+    marginTop: SPACE.sm,
+  },
   action: {
     marginTop: SPACE.xs,
   },

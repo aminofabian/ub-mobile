@@ -6,6 +6,7 @@ import {
   closeShift,
   createSale,
   ensureCustomerByPhone,
+  fetchCatalogPage,
   fetchFreshItems,
   fetchItemTypes,
   fetchLastClosed,
@@ -16,7 +17,10 @@ import {
   markWeighed,
   openShift,
   pageRows,
+  fetchPendingGroceryInvoices,
+  payGroceryInvoice,
   quickCreateItem,
+  readPageInfo,
   searchItems,
 } from '../src/api/pos-api';
 
@@ -393,7 +397,14 @@ test('an order is moved along with a PATCH to its own address, one step, and the
 });
 
 test('the shop\'s kinds of product are read from the server\'s list', async () => {
-  const { api, calls } = fakeApi({ get: () => [{ id: 't-2', name: 'Meat' }, { id: 't-1', name: 'Groceries' }, { nope: true }] });
+  const { api, calls } = fakeApi({
+    get: () => [
+      { id: 't-2', key: 'meat', label: 'Meat', active: true, sortOrder: 2 },
+      { id: 't-1', key: 'groceries', label: 'Groceries', active: true, sortOrder: 1 },
+      { id: 't-9', key: 'old', label: 'Old', active: false, sortOrder: 3 },
+      { nope: true },
+    ],
+  });
   assert.deepEqual(await fetchItemTypes(api), [
     { id: 't-1', name: 'Groceries' },
     { id: 't-2', name: 'Meat' },
@@ -450,4 +461,115 @@ test('a product is marked as sold by weight with a PUT to its own address', asyn
     { method: 'put', path: '/api/v1/pos/items/p%209/weighed', body: { weighed: true }, options: undefined },
     { method: 'put', path: '/api/v1/pos/items/p-9/weighed', body: { weighed: false }, options: undefined },
   ]);
+});
+
+test('a row with no id is never offered, a scanned barcode is sent encoded, and a new product is named the way the list would name it', async () => {
+  const rows = fakeApi({ get: () => ({ content: [{ name: 'No id', sellingPrice: 10 }, { id: 'i-1', name: 'Milk', sellingPrice: 65 }] }) });
+  assert.deepEqual((await searchItems(rows.api, {})).map((item) => item.id), ['i-1']);
+  const scan = fakeApi({ get: () => [] });
+  await searchItems(scan.api, { barcode: '60 01&x=1' });
+  assert.equal(scan.calls[0]?.path, '/api/v1/items?barcode=60%2001%26x%3D1');
+  const created = await quickCreateItem(fakeApi({ post: () => ({ id: 'p-1' }) }).api, {
+    name: '  Milk   500ml ',
+    itemTypeId: 't-1',
+    branchId: 'b-1',
+    unitType: 'each',
+    unitPrice: 65,
+  });
+  assert.equal(created.name, 'Milk 500ml');
+});
+
+test('an item twice in a held basket is asked about once', async () => {
+  const asked: string[] = [];
+  const api = {
+    get: async (path: string) => {
+      asked.push(query(path).get('search') ?? '');
+      return { content: [] };
+    },
+  } as never;
+  await fetchFreshItems(api, ['a', 'b', 'a', 'b', 'c'].map((id) => ({ itemId: id, name: id })), 'b-1');
+  assert.deepEqual([...asked].sort(), ['a', 'b', 'c']);
+});
+
+test('where a page sits in the list is read from a Spring page, from the newer shape, and from nothing', () => {
+  assert.deepEqual(readPageInfo({ content: [], last: true, totalPages: 3, number: 2, totalElements: 41 }, 2), { last: true, total: 41 });
+  assert.deepEqual(readPageInfo({ content: [], last: false, totalPages: 3, number: 0, totalElements: 41 }, 0), { last: false, total: 41 });
+  // The newer shape keeps the counts under `page`.
+  assert.deepEqual(readPageInfo({ content: [], page: { size: 250, number: 1, totalElements: 300, totalPages: 2 } }, 1), { last: true, total: 300 });
+  assert.deepEqual(readPageInfo({ content: [], page: { size: 250, number: 0, totalElements: 300, totalPages: 2 } }, 0), { last: false, total: 300 });
+  // Total pages alone says whether it is the last, going by the page asked for when the page does not say its number.
+  assert.deepEqual(readPageInfo({ content: [], totalPages: 2 }, 1), { last: true, total: null });
+  assert.deepEqual(readPageInfo({ content: [], totalPages: 2 }, 0), { last: false, total: null });
+  // A word from the server beats working it out.
+  assert.deepEqual(readPageInfo({ content: [], last: false, totalPages: 1, number: 0 }, 0).last, false);
+  // Nothing said, or not the shape of a page.
+  assert.deepEqual(readPageInfo({ content: [] }, 0), { last: null, total: null });
+  assert.deepEqual(readPageInfo([], 0), { last: null, total: null });
+  assert.deepEqual(readPageInfo(null, 0), { last: null, total: null });
+  assert.deepEqual(readPageInfo('x', 0), { last: null, total: null });
+  // A count that is not a count is not used.
+  assert.deepEqual(readPageInfo({ content: [], totalPages: -1, totalElements: Number.NaN, last: 'yes' }, 0), { last: null, total: null });
+  assert.deepEqual(readPageInfo({ content: [], totalPages: '2', totalElements: '9' }, 0), { last: null, total: null });
+});
+
+test('a page of the whole list is asked for by branch, page and size, and only what can be sold is kept', async () => {
+  const { api, calls } = fakeApi({
+    get: () => ({
+      content: [
+        { id: 'i-1', name: 'Bread', barcode: '6001', sellingPrice: 60, stockQty: 12, buyingPrice: 41, thumbnailUrl: 'https://x/y.png' },
+        { id: 'i-2', name: 'Beef', sellingPrice: 650, isWeighed: true, unitType: 'KG' },
+        { id: 'i-3', name: 'Eggs (family)', sellingPrice: 400, groupLabelOnly: true },
+        { id: 'i-4', name: 'Old', sellingPrice: 10, active: false },
+        { id: 'i-5', name: 'No price', sellingPrice: null },
+      ],
+      last: false,
+      totalElements: 900,
+    }),
+  });
+  const got = await fetchCatalogPage(api, 'b 1', 2, 250);
+  assert.equal(calls[0]?.path, '/api/v1/items?branchId=b%201&page=2&size=250');
+  assert.deepEqual(got, {
+    items: [
+      { id: 'i-1', name: 'Bread', barcode: '6001', sellingPrice: 60, stockOnHand: 12 },
+      { id: 'i-2', name: 'Beef', sellingPrice: 650, weighed: true, unitType: 'kg' },
+    ],
+    seen: 5,
+    last: false,
+    total: 900,
+  });
+  assert.doesNotMatch(JSON.stringify(got), /buyingPrice|41|thumbnail/, 'what the shop paid never reaches the copy');
+});
+
+test('a page that is a bare array has no word on whether it is the last', async () => {
+  const { api } = fakeApi({ get: () => [{ id: 'i-1', name: 'Bread', sellingPrice: 60 }] });
+  assert.deepEqual(await fetchCatalogPage(api, 'b-1', 0, 250), {
+    items: [{ id: 'i-1', name: 'Bread', sellingPrice: 60 }],
+    seen: 1,
+    last: null,
+    total: null,
+  });
+});
+
+test('a failure on a page reaches the caller as it is', async () => {
+  const dead = new TypeError('Network request failed');
+  const { api } = fakeApi({ get: () => { throw dead; } });
+  await assert.rejects(fetchCatalogPage(api, 'b-1', 0, 250), (e) => e === dead);
+});
+
+test('an id from the server is encoded in the address it is put in', async () => {
+  const { api, calls } = fakeApi({ post: () => ({}) });
+  await closeShift(api, '../x?y=1/z', { countedClosingCash: 1 } as never);
+  await payGroceryInvoice(api, 'a/b c', [{ method: 'cash', amount: 1 }]);
+  assert.equal(calls[0]?.path, '/api/v1/shifts/..%2Fx%3Fy%3D1%2Fz/close');
+  assert.equal(calls[1]?.path, '/api/v1/grocery/invoices/a%2Fb%20c/pay');
+});
+
+test('pending grocery invoices ask the server for pending_payment', async () => {
+  const { api, calls } = fakeApi({
+    get: () => ({ invoices: [{ id: 'inv-1', status: 'pending_payment', grandTotal: 100 }] }),
+  });
+  const list = await fetchPendingGroceryInvoices(api);
+  assert.equal(calls[0]?.path, '/api/v1/grocery/invoices?status=pending_payment');
+  assert.equal(list.length, 1);
+  assert.equal(list[0]?.id, 'inv-1');
 });

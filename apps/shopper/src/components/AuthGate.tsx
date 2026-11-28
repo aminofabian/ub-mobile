@@ -1,4 +1,3 @@
-import { Ionicons } from '@expo/vector-icons';
 import {
   getTenantHeaders,
   loginWithPassword,
@@ -15,9 +14,9 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { sendShopperCode, verifyShopperCode } from '../api/shopper-auth';
@@ -30,15 +29,11 @@ import {
   saveShopperProfile,
 } from '../lib/shopper-profile';
 import { useTenant } from '../lib/TenantContext';
-import {
-  ELEVATION,
-  MART,
-  martFromTenant,
-  ON_BRAND,
-  RADIUS,
-  SPACE,
-  TYPE,
-} from '../theme/mart';
+import { doneFeel, failFeel, stepFeel } from '../lib/haptics';
+import { FONT, GUTTER, MART, martFromTenant, onFill, RADIUS, SETTLE, SPACE, TYPE } from '../theme/mart';
+import { Capsule } from './Capsule';
+import { Field } from './Field';
+import { SHEET_SCRIM, SheetPanel } from './SheetPanel';
 import { saveTabPhone as rememberTillPhone } from '../lib/remembered-phone';
 
 export type AuthIntent = 'pass' | 'checkout';
@@ -66,6 +61,98 @@ function tokenFromVerifyUrl(url?: string | null): string | null {
   const match = url.match(/[?&]token=([^&]+)/);
   return match?.[1] ? decodeURIComponent(match[1]) : null;
 }
+
+/**
+ * Two or three choices in one capsule. The chosen one is a filled lobe that slides to the next choice.
+ * `fill` is the lobe's colour: ink by default, or the shop's colour.
+ */
+export function Segmented<T extends string>({
+  options,
+  value,
+  onChange,
+  fill = MART.ink,
+  label,
+}: {
+  options: readonly { value: T; label: string }[];
+  value: T;
+  onChange: (next: T) => void;
+  fill?: string;
+  /** What the group chooses, for a screen reader. */
+  label?: string;
+}) {
+  const [width, setWidth] = useState(0);
+  const index = Math.max(0, options.findIndex((option) => option.value === value));
+  const slot = width > 0 ? (width - SEG_PAD * 2) / options.length : 0;
+  const at = useSharedValue(index);
+  useEffect(() => {
+    at.value = withSpring(index, SETTLE);
+  }, [at, index]);
+  const slide = useAnimatedStyle(() => ({ transform: [{ translateX: at.value * slot }] }));
+  const on = onFill(fill);
+
+  return (
+    <View
+      style={segStyles.track}
+      accessibilityRole="tablist"
+      accessibilityLabel={label}
+      onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
+    >
+      {slot > 0 ? (
+        <Animated.View pointerEvents="none" style={[segStyles.here, { width: slot, backgroundColor: fill }, slide]} />
+      ) : null}
+      {options.map((option) => {
+        const selected = option.value === value;
+        return (
+          <Pressable
+            key={option.value}
+            onPress={() => {
+              if (!selected) stepFeel();
+              onChange(option.value);
+            }}
+            accessibilityRole="tab"
+            accessibilityState={{ selected }}
+            accessibilityLabel={option.label}
+            style={segStyles.slot}
+          >
+            <Text style={[segStyles.text, { color: selected ? on.primary : MART.ink }]}>{option.label}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+const SEG_PAD = 4;
+
+const segStyles = StyleSheet.create({
+  track: {
+    flexDirection: 'row',
+    padding: SEG_PAD,
+    borderRadius: RADIUS.pill,
+    backgroundColor: MART.paperSunken,
+  },
+  here: {
+    position: 'absolute',
+    top: SEG_PAD,
+    bottom: SEG_PAD,
+    left: SEG_PAD,
+    borderRadius: RADIUS.pill,
+  },
+  slot: {
+    flex: 1,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  text: {
+    ...TYPE.label,
+  },
+});
+
+const LANES = [
+  { value: 'join', label: 'Join' },
+  { value: 'in', label: 'Sign in' },
+] as const;
 
 export function AuthGateProvider({ children }: { children: React.ReactNode }) {
   const [visible, setVisible] = useState(false);
@@ -146,6 +233,16 @@ function AuthSheet({
     submittingCode.current = false;
   }, [visible, intent]);
 
+  // One buzz for each thing that goes wrong, and one when the shopper is in.
+  useEffect(() => {
+    if (error) failFeel();
+  }, [error]);
+
+  function authed() {
+    doneFeel();
+    onAuthed();
+  }
+
   function resetJoin() {
     setStep('phone');
     setCode('');
@@ -165,7 +262,7 @@ function AuthSheet({
       } else {
         await loginWithPassword(API_BASE_URL, email.trim(), secret);
       }
-      onAuthed();
+      authed();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not sign in.');
     } finally {
@@ -222,11 +319,11 @@ function AuthSheet({
 
   async function finishJoin() {
     if (!name.trim() || name.trim().length < 2) {
-      setError('Add your name so the till knows who to call.');
+      setError('Add your name so the shop knows who to call.');
       return;
     }
     if (!email.trim() || !email.includes('@')) {
-      setError('Add an email for receipts and your store card.');
+      setError('Add an email for receipts and your account.');
       return;
     }
     if (!shipping.trim()) {
@@ -256,7 +353,7 @@ function AuthSheet({
       } catch {
         if (result.status === 'INVITED') {
           await resendVerificationEmail(API_BASE_URL, email.trim());
-          setError('Check your email to confirm the card, then sign in. Your details are saved on this phone.');
+          setError('Check your email to confirm your account, then sign in. Your details are saved on this phone.');
           await saveDeviceSecret(password);
           await saveShopperProfile({ name, email, phone: local, shipping });
           await rememberTillPhone(local);
@@ -268,7 +365,7 @@ function AuthSheet({
       await saveDeviceSecret(password);
       await saveShopperProfile({ name, email, phone: local, shipping });
       await rememberTillPhone(local);
-      onAuthed();
+      authed();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not finish joining.');
     } finally {
@@ -282,63 +379,58 @@ function AuthSheet({
         ? 'Sign in to check out'
         : 'Join to check out'
       : lane === 'in'
-        ? 'Your store card'
-        : 'Get a store card';
+        ? 'Sign in'
+        : 'Create your account';
+
+  const hint =
+    lane === 'in'
+      ? 'Same email as the website. PIN or password.'
+      : step === 'phone'
+        ? 'We’ll text a 4-digit code to this line.'
+        : step === 'code'
+          ? `Code sent to ${masked || formatPhoneDisplay(phone)}. We’ll fill it from the text.`
+          : 'Email and where to deliver. That’s the last step.';
+  const action =
+    lane === 'in'
+      ? 'Sign in'
+      : step === 'phone'
+        ? 'Text me a code'
+        : step === 'code'
+          ? 'Confirm code'
+          : 'Create account';
+  // A step with one field says what is wrong under that field; a step with several says it under them all.
+  const oneField = lane === 'join' && step !== 'details';
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
         <Pressable style={styles.dim} onPress={onClose} accessibilityLabel="Close" />
-        <View
-          style={[
-            styles.sheet,
-            {
-              maxHeight: sheetMax,
-              marginBottom: keyboardHeight,
-              paddingBottom: SPACE.lg + (keyboardHeight > 0 ? SPACE.sm : insets.bottom),
-            },
-          ]}
+        <SheetPanel
+          title={title}
+          hint={hint}
+          onClose={onClose}
+          style={{
+            maxHeight: sheetMax,
+            marginBottom: keyboardHeight,
+            paddingBottom: SPACE.lg + (keyboardHeight > 0 ? SPACE.sm : insets.bottom),
+          }}
         >
-          <View style={styles.handle} />
-          <View style={styles.sheetHead}>
-            <Text style={styles.sheetTitle}>{title}</Text>
-            <Pressable onPress={onClose} hitSlop={12} accessibilityRole="button" accessibilityLabel="Close">
-              <Ionicons name="close" size={22} color={MART.inkMuted} />
-            </Pressable>
-          </View>
-          <Text style={styles.sheetHint}>
-            {lane === 'in'
-              ? 'Same email as the website. PIN or password.'
-              : step === 'phone'
-                ? 'We’ll text a 4-digit code to this line.'
-                : step === 'code'
-                  ? `Code sent to ${masked || formatPhoneDisplay(phone)}. We’ll fill it from the text.`
-                  : 'Email and where to deliver. That’s the last step.'}
-          </Text>
-
           <View style={styles.lanes}>
-            <Pressable
-              onPress={() => {
-                setLane('join');
-                resetJoin();
+            <Segmented
+              options={LANES}
+              value={lane}
+              label="Join or sign in"
+              onChange={(next) => {
+                setLane(next);
+                if (next === 'join') resetJoin();
+                else setError(null);
               }}
-              style={[styles.lane, lane === 'join' && styles.laneOn]}
-            >
-              <Text style={[styles.laneText, lane === 'join' && styles.laneTextOn]}>Join</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => {
-                setLane('in');
-                setError(null);
-              }}
-              style={[styles.lane, lane === 'in' && styles.laneOn]}
-            >
-              <Text style={[styles.laneText, lane === 'in' && styles.laneTextOn]}>Sign in</Text>
-            </Pressable>
+            />
           </View>
 
           <ScrollView
             ref={scrollRef}
+            style={styles.scroll}
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.body}
             onContentSizeChange={() => {
@@ -347,30 +439,45 @@ function AuthSheet({
           >
             {lane === 'in' ? (
               <>
-                <Field label="Email" value={email} onChange={setEmail} keyboardType="email-address" autoCapitalize="none" />
                 <Field
+                  {...PLAIN}
+                  label="Email"
+                  icon="mail-outline"
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  autoComplete="email"
+                  textContentType="username"
+                />
+                <Field
+                  {...PLAIN}
                   label="PIN or password"
+                  icon="lock-closed-outline"
                   value={secret}
-                  onChange={setSecret}
-                  secure
+                  onChangeText={setSecret}
+                  secureTextEntry
                   keyboardType={looksLikeStaffPin(secret) ? 'number-pad' : 'default'}
                 />
               </>
             ) : step === 'phone' ? (
               <Field
+                {...PLAIN}
                 label="Phone"
+                icon="call-outline"
                 value={phone}
-                onChange={setPhone}
+                onChangeText={setPhone}
                 keyboardType="phone-pad"
                 placeholder="07…"
                 autoComplete="tel"
                 textContentType="telephoneNumber"
+                error={error}
               />
             ) : step === 'code' ? (
               <Field
+                {...PLAIN}
                 label="4-digit code"
                 value={code}
-                onChange={onCodeChange}
+                onChangeText={onCodeChange}
                 keyboardType="number-pad"
                 placeholder="••••"
                 autoFocus
@@ -380,186 +487,123 @@ function AuthSheet({
                 importantForAutofill="yes"
                 inputMode="numeric"
                 onSubmitEditing={() => void confirmCode()}
+                error={error}
+                style={styles.code}
               />
             ) : (
               <>
-                <Field label="Full name" value={name} onChange={setName} autoCapitalize="words" />
-                <Field label="Email" value={email} onChange={setEmail} keyboardType="email-address" autoCapitalize="none" />
                 <Field
+                  {...PLAIN}
+                  label="Full name"
+                  icon="person-outline"
+                  value={name}
+                  onChangeText={setName}
+                  autoCapitalize="words"
+                  autoComplete="name"
+                />
+                <Field
+                  {...PLAIN}
+                  label="Email"
+                  icon="mail-outline"
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  autoComplete="email"
+                />
+                <Field
+                  {...PLAIN}
                   label="Estate / street"
+                  icon="location-outline"
                   value={shipping}
-                  onChange={setShipping}
+                  onChangeText={setShipping}
                   placeholder="e.g. Mirema Drive, opposite the church"
                 />
               </>
             )}
 
-            {error ? <Text style={styles.error}>{error}</Text> : null}
+            {error && !oneField ? (
+              <View style={styles.errorBox} accessibilityRole="alert" accessibilityLiveRegion="polite">
+                <Text style={styles.error}>{error}</Text>
+              </View>
+            ) : null}
           </ScrollView>
 
-          <Pressable
-            onPress={() => {
-              if (lane === 'in') void signIn();
-              else if (step === 'phone') void sendCode();
-              else if (step === 'code') void confirmCode();
-              else void finishJoin();
-            }}
-            disabled={busy}
-            style={[styles.cta, { backgroundColor: mart.primary, opacity: busy ? 0.6 : 1 }]}
-          >
-            <Text style={styles.ctaText}>
-              {busy
-                ? 'Please wait…'
-                : lane === 'in'
-                  ? 'Come in'
-                  : step === 'phone'
-                    ? 'Text me a code'
-                    : step === 'code'
-                      ? 'Confirm code'
-                      : 'Save card'}
-            </Text>
-          </Pressable>
-          {lane === 'join' && step !== 'phone' ? (
-            <Pressable
+          <View style={styles.actions}>
+            <Capsule
+              label={action}
+              chip="arrow-forward"
+              fill={mart.primary}
+              busy={busy}
               onPress={() => {
-                setError(null);
-                submittingCode.current = false;
-                setStep(step === 'details' ? 'code' : 'phone');
+                if (lane === 'in') void signIn();
+                else if (step === 'phone') void sendCode();
+                else if (step === 'code') void confirmCode();
+                else void finishJoin();
               }}
-              style={styles.back}
-            >
-              <Text style={[styles.backText, { color: mart.primary }]}>Back</Text>
-            </Pressable>
-          ) : null}
-        </View>
+            />
+            {lane === 'join' && step !== 'phone' ? (
+              <Pressable
+                onPress={() => {
+                  setError(null);
+                  submittingCode.current = false;
+                  setStep(step === 'details' ? 'code' : 'phone');
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Back"
+                style={({ pressed }) => [styles.back, pressed && styles.pressed]}
+              >
+                <Text style={styles.backText}>Back</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        </SheetPanel>
       </View>
     </Modal>
   );
 }
 
-function Field({
-  label,
-  value,
-  onChange,
-  placeholder,
-  keyboardType,
-  autoCapitalize,
-  secure,
-  autoFocus,
-  maxLength,
-  autoComplete,
-  textContentType,
-  importantForAutofill,
-  inputMode,
-  onSubmitEditing,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  keyboardType?: React.ComponentProps<typeof TextInput>['keyboardType'];
-  autoCapitalize?: React.ComponentProps<typeof TextInput>['autoCapitalize'];
-  secure?: boolean;
-  autoFocus?: boolean;
-  maxLength?: number;
-  autoComplete?: React.ComponentProps<typeof TextInput>['autoComplete'];
-  textContentType?: React.ComponentProps<typeof TextInput>['textContentType'];
-  importantForAutofill?: React.ComponentProps<typeof TextInput>['importantForAutofill'];
-  inputMode?: React.ComponentProps<typeof TextInput>['inputMode'];
-  onSubmitEditing?: React.ComponentProps<typeof TextInput>['onSubmitEditing'];
-}) {
-  return (
-    <View style={styles.field}>
-      <Text style={styles.fieldLabel}>{label}</Text>
-      <TextInput
-        style={styles.input}
-        value={value}
-        onChangeText={onChange}
-        placeholder={placeholder}
-        placeholderTextColor={MART.inkQuiet}
-        keyboardType={keyboardType}
-        autoCapitalize={autoCapitalize ?? 'none'}
-        secureTextEntry={secure}
-        autoCorrect={false}
-        spellCheck={false}
-        autoFocus={autoFocus}
-        maxLength={maxLength}
-        autoComplete={autoComplete}
-        textContentType={textContentType}
-        importantForAutofill={importantForAutofill}
-        inputMode={inputMode}
-        onSubmitEditing={onSubmitEditing}
-        returnKeyType="done"
-      />
-    </View>
-  );
-}
+/** What every field in this sheet shares: nothing is corrected, capitalised or spell-checked for the shopper. */
+const PLAIN = {
+  autoCapitalize: 'none',
+  autoCorrect: false,
+  spellCheck: false,
+  returnKeyType: 'done',
+} as const;
 
 const styles = StyleSheet.create({
   overlay: { flex: 1, justifyContent: 'flex-end' },
-  dim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(15,20,18,0.45)' },
-  sheet: {
-    borderTopLeftRadius: RADIUS.lg,
-    borderTopRightRadius: RADIUS.lg,
-    paddingHorizontal: SPACE.lg,
-    paddingTop: SPACE.sm,
-    ...ELEVATION.lifted,
-  },
-  handle: {
-    alignSelf: 'center',
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: MART.borderStrong,
-    marginBottom: SPACE.md,
-  },
-  sheetHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: SPACE.md,
-  },
-  sheetTitle: { ...TYPE.title, flex: 1, color: MART.ink },
-  sheetHint: { ...TYPE.body, marginTop: SPACE.xs, color: MART.inkMuted },
+  dim: { ...StyleSheet.absoluteFillObject, backgroundColor: SHEET_SCRIM },
   lanes: {
-    marginTop: SPACE.lg,
-    flexDirection: 'row',
-    padding: 3,
-    backgroundColor: MART.paperSunken,
+    paddingHorizontal: GUTTER,
+    paddingTop: SPACE.xs,
+  },
+  scroll: {
+    flexShrink: 1,
+  },
+  body: {
+    paddingHorizontal: GUTTER,
+    paddingTop: SPACE.xl,
+    paddingBottom: SPACE.md,
+    gap: SPACE.lg,
+  },
+  code: {
+    fontFamily: FONT.black,
+    fontSize: 30,
+    letterSpacing: 14,
+    textAlign: 'center',
+  },
+  errorBox: {
+    paddingHorizontal: SPACE.lg,
+    paddingVertical: SPACE.md,
     borderRadius: RADIUS.md,
+    backgroundColor: MART.dangerSurface,
   },
-  lane: {
-    flex: 1,
-    minHeight: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: RADIUS.sm,
+  error: { ...TYPE.label, color: MART.danger },
+  actions: {
+    paddingHorizontal: GUTTER,
+    paddingTop: SPACE.sm,
   },
-  laneOn: { backgroundColor: MART.paperElevated },
-  laneText: { ...TYPE.label, fontWeight: '700', color: MART.inkMuted },
-  laneTextOn: { color: MART.ink },
-  body: { paddingTop: SPACE.lg, paddingBottom: SPACE.md, gap: SPACE.md },
-  field: { gap: SPACE.xs },
-  fieldLabel: { ...TYPE.label, fontWeight: '700', color: MART.ink },
-  input: {
-    minHeight: 52,
-    paddingHorizontal: SPACE.md,
-    borderWidth: 1,
-    borderColor: MART.border,
-    borderRadius: RADIUS.md,
-    backgroundColor: MART.paper,
-    ...TYPE.body,
-    fontSize: 17,
-    color: MART.ink,
-  },
-  error: { ...TYPE.meta, color: MART.danger },
-  cta: {
-    minHeight: 52,
-    borderRadius: RADIUS.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ctaText: { ...TYPE.heading, color: ON_BRAND.primary },
-  back: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-  backText: { ...TYPE.label, fontWeight: '700' },
+  back: { minHeight: 48, alignItems: 'center', justifyContent: 'center' },
+  backText: { ...TYPE.label, color: MART.ink, textDecorationLine: 'underline' },
+  pressed: { opacity: 0.6 },
 });

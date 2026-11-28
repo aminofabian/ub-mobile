@@ -5,24 +5,17 @@ import React, { useEffect, useRef } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCart } from '../hooks/useCart';
+import { totalText } from '../lib/basket-copy';
 import { formatMoney, itemCountLabel } from '../lib/media';
 import { useTenant } from '../lib/TenantContext';
 import { TAB_BAR_BODY } from '../navigation/MartTabBar';
 import type { RootStackParamList } from '../navigation/types';
-import {
-  ELEVATION,
-  GUTTER,
-  MART,
-  martFromTenant,
-  MOTION,
-  ON_BRAND,
-  RADIUS,
-  SPACE,
-  TYPE,
-} from '../theme/mart';
+import { tapFeel } from '../lib/haptics';
+import { FONT, GUTTER, martFromTenant, MOTION, RADIUS, SPACE, TYPE } from '../theme/mart';
 
+const BAR_HEIGHT = 56;
 /** Space lists should leave so the last row clears this bar. */
-export const BASKET_FLOAT_RESERVE = 52 + SPACE.sm + SPACE.md;
+export const BASKET_FLOAT_RESERVE = BAR_HEIGHT + SPACE.sm + SPACE.md;
 
 const HIDDEN = new Set([
   'Cart',
@@ -59,15 +52,15 @@ export function BasketFloat() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const mart = martFromTenant(tenant);
-  const { itemCount, cart } = useCart(tenant.slug);
+  const { itemCount, view } = useCart(tenant.slug);
   const leaf = useNavigationState((state) => leafRouteName(state));
   const stack = useNavigationState((state) => stackRouteName(state));
   const visible = itemCount > 0 && Boolean(leaf) && !HIDDEN.has(leaf ?? '');
   const onTabs = stack === 'MainTabs';
   const tabOffset = TAB_BAR_BODY + Math.max(insets.bottom, SPACE.sm);
-  const bottom = (onTabs ? tabOffset : Math.max(insets.bottom, SPACE.md)) + SPACE.sm;
-  const subtotal = cart?.subtotal ?? 0;
-  const currency = cart?.currency ?? 'KES';
+  const bottom = (onTabs ? tabOffset : Math.max(insets.bottom, SPACE.md)) + SPACE.xs;
+  const subtotal = view.subtotal ?? 0;
+  const total = totalText(view, formatMoney);
   const enter = useRef(new Animated.Value(0)).current;
   const bump = useRef(new Animated.Value(1)).current;
   const lastTotal = useRef(subtotal);
@@ -119,9 +112,12 @@ export function BasketFloat() {
         ]}
       >
         <Pressable
-          onPress={() => navigation.navigate('MainTabs', { screen: 'Cart' })}
+          onPress={() => {
+            tapFeel();
+            navigation.navigate('MainTabs', { screen: 'Cart' });
+          }}
           accessibilityRole="button"
-          accessibilityLabel={`${itemCountLabel(itemCount)}, ${formatMoney(currency, subtotal)}. Open basket`}
+          accessibilityLabel={`${itemCountLabel(itemCount)}${total ? `, ${total}` : ''}. Open basket`}
           style={({ pressed }) => [
             styles.bar,
             { backgroundColor: mart.primary },
@@ -129,13 +125,17 @@ export function BasketFloat() {
           ]}
         >
           <View style={[styles.mark, { backgroundColor: mart.accent }]}>
-            <Ionicons name="file-tray" size={16} color="#1a1204" />
+            <Text style={[styles.markText, { color: mart.onAccent.primary }]}>
+              {itemCount > 99 ? '99+' : itemCount}
+            </Text>
           </View>
-          <Text style={styles.count}>{itemCountLabel(itemCount)}</Text>
+          <Text style={[styles.count, { color: mart.onPrimary.primary }]}>View basket</Text>
           <Animated.View style={{ transform: [{ scale: bump }] }}>
-            <Text style={styles.total}>{formatMoney(currency, subtotal)}</Text>
+            <Text style={[styles.total, { color: mart.onPrimary.primary }]}>{total ?? ''}</Text>
           </Animated.View>
-          <Ionicons name="chevron-forward" size={16} color={ON_BRAND.secondary} />
+          <View style={[styles.go, { backgroundColor: mart.onPrimary.primary }]}>
+            <Ionicons name="arrow-forward" size={18} color={mart.primary} />
+          </View>
         </Pressable>
       </Animated.View>
     </View>
@@ -149,34 +149,40 @@ const styles = StyleSheet.create({
     right: GUTTER,
   },
   bar: {
-    minHeight: 52,
-    paddingLeft: SPACE.sm,
-    paddingRight: SPACE.md,
-    paddingVertical: SPACE.sm,
-    borderRadius: RADIUS.md,
+    minHeight: BAR_HEIGHT,
+    paddingHorizontal: SPACE.sm,
+    borderRadius: RADIUS.pill,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACE.sm,
-    ...ELEVATION.lifted,
+    gap: SPACE.md,
   },
   mark: {
-    width: 32,
-    height: 32,
-    borderRadius: RADIUS.sm,
+    minWidth: 40,
+    height: 40,
+    paddingHorizontal: SPACE.sm,
+    borderRadius: RADIUS.pill,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  markText: {
+    ...TYPE.label,
+    fontFamily: FONT.bold,
   },
   count: {
     ...TYPE.label,
     flex: 1,
-    color: ON_BRAND.secondary,
   },
   total: {
-    ...TYPE.heading,
-    fontVariant: ['tabular-nums'],
-    color: ON_BRAND.primary,
+    ...TYPE.price,
+  },
+  go: {
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   pressed: {
-    opacity: 0.92,
+    opacity: 0.9,
   },
 });

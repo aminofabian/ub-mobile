@@ -1,5 +1,6 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, View, TouchableOpacity, Text } from 'react-native';
+import { describeCameraAccess } from './camera-copy';
 
 export interface BarcodeResult {
   value: string;
@@ -8,22 +9,73 @@ export interface BarcodeResult {
 
 export interface BarcodeScannerProps {
   onBarcode: (result: BarcodeResult) => void;
+  /** Called when the camera module could not be loaded. The scanner says so on its own screen as well, so a caller that wants that read leaves this out. */
   onError?: (error: Error) => void;
   onClose?: () => void;
 }
 
+interface CameraPermission {
+  granted: boolean;
+  canAskAgain: boolean;
+}
+
+interface CameraKit {
+  CameraView: React.ComponentType<Record<string, unknown>>;
+  Camera: {
+    getCameraPermissionsAsync: () => Promise<CameraPermission>;
+    requestCameraPermissionsAsync: () => Promise<CameraPermission>;
+  };
+}
+
+type Access =
+  | { kind: 'checking' }
+  | { kind: 'ready'; CameraView: CameraKit['CameraView'] }
+  /** The person said no to the camera. `canAskAgain` is false once the phone no longer shows the question. */
+  | { kind: 'refused'; canAskAgain: boolean }
+  /** This build has no camera module, or it failed to start. */
+  | { kind: 'missing' };
+
+/**
+ * Reads barcodes for as long as it is shown. It asks for the camera itself the first time, and says what to do when the
+ * answer is no. It loads the camera module only when it is shown, so an app that never shows it does not need the module
+ * to start.
+ */
 export function BarcodeScanner({ onBarcode, onError, onClose }: BarcodeScannerProps) {
-  const [CameraView, setCameraView] = useState<React.ComponentType<Record<string, unknown>> | null>(null);
+  const [access, setAccess] = useState<Access>({ kind: 'checking' });
   const [torch, setTorch] = useState(false);
   const [scanned, setScanned] = useState(false);
-
-  React.useEffect(() => {
-    import('expo-camera')
-      .then((mod) =>
-        setCameraView(() => mod.CameraView as unknown as React.ComponentType<Record<string, unknown>>)
-      )
-      .catch((e) => onError?.(e instanceof Error ? e : new Error(String(e))));
+  // Read when the camera fails to load, and not part of what opens it: a caller that makes a new function on every
+  // render must not have the camera opened, and asked for, again.
+  const failed = useRef(onError);
+  useEffect(() => {
+    failed.current = onError;
   }, [onError]);
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const kit = (await import('expo-camera')) as unknown as CameraKit;
+        let permission = await kit.Camera.getCameraPermissionsAsync();
+        if (!permission.granted && permission.canAskAgain) {
+          permission = await kit.Camera.requestCameraPermissionsAsync();
+        }
+        if (!alive) return;
+        setAccess(
+          permission.granted
+            ? { kind: 'ready', CameraView: kit.CameraView }
+            : { kind: 'refused', canAskAgain: permission.canAskAgain }
+        );
+      } catch (e) {
+        if (!alive) return;
+        setAccess({ kind: 'missing' });
+        failed.current?.(e instanceof Error ? e : new Error(String(e)));
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const handleScan = useCallback(
     (result: { data: string; type: string }) => {
@@ -35,19 +87,30 @@ export function BarcodeScanner({ onBarcode, onError, onClose }: BarcodeScannerPr
     [onBarcode, scanned]
   );
 
-  if (!CameraView) {
+  if (access.kind !== 'ready') {
     return (
       <View style={styles.container}>
-        <Text style={styles.hint}>Loading camera...</Text>
+        <View style={styles.note}>
+          <Text style={styles.hint} accessibilityLiveRegion="polite">
+            {describeCameraAccess(access, 'Scan')}
+          </Text>
+        </View>
+        {onClose ? (
+          <TouchableOpacity style={[styles.button, styles.alone]} onPress={onClose} accessibilityRole="button">
+            <Text style={styles.buttonText}>{access.kind === 'checking' ? 'Cancel' : 'Close'}</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
     );
   }
 
+  const { CameraView } = access;
   return (
     <View style={styles.container}>
       <CameraView
         style={StyleSheet.absoluteFillObject}
         facing="back"
+        enableTorch={torch}
         barcodeScannerSettings={{
           barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39', 'qr'],
         }}
@@ -80,6 +143,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  note: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
   frame: {
     width: 260,
     height: 160,
@@ -100,6 +169,13 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 8,
   },
+  alone: {
+    position: 'absolute',
+    bottom: 48,
+    alignSelf: 'center',
+    minHeight: 48,
+    justifyContent: 'center',
+  },
   buttonText: {
     color: '#fff',
     fontWeight: '600',
@@ -107,7 +183,7 @@ const styles = StyleSheet.create({
   hint: {
     color: '#fff',
     textAlign: 'center',
-    marginTop: 48,
+    fontSize: 16,
   },
 });
 

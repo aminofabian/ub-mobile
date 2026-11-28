@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { HAIRLINE, MART, MartText, PressableScale, RADIUS, SHADOW, SPACE, onFill, tint } from '@kiosk/staff';
+import { HAIRLINE, MART, MartText, PressableScale, RADIUS, SPACE, onFill } from '@kiosk/staff';
 import { TABULAR_NUMS } from './CashierPrimitives';
 
 /**
@@ -27,11 +27,12 @@ export function ToolChip({
       onPress={onPress}
       disabled={disabled}
       scaleTo={0.97}
+      hitSlop={4}
       accessibilityRole="button"
       accessibilityLabel={badge ? `${label}, ${badge} waiting` : label}
       style={[styles.chip, disabled && styles.disabled]}
     >
-      <Ionicons name={icon} size={17} color={MART.fallbackPrimary} />
+      <Ionicons name={icon} size={15} color={MART.fallbackPrimary} />
       <MartText variant="label" numberOfLines={1} color={MART.ink}>
         {label}
       </MartText>
@@ -53,11 +54,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACE.xs,
-    minHeight: 44,
+    minHeight: 36,
     paddingHorizontal: SPACE.md,
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.pill,
     ...HAIRLINE,
-    ...SHADOW.card,
     backgroundColor: MART.paperElevated,
   },
   disabled: { opacity: 0.45 },

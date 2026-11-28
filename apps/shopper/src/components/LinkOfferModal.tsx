@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import type { StoreSnapshot } from '@kiosk/core';
 import { openLookedUpStore } from '../lib/open-shop';
 import { useOpening } from '../lib/useOpening';
-import { GUTTER, MART, SPACE, TYPE } from '../theme/mart';
+import { GUTTER } from '../theme/mart';
+import { SHEET_SCRIM, SheetPanel } from './SheetPanel';
 import { StorePreviewCard } from './StorePreviewCard';
 
 /**
@@ -22,7 +22,6 @@ export function LinkOfferModal({
   onOpened: (store: StoreSnapshot) => void;
   onDismiss: () => void;
 }) {
-  const insets = useSafeAreaInsets();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const opening = useOpening();
@@ -60,18 +59,19 @@ export function LinkOfferModal({
       <View style={styles.root}>
         <Pressable style={styles.backdrop} onPress={dismiss} accessibilityRole="button" accessibilityLabel="Close" />
         {store ? (
-          <View style={[styles.panel, { paddingBottom: Math.max(insets.bottom, SPACE.lg) }]}>
-            <Text style={styles.head}>Open this shop?</Text>
-            <StorePreviewCard
-              store={store}
-              busy={stuck}
-              error={error}
-              dismissLabel="Not now"
-              note={`Your basket at ${currentShopName} stays where it is.`}
-              onOpen={() => void open(store)}
-              onDismiss={dismiss}
-            />
-          </View>
+          <SheetPanel title="Open this shop?" onClose={dismiss} closeLabel="Not now">
+            <View style={styles.body}>
+              <StorePreviewCard
+                store={store}
+                busy={stuck}
+                error={error}
+                dismissLabel="Not now"
+                note={`Your basket at ${currentShopName} stays where it is.`}
+                onOpen={() => void open(store)}
+                onDismiss={dismiss}
+              />
+            </View>
+          </SheetPanel>
         ) : null}
       </View>
     </Modal>
@@ -85,16 +85,9 @@ const styles = StyleSheet.create({
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(11,17,14,0.45)',
+    backgroundColor: SHEET_SCRIM,
   },
-  panel: {
+  body: {
     paddingHorizontal: GUTTER,
-    paddingTop: SPACE.lg,
-    gap: SPACE.md,
-    backgroundColor: MART.paper,
-  },
-  head: {
-    ...TYPE.title,
-    color: MART.ink,
   },
 });

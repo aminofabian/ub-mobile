@@ -21,7 +21,7 @@ const profile = (overrides = {}) => ({
   apiBaseUrl: 'https://api.kiosk.ke',
   apps: {
     shopper: {
-      name: 'Kiosk Ke Shopper',
+      name: 'Kiosk Shoppers',
       expoSlug: 'kiosk-shopper',
       iosBundleId: 'com.kioskke.shopper',
       androidPackage: 'com.kioskke.shopper',
@@ -44,7 +44,7 @@ const baseExpo = () => ({
 
 test('marketplace: brands the listing and embeds no shop', () => {
   const out = applyMarketplace(baseExpo(), 'shopper', profile({ easProjectId: PROJECT }), '_shared');
-  assert.equal(out.name, 'Kiosk Ke Shopper');
+  assert.equal(out.name, 'Kiosk Shoppers');
   assert.equal(out.slug, 'kiosk-shopper');
   assert.equal(out.ios.bundleIdentifier, 'com.kioskke.shopper');
   assert.equal(out.android.package, 'com.kioskke.shopper');
@@ -138,13 +138,21 @@ for (const app of APPS) {
 test('the Palmart Shopper still asks for the camera in Palmart\'s name', () => {
   const expo = resolve('shopper', { TENANT_ID: 'palmart' });
   const camera = expo.plugins.find((plugin) => Array.isArray(plugin) && plugin[0] === 'expo-camera');
-  assert.equal(camera[1].cameraPermission, 'Allow Palmart to use your camera to scan product barcodes.');
+  assert.equal(camera[1].cameraPermission, 'Allow Palmart to use your camera to scan a shop QR code.');
+  assert.equal(camera[1].microphonePermission, false);
+  assert.equal(camera[1].recordAudioAndroid, false);
 });
 
 test('with no tenant at all, the shared profile brands each app and no shop is embedded', () => {
   for (const app of APPS) {
     const expo = resolve(app, {});
-    assert.equal(expo.name, `Kiosk Ke ${app[0].toUpperCase()}${app.slice(1)}`);
+    const names = {
+      shopper: 'Kiosk Shoppers',
+      admin: 'Kiosk Admin',
+      cashier: 'KIOSK CASHIER',
+      stock: 'KIOSK STOCK',
+    };
+    assert.equal(expo.name, names[app] ?? `Kiosk Ke ${app[0].toUpperCase()}${app.slice(1)}`);
     assert.equal(expo.ios.bundleIdentifier, `com.kioskke.${app}`);
     assert.equal(expo.extra?.isWhiteLabel, undefined, app);
     assert.equal(expo.extra?.embeddedTenantSlug, undefined, app);

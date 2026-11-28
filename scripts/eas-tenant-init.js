@@ -5,12 +5,19 @@
  * Example: node scripts/eas-tenant-init.js palmart cashier
  *
  * Creates (or links) the Expo project using the white-label slug, then stores
- * extra.eas.projectId on the tenant profile instead of generic app.json.
+ * easProjectId on the tenant profile instead of generic app.json.
+ *
+ * With app.config.js, `eas init` creates the Expo project but cannot write
+ * projectId into the dynamic config (non-zero exit). We still scrape the id
+ * from its output and save it on the tenant profile.
  */
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const { easBin, easEnv, mobileRoot } = require('./eas-cli');
+
+const UUID_RE =
+  /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
 const tenant = process.argv[2]?.trim();
 const app = process.argv[3]?.trim();
@@ -48,19 +55,60 @@ const result = spawnSync(easBin(), ['init', '--non-interactive', '--force'], {
     KIOSK_TENANT: tenant,
     TENANT_ID: tenant,
   }),
-  stdio: 'inherit',
+  encoding: 'utf8',
   shell: false,
 });
 
-if ((result.status ?? 1) !== 0) {
-  process.exit(result.status ?? 1);
+const combined = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
+if (combined.trim()) {
+  process.stdout.write(combined.endsWith('\n') ? combined : `${combined}\n`);
+}
+
+function projectIdFromText(text) {
+  const labeled =
+    text.match(/"projectId"\s*:\s*"([^"]+)"/i) ||
+    text.match(/projectId["']?\s*[:=]\s*["']?([0-9a-f-]{36})/i);
+  if (labeled?.[1] && UUID_RE.test(labeled[1])) {
+    return labeled[1];
+  }
+  const created = text.match(
+    /Created @[^\s/]+\/[^\s:]+:\s*https:\/\/expo\.dev\/[^\s]+/i,
+  );
+  if (created) {
+    // Id is printed in the follow-up JSON block, not the URL slug.
+  }
+  const all = text.match(
+    /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
+  );
+  return all?.[all.length - 1] ?? null;
 }
 
 const after = JSON.parse(fs.readFileSync(appJsonPath, 'utf8'));
-const projectId = after.expo?.extra?.eas?.projectId?.trim() || null;
+let projectId =
+  after.expo?.extra?.eas?.projectId?.trim() ||
+  process.env.EXPO_PROJECT_ID?.trim() ||
+  projectIdFromText(combined) ||
+  null;
+
+const dynamicConfigWriteFailed = /Cannot automatically write to dynamic config/i.test(
+  combined,
+);
+
+if ((result.status ?? 1) !== 0 && !(dynamicConfigWriteFailed && projectId)) {
+  console.error(
+    projectId
+      ? 'eas init failed after creating a project; project id was parsed but the command exited non-zero.'
+      : 'eas init failed and no project id could be recovered. Run `eas whoami` then retry.',
+  );
+  process.exit(result.status ?? 1);
+}
+
 if (!projectId) {
   console.error(
-    'eas init finished but app.json has no extra.eas.projectId. Run `eas whoami` then retry.',
+    'eas init finished but no project id was found (common with app.config.js).',
+  );
+  console.error(
+    `Re-run with EXPO_PROJECT_ID=<uuid> pnpm eas:init ${tenant} ${app}`,
   );
   process.exit(1);
 }
@@ -71,15 +119,19 @@ profile.apps[app] = { ...(profile.apps[app] ?? {}), easProjectId: projectId };
 fs.writeFileSync(profilePath, `${JSON.stringify(profile, null, 2)}\n`);
 console.log(`Saved easProjectId → ${path.relative(root, profilePath)} apps.${app}`);
 
-if (!beforeProjectId) {
-  if (after.expo?.extra?.eas) {
-    delete after.expo.extra.eas;
-    if (Object.keys(after.expo.extra).length === 0) {
-      delete after.expo.extra;
-    }
-    fs.writeFileSync(appJsonPath, `${JSON.stringify(after, null, 2)}\n`);
-    console.log('Removed projectId from generic app.json (kept on the tenant profile).');
+if (!beforeProjectId && after.expo?.extra?.eas) {
+  delete after.expo.extra.eas;
+  if (Object.keys(after.expo.extra).length === 0) {
+    delete after.expo.extra;
   }
+  fs.writeFileSync(appJsonPath, `${JSON.stringify(after, null, 2)}\n`);
+  console.log('Removed projectId from generic app.json (kept on the tenant profile).');
+}
+
+if (dynamicConfigWriteFailed) {
+  console.log(
+    'Note: eas init could not write into app.config.js — project id is on the tenant profile only.',
+  );
 }
 
 console.log(`Expo project: https://expo.dev/accounts/_/projects (id ${projectId})`);

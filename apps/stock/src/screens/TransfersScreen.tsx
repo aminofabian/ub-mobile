@@ -1,245 +1,148 @@
-import React, { useEffect, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Pressable,
-  StyleSheet,
-  TextInput,
-  View,
-} from 'react-native';
-import { Button, Text, theme } from '@kiosk/ui';
-import type { ApiClient } from '@kiosk/core';
-import { createTransfer, searchItems, type StockItem } from '../api/stock-api';
+import React, { useCallback, useState } from 'react';
+import { FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { readFailureWords } from '@kiosk/core';
+import { GUTTER, MartButton, MartText, MART, RADIUS, SPACE, tint } from '@kiosk/staff';
+import { fetchBranchList, fetchTransfers } from '../api/stock-api';
+import { shortDate } from '../lib/dates';
+import { useStockSession } from '../lib/session';
+import { actionsFor, branchName, directionFor, sortForBranch, statusWords, type Transfer } from '../lib/transfers';
+import type { StockStackParamList } from '../navigation/AppNavigator';
 
-function itemLabel(item: StockItem): string {
-  const name = item.name?.trim() || 'Product';
-  return item.variantName?.trim() ? `${name} · ${item.variantName.trim()}` : name;
-}
+type Props = NativeStackScreenProps<StockStackParamList, 'Transfers'>;
 
-function itemMeta(item: StockItem): string {
-  const parts: string[] = [];
-  if (item.sku?.trim()) parts.push(`SKU ${item.sku.trim()}`);
-  if (item.barcode?.trim()) parts.push(item.barcode.trim());
-  return parts.join(' · ') || 'No SKU';
-}
+type Loaded =
+  | { state: 'loading' }
+  | { state: 'failed'; words: string }
+  | { state: 'ready'; transfers: Transfer[]; branches: Array<{ id?: unknown; name?: unknown }> };
 
-export function TransfersScreen({ api, branchId }: { api: ApiClient; branchId: string }) {
-  const [destBranchId, setDestBranchId] = useState('');
-  const [query, setQuery] = useState('');
-  const [selected, setSelected] = useState<StockItem | null>(null);
-  const [results, setResults] = useState<StockItem[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [searched, setSearched] = useState(false);
-  const [quantity, setQuantity] = useState('1');
-  const [loading, setLoading] = useState(false);
-  const searchGen = useRef(0);
+/** Stock moving to and from this branch: what to send, what is on its way, and what has arrived. */
+export function TransfersScreen({ navigation }: Props) {
+  const { api, branchId, mayMove } = useStockSession();
+  const [loaded, setLoaded] = useState<Loaded>({ state: 'loading' });
+  const [attempt, setAttempt] = useState(0);
 
-  useEffect(() => {
-    if (selected) return;
-    const q = query.trim();
-    if (!q) {
-      setResults([]);
-      setSearched(false);
-      setSearching(false);
-      return;
-    }
-    const gen = ++searchGen.current;
-    setSearching(true);
-    const t = setTimeout(() => {
-      void searchItems(api, { search: q, size: 8 })
-        .then((items) => {
-          if (gen !== searchGen.current) return;
-          setResults(items);
-          setSearched(true);
-        })
-        .catch(() => {
-          if (gen !== searchGen.current) return;
-          setResults([]);
-          setSearched(true);
-        })
-        .finally(() => {
-          if (gen === searchGen.current) setSearching(false);
-        });
-    }, 300);
-    return () => clearTimeout(t);
-  }, [api, query, selected]);
+  useFocusEffect(
+    useCallback(() => {
+      let live = true;
+      void (async () => {
+        try {
+          const [transfers, branches] = await Promise.all([fetchTransfers(api, branchId), fetchBranchList(api).catch(() => null)]);
+          if (!live) return;
+          setLoaded(transfers ? { state: 'ready', transfers, branches: branches ?? [] } : { state: 'failed', words: 'The server sent something the app could not read.' });
+        } catch (error) {
+          if (live) setLoaded({ state: 'failed', words: readFailureWords(error) });
+        }
+      })();
+      return () => {
+        live = false;
+      };
+    }, [api, branchId, attempt])
+  );
 
-  const clearSelection = () => {
-    setSelected(null);
-    setQuery('');
-    setResults([]);
-    setSearched(false);
-  };
+  if (loaded.state === 'loading') {
+    return (
+      <View style={styles.body}>
+        <MartText variant="meta" color={MART.inkQuiet}>
+          Reading the transfers…
+        </MartText>
+      </View>
+    );
+  }
+  if (loaded.state === 'failed') {
+    return (
+      <View style={styles.body}>
+        <View style={[styles.row, { backgroundColor: tint(MART.danger, 0.06), borderColor: MART.border }]}>
+          <MartText variant="meta" color={MART.danger} style={{ flex: 1 }}>
+            {loaded.words}
+          </MartText>
+        </View>
+        <MartButton
+          label="Try again"
+          onPress={() => {
+            setLoaded({ state: 'loading' });
+            setAttempt((n) => n + 1);
+          }}
+        />
+      </View>
+    );
+  }
 
-  const submit = async () => {
-    const toBranchId = destBranchId.trim();
-    const qty = Number(quantity);
-    if (!toBranchId) {
-      Alert.alert('Missing branch', 'Enter a destination branch ID');
-      return;
-    }
-    if (!selected?.id) {
-      Alert.alert('Missing product', 'Search and select a product to transfer');
-      return;
-    }
-    if (!Number.isFinite(qty) || qty <= 0) {
-      Alert.alert('Invalid quantity', 'Enter a quantity greater than zero');
-      return;
-    }
-    if (toBranchId === branchId) {
-      Alert.alert('Same branch', 'Destination must differ from the source branch');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      await createTransfer(api, {
-        fromBranchId: branchId,
-        toBranchId,
-        lines: [{ itemId: selected.id, quantity: qty }],
-      });
-      Alert.alert('Transfer created');
-      setDestBranchId('');
-      clearSelection();
-      setQuantity('1');
-    } catch (e) {
-      Alert.alert('Error', e instanceof Error ? e.message : 'Transfer failed');
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  const { branches } = loaded;
+  const transfers = sortForBranch(loaded.transfers, branchId);
   return (
-    <View style={styles.container}>
-      <Text variant="h1">Create transfer</Text>
-
-      <TextInput
-        style={styles.input}
-        placeholder="Destination branch ID"
-        value={destBranchId}
-        onChangeText={setDestBranchId}
-        autoCapitalize="none"
-        autoCorrect={false}
-        accessibilityLabel="Destination branch ID"
-      />
-
-      {selected ? (
-        <View style={styles.selectedRow}>
-          <View style={styles.selectedText}>
-            <Text variant="body">{itemLabel(selected)}</Text>
-            <Text variant="muted">{itemMeta(selected)}</Text>
-          </View>
-          <Pressable
-            onPress={clearSelection}
-            accessibilityRole="button"
-            accessibilityLabel="Change product"
-            style={styles.clearBtn}
-          >
-            <Text variant="body">Change</Text>
-          </Pressable>
+    <View style={styles.fill}>
+      {mayMove ? (
+        <View style={styles.top}>
+          <MartButton label="New transfer" onPress={() => navigation.navigate('NewTransfer')} />
         </View>
-      ) : (
-        <View style={styles.searchBlock}>
-          <TextInput
-            style={styles.input}
-            placeholder="Search by name, SKU or barcode"
-            value={query}
-            onChangeText={setQuery}
-            autoCapitalize="none"
-            autoCorrect={false}
-            accessibilityLabel="Search products by name, SKU or barcode"
-          />
-          {searching ? (
-            <View style={styles.searchStatus}>
-              <ActivityIndicator size="small" color={theme.colors.primary} />
-              <Text variant="muted">Searching…</Text>
-            </View>
-          ) : null}
-          {!searching && query.trim().length > 0 ? (
-            <FlatList
-              data={results}
-              keyExtractor={(item) => item.id}
-              keyboardShouldPersistTaps="handled"
-              style={styles.results}
-              ListEmptyComponent={
-                searched ? (
-                  <Text variant="muted" style={styles.empty}>
-                    No matching products.
-                  </Text>
-                ) : null
-              }
-              renderItem={({ item }) => (
-                <Pressable
-                  style={styles.resultRow}
-                  onPress={() => {
-                    setSelected(item);
-                    setQuery('');
-                    setResults([]);
-                    setSearched(false);
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Select ${itemLabel(item)}`}
-                >
-                  <Text variant="body">{itemLabel(item)}</Text>
-                  <Text variant="muted">{itemMeta(item)}</Text>
-                </Pressable>
+      ) : null}
+      <FlatList
+        data={transfers}
+        keyExtractor={(transfer) => transfer.id}
+        contentContainerStyle={styles.list}
+        ListEmptyComponent={
+          <MartText variant="meta" color={MART.inkQuiet} style={styles.empty}>
+            No transfers yet. A move between branches appears here from the moment it is made, and nothing leaves the
+            shelf until it is sent.
+          </MartText>
+        }
+        renderItem={({ item: transfer }) => {
+          const direction = directionFor(transfer, branchId);
+          const other = direction === 'out' ? transfer.toBranchId : transfer.fromBranchId;
+          const title = direction === 'other' ? 'Between two other branches' : `${direction === 'out' ? 'To' : 'From'} ${branchName(branches, other)}`;
+          const needsYou = actionsFor(transfer, branchId, mayMove).length > 0;
+          return (
+            <Pressable
+              onPress={() => navigation.navigate('Transfer', { transferId: transfer.id })}
+              accessibilityRole="button"
+              accessibilityLabel={`${title}, ${statusWords(transfer, branchId)}${needsYou ? ', your turn' : ''}`}
+              style={({ pressed }) => [styles.row, pressed && { opacity: 0.9 }]}
+            >
+              <View style={{ flex: 1, gap: 1 }}>
+                <MartText variant="label" numberOfLines={1}>
+                  {title}
+                </MartText>
+                <MartText variant="meta" color={MART.inkQuiet} numberOfLines={1}>
+                  {`${statusWords(transfer, branchId)} · ${transfer.lines.length} ${transfer.lines.length === 1 ? 'item' : 'items'}`}
+                </MartText>
+              </View>
+              {needsYou ? (
+                <View style={styles.turn}>
+                  <MartText variant="shelf" color={MART.warning}>
+                    YOUR TURN
+                  </MartText>
+                </View>
+              ) : (
+                <MartText variant="meta" color={MART.inkQuiet}>
+                  {shortDate(transfer.createdAt)}
+                </MartText>
               )}
-            />
-          ) : null}
-        </View>
-      )}
-
-      <TextInput
-        style={styles.input}
-        placeholder="Quantity"
-        value={quantity}
-        onChangeText={setQuantity}
-        keyboardType="numeric"
-        accessibilityLabel="Quantity"
+            </Pressable>
+          );
+        }}
       />
-      <Button title={loading ? 'Saving...' : 'Create transfer'} onPress={submit} disabled={loading} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16, backgroundColor: theme.colors.background, gap: 12 },
-  input: {
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: 8,
-    padding: 12,
-    minHeight: 48,
-    backgroundColor: theme.colors.surface,
-  },
-  searchBlock: { gap: 8 },
-  searchStatus: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  results: {
-    maxHeight: 220,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: 8,
-    backgroundColor: theme.colors.surface,
-  },
-  resultRow: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.colors.border,
-    gap: 2,
-  },
-  empty: { padding: 12 },
-  selectedRow: {
+  fill: { flex: 1, backgroundColor: MART.paper },
+  body: { padding: GUTTER },
+  top: { padding: GUTTER, paddingBottom: SPACE.sm },
+  list: { paddingHorizontal: GUTTER, paddingBottom: 96, gap: 6 },
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: SPACE.sm,
+    paddingVertical: 10,
+    paddingHorizontal: SPACE.md,
+    borderRadius: RADIUS.md,
+    backgroundColor: MART.paperElevated,
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: 8,
-    padding: 12,
-    backgroundColor: theme.colors.surface,
+    borderColor: MART.border,
   },
-  selectedText: { flex: 1, gap: 2 },
-  clearBtn: { paddingVertical: 4, paddingHorizontal: 8 },
+  turn: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: tint(MART.warning, 0.14) },
+  empty: { textAlign: 'center', padding: SPACE.xl, lineHeight: 19 },
 });

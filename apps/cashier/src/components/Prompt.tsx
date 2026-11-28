@@ -1,6 +1,7 @@
 import React from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet } from 'react-native';
-import { Card, Text, theme } from '@kiosk/ui';
+import { ScrollView, StyleSheet } from 'react-native';
+import { SPACE } from '@kiosk/staff';
+import { BottomSheet } from './BottomSheet';
 
 interface PromptProps {
   visible: boolean;
@@ -9,27 +10,27 @@ interface PromptProps {
   children: React.ReactNode;
 }
 
-/** A small box over the till for one question. Tapping outside it, or the back button, closes it. */
+/**
+ * One question over the till, as a sheet that slides up from the foot and can be sent back down.
+ *
+ * It is deliberately **not** `presentationStyle="pageSheet"`: a native page sheet could not give a text field focus
+ * on iOS — the field never became first responder, so a cashier tapping "Cash in the till" saw nothing happen. This
+ * shape (a transparent modal, a bottom sheet, and a keyboard avoider *inside* it) is the one that can host a form.
+ */
 export function Prompt({ visible, title, onClose, children }: PromptProps) {
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <KeyboardAvoidingView style={styles.backdrop} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close" />
-        <Card style={styles.card}>
-          <Text variant="h2">{title}</Text>
-          <ScrollView keyboardShouldPersistTaps="handled">{children}</ScrollView>
-        </Card>
-      </KeyboardAvoidingView>
-    </Modal>
+    <BottomSheet visible={visible} onClose={onClose} title={title}>
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        contentContainerStyle={styles.body}
+      >
+        {children}
+      </ScrollView>
+    </BottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-    justifyContent: 'center',
-    padding: theme.spacing.md,
-  },
-  card: { maxHeight: '85%' },
+  body: { paddingTop: SPACE.xs, paddingBottom: SPACE.sm },
 });

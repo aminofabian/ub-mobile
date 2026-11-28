@@ -3,14 +3,8 @@ import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useState } from 'react';
-import {
-  FlatList,
-  Modal,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { phase_15_storefront_public } from '@kiosk/types';
 import { useTenant } from '../lib/TenantContext';
@@ -21,17 +15,16 @@ import { ProductCard } from '../components/ProductCard';
 import { ProductGridSkeleton, SkeletonScope } from '../components/Skeleton';
 import { SearchBar } from '../components/SearchBar';
 import { AislePhotoRail } from '../components/AislePhotoRail';
+import { ChipButton } from '../components/Capsule';
+import { ScreenTitle } from '../components/ScreenTitle';
+import { SectionHead } from '../components/SectionHead';
+import { SHEET_SCRIM } from '../components/SheetPanel';
+import { StateBlock } from '../components/StateBlock';
 import { useBasketFloatReserve } from '../components/BasketFloat';
 import { MainTabParamList, RootStackParamList } from '../navigation/types';
-import {
-  ELEVATION,
-  GUTTER,
-  MART,
-  martFromTenant,
-  RADIUS,
-  SPACE,
-  TYPE,
-} from '../theme/mart';
+import { GUTTER, MART, martFromTenant, RADIUS, SPACE, TYPE } from '../theme/mart';
+
+const CELL_PAD = SPACE.sm - 2;
 
 type NavigationProp = CompositeNavigationProp<
   BottomTabNavigationProp<MainTabParamList, 'Search'>,
@@ -45,6 +38,8 @@ export function SearchScreen() {
   const navigation = useNavigation<NavigationProp>();
   const basketReserve = useBasketFloatReserve();
   const mart = martFromTenant(tenant);
+  // This screen is the Search tab, and is also pushed on the stack under a native "Search" header.
+  const asTab = navigation.getState().type === 'tab';
   const [query, setQuery] = useState('');
   const [debounced, setDebounced] = useState('');
   const [scannerVisible, setScannerVisible] = useState(false);
@@ -116,7 +111,7 @@ export function SearchScreen() {
     if (category.id) {
       navigation.navigate('Category', {
         categoryId: category.id,
-        categoryName: category.name ?? 'Aisle',
+        categoryName: category.name ?? 'Category',
         categoryIcon: category.icon,
       });
     }
@@ -134,7 +129,8 @@ export function SearchScreen() {
   const aisleList = categories?.categories ?? [];
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, !asTab && styles.pushed]}>
+      {asTab ? <ScreenTitle title="Search" /> : null}
       <SearchBar
         value={query}
         onChangeText={(text) => {
@@ -142,35 +138,29 @@ export function SearchScreen() {
           setQuery(text);
         }}
         onBarcodePress={openScanner}
-        placeholder="Name, brand, or barcode"
-        autoFocus
-        accent={mart.primary}
+        placeholder="Name, brand or barcode"
+        autoFocus={!asTab}
+        accent={mart.accent}
       />
 
+      {scanError && !showResults ? (
+        <View style={styles.notice} accessibilityRole="alert">
+          <Ionicons name="alert-circle" size={20} color={MART.danger} />
+          <Text style={styles.noticeText}>{scanError}</Text>
+        </View>
+      ) : null}
+
       {!showResults ? (
-        <View style={styles.idle}>
-          <Text style={styles.idleTitle}>Find it on the shelf</Text>
-          <Text style={styles.idleBody}>
-            Type a name, scan a barcode, or jump straight into an aisle.
-          </Text>
+        <View>
           {aisleList.length > 0 ? (
-            <AislePhotoRail
-              categories={aisleList}
-              primary={mart.primary}
-              accent={mart.accent}
-              onSelect={handleCategorySelect}
-            />
+            <>
+              <SectionHead title="Categories" />
+              <AislePhotoRail categories={aisleList} onSelect={handleCategorySelect} />
+            </>
           ) : (
-            <View style={styles.hints}>
-              <View style={styles.hint}>
-                <Ionicons name="barcode-outline" size={18} color={mart.primary} />
-                <Text style={styles.hintText}>Scan a pack to jump to the product</Text>
-              </View>
-              <View style={styles.hint}>
-                <Ionicons name="search-outline" size={18} color={mart.primary} />
-                <Text style={styles.hintText}>Try milk, bread, or a brand name</Text>
-              </View>
-            </View>
+            <Text style={styles.idleBody}>
+              Type a name or a brand, or scan the barcode on a pack to go straight to it.
+            </Text>
           )}
         </View>
       ) : showResults && catalog.isLoading && catalog.items.length === 0 ? (
@@ -178,21 +168,31 @@ export function SearchScreen() {
           <ProductGridSkeleton count={6} />
         </SkeletonScope>
       ) : error && catalog.items.length === 0 ? (
-        <View style={styles.empty}>
-          <Text style={styles.emptyTitle}>Search could not finish</Text>
-          <Text style={styles.errorBody}>{error}</Text>
-        </View>
+        <StateBlock
+          tone="problem"
+          icon="cloud-offline"
+          title="Search could not finish"
+          body={error}
+          style={styles.state}
+        />
       ) : showResults && catalog.items.length === 0 && !catalog.isLoading ? (
-        <View style={styles.empty}>
-          <Ionicons name="search-outline" size={24} color={MART.inkQuiet} />
-          <Text style={styles.emptyTitle}>Nothing matches “{debounced}”</Text>
-          <Text style={styles.emptyBody}>Try a shorter name, or scan the barcode on the pack.</Text>
-        </View>
+        <StateBlock
+          icon="search"
+          title={`Nothing matches “${debounced}”`}
+          body="Try a shorter name, or scan the barcode on the pack."
+          actionLabel="Scan a barcode"
+          actionChip="barcode-outline"
+          onAction={() => void openScanner()}
+          fill={mart.primary}
+          style={styles.state}
+        />
       ) : (
         <FlatList
           data={catalog.items}
           keyExtractor={(item, index) => item.id ?? `${item.name ?? 'item'}-${index}`}
-          numColumns={2}
+          numColumns={3}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           contentContainerStyle={[styles.listContent, { paddingBottom: SPACE.xxxl + basketReserve }]}
           onEndReached={loadMore}
           onEndReachedThreshold={0.45}
@@ -209,138 +209,168 @@ export function SearchScreen() {
           ListFooterComponent={
             catalog.isFetchingNextPage ? (
               <SkeletonScope label="Loading more results">
-                <ProductGridSkeleton count={2} />
+                <ProductGridSkeleton count={3} />
               </SkeletonScope>
             ) : null
           }
         />
       )}
 
-      <Modal visible={scannerVisible} animationType="slide">
-        <View style={styles.scannerContainer}>
-          <CameraView
-            style={styles.camera}
-            facing="back"
-            barcodeScannerSettings={{ barcodeTypes: ['ean13', 'upc_a', 'code128', 'qr'] }}
-            onBarcodeScanned={({ data }) => {
-              if (data) void handleBarcodeScan(data);
-            }}
-          />
-          <View style={styles.scanFrame} pointerEvents="none" />
-          <Pressable
-            style={styles.closeButton}
-            onPress={() => setScannerVisible(false)}
-            accessibilityRole="button"
-            accessibilityLabel="Close scanner"
-          >
-            <Text style={styles.closeButtonText}>Close</Text>
-          </Pressable>
-        </View>
+      <Modal visible={scannerVisible} animationType="slide" onRequestClose={() => setScannerVisible(false)}>
+        {/* A modal is its own window on Android, so it needs its own safe-area provider. */}
+        <SafeAreaProvider>
+          <Scanner onClose={() => setScannerVisible(false)} onScanned={(data) => void handleBarcodeScan(data)} />
+        </SafeAreaProvider>
       </Modal>
     </View>
   );
 }
 
+/** The camera, edge to edge, dimmed everywhere but an outlined window to hold the barcode in. */
+function Scanner({ onClose, onScanned }: { onClose: () => void; onScanned: (data: string) => void }) {
+  const insets = useSafeAreaInsets();
+  return (
+    <View style={styles.scannerContainer}>
+      <CameraView
+        style={StyleSheet.absoluteFill}
+        facing="back"
+        barcodeScannerSettings={{ barcodeTypes: ['ean13', 'upc_a', 'code128', 'qr'] }}
+        onBarcodeScanned={({ data }) => {
+          if (data) onScanned(data);
+        }}
+      />
+      <View style={styles.scanMask} pointerEvents="none">
+        <View style={styles.scanShade} />
+        <View style={styles.scanRow}>
+          <View style={styles.scanShade} />
+          <View style={styles.scanWindow}>
+            <View style={styles.scanFrame} />
+          </View>
+          <View style={styles.scanShade} />
+        </View>
+        <View style={[styles.scanShade, styles.scanBelow]}>
+          <Text style={styles.scanTitle}>Scan a barcode</Text>
+          <Text style={styles.scanBody}>Hold the barcode on the pack inside the window.</Text>
+        </View>
+      </View>
+      <View style={[styles.closeButton, { top: insets.top + SPACE.md }]}>
+        <ChipButton icon="close" label="Close scanner" onPress={onClose} fill={MART.paper} size={44} />
+      </View>
+    </View>
+  );
+}
+
+const WINDOW_W = 280;
+const WINDOW_H = 180;
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: MART.paper,
+  },
+  pushed: {
     paddingTop: SPACE.md,
   },
-  idle: {
-    paddingTop: SPACE.sm,
-  },
-  idleTitle: {
-    ...TYPE.title,
+  notice: {
+    flexDirection: 'row',
+    gap: SPACE.sm,
     marginHorizontal: GUTTER,
+    marginBottom: SPACE.md,
+    padding: SPACE.lg,
+    borderRadius: RADIUS.lg,
+    backgroundColor: MART.dangerSurface,
+  },
+  noticeText: {
+    ...TYPE.label,
+    flex: 1,
+    color: MART.danger,
+  },
+  tries: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACE.sm,
+    paddingHorizontal: GUTTER,
+    paddingTop: SPACE.xs,
+  },
+  tryChip: {
+    minHeight: 44,
+    paddingHorizontal: SPACE.lg,
+    justifyContent: 'center',
+    borderRadius: RADIUS.pill,
+    borderWidth: 1.5,
+    borderColor: MART.ink,
+  },
+  tryText: {
+    ...TYPE.label,
     color: MART.ink,
+  },
+  pressed: {
+    opacity: 0.6,
   },
   idleBody: {
     ...TYPE.body,
     marginHorizontal: GUTTER,
-    marginTop: SPACE.xs,
-    marginBottom: SPACE.xl,
+    marginTop: SPACE.xl,
     color: MART.inkMuted,
-  },
-  hints: {
-    marginHorizontal: GUTTER,
-    gap: SPACE.sm,
-  },
-  hint: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACE.md,
-    minHeight: 52,
-    paddingHorizontal: SPACE.md,
-    borderRadius: RADIUS.md,
-    ...ELEVATION.ruled,
-  },
-  hintText: {
-    ...TYPE.label,
-    flex: 1,
-    color: MART.ink,
   },
   skel: {
     flex: 1,
   },
-  empty: {
-    alignItems: 'center',
-    paddingHorizontal: SPACE.xxl,
-    paddingTop: SPACE.xxxl,
-    gap: SPACE.sm,
-  },
-  emptyTitle: {
-    ...TYPE.heading,
-    color: MART.ink,
-    textAlign: 'center',
-  },
-  emptyBody: {
-    ...TYPE.body,
-    color: MART.inkMuted,
-    textAlign: 'center',
-  },
-  errorBody: {
-    ...TYPE.body,
-    color: MART.danger,
-    textAlign: 'center',
+  state: {
+    paddingTop: SPACE.lg,
   },
   listContent: {
-    paddingHorizontal: GUTTER - SPACE.xs,
-    paddingBottom: SPACE.xxxl,
+    paddingHorizontal: GUTTER - CELL_PAD,
+    paddingTop: SPACE.xs,
   },
   itemWrapper: {
-    width: '50%',
-    padding: SPACE.xs,
+    width: '33.333%',
+    paddingHorizontal: CELL_PAD,
+    paddingBottom: SPACE.md,
   },
   scannerContainer: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: MART.ink,
   },
-  camera: {
+  scanMask: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  scanShade: {
     flex: 1,
+    backgroundColor: SHEET_SCRIM,
   },
+  scanRow: {
+    flexDirection: 'row',
+    height: WINDOW_H,
+  },
+  scanWindow: {
+    width: WINDOW_W,
+    height: WINDOW_H,
+  },
+  /** The window's edge: a cream outline with round shoulders, just inside the clear area. */
   scanFrame: {
-    position: 'absolute',
-    alignSelf: 'center',
-    top: '30%',
-    width: 240,
-    height: 160,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.85)',
-    borderRadius: RADIUS.md,
+    ...StyleSheet.absoluteFillObject,
+    borderWidth: 3,
+    borderColor: MART.paper,
+    borderRadius: RADIUS.lg,
+  },
+  scanBelow: {
+    alignItems: 'center',
+    paddingTop: SPACE.xxl,
+    paddingHorizontal: GUTTER,
+  },
+  scanTitle: {
+    ...TYPE.title,
+    color: MART.paper,
+  },
+  scanBody: {
+    ...TYPE.body,
+    marginTop: SPACE.sm,
+    textAlign: 'center',
+    color: MART.paper,
   },
   closeButton: {
     position: 'absolute',
-    top: 48,
     right: GUTTER,
-    minHeight: 44,
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.62)',
-    paddingHorizontal: SPACE.lg,
-    borderRadius: RADIUS.md,
-  },
-  closeButtonText: {
-    ...TYPE.label,
-    color: '#ffffff',
   },
 });

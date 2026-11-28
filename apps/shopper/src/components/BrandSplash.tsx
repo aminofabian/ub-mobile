@@ -1,22 +1,29 @@
 import React, { useEffect, useRef, useState } from 'react';
-import {
-  AccessibilityInfo,
-  Animated,
+import { AccessibilityInfo, Image, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import Animated, {
   Easing,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import { StatusBar } from 'expo-status-bar';
-import { MART, MOTION, ON_BRAND, RADIUS, SPACE, TYPE } from '../theme/mart';
+import { MART, MOTION, onFill, RADIUS, SPACE, SPRING, TYPE, ZONE } from '../theme/mart';
 import { brandName } from '../lib/brand';
+import { Lobe } from './Coast';
 
 const MARK = require('../../assets/brand-mark.png');
-const STAMP = 152;
-/** Hold long enough that the stamp reads, even on a fast boot. */
+const STAMP = 132;
+const ISLAND = 228;
+/** Hold long enough that the mark reads, even on a fast boot. */
 const MIN_VISIBLE_MS = 1400;
 /** Absolute ceiling. Past this the splash leaves whatever the boot is doing. */
 const MAX_VISIBLE_MS = 4000;
+
+const LAND = MART.fallbackPrimary;
+const ON_LAND = onFill(LAND);
 
 type Props = {
   /** True once the store has resolved and there is something to hand over to. */
@@ -26,25 +33,20 @@ type Props = {
 };
 
 /**
- * The brand mark is stamped onto forest-green stock. Orange then gold rings
- * flash like a till impression, the gold shelf rule draws, and the name prints
- * underneath: the shop's own name in a white-label build, "Kiosk" in the
- * generic app, which has no shop yet.
+ * The whole screen is land. A sun-yellow lobe swells up under the brand mark, the name settles in
+ * beneath it (the shop's own name in a white-label build, "Kiosk" in the generic app, which has no
+ * shop yet), and when the shop is ready the land slides off the top like a coast drawing back.
  */
 export function BrandSplash({ ready, storeName, onDone }: Props) {
   const wordmark = brandName(storeName);
-  const [width, setWidth] = useState(0);
+  const { height } = useWindowDimensions();
   const [reduceMotion, setReduceMotion] = useState<boolean | null>(null);
 
-  const pop = useRef(new Animated.Value(0)).current;
-  const ringA = useRef(new Animated.Value(0)).current;
-  const ringB = useRef(new Animated.Value(0)).current;
-  const wipe = useRef(new Animated.Value(0)).current;
-  const rule = useRef(new Animated.Value(0)).current;
-  const mark = useRef(new Animated.Value(0)).current;
-  const caption = useRef(new Animated.Value(0)).current;
-  const field = useRef(new Animated.Value(1)).current;
-  const lift = useRef(new Animated.Value(0)).current;
+  const island = useSharedValue(0);
+  const mark = useSharedValue(0);
+  const name = useSharedValue(0);
+  const leave = useSharedValue(0);
+  const fade = useSharedValue(1);
 
   const shownAt = useRef(Date.now());
   const handedOver = useRef(false);
@@ -67,88 +69,30 @@ export function BrandSplash({ ready, storeName, onDone }: Props) {
 
   useEffect(() => {
     if (reduceMotion === null) return;
-    if (!reduceMotion && width === 0) return;
-
     if (reduceMotion) {
-      pop.setValue(1);
-      wipe.setValue(1);
-      rule.setValue(1);
-      mark.setValue(1);
-      caption.setValue(1);
+      island.value = 1;
+      mark.value = 1;
+      name.value = 1;
       return;
     }
-
-    Animated.parallel([
-      Animated.timing(pop, {
-        toValue: 1,
-        duration: 540,
-        delay: 40,
-        easing: MOTION.easeOut,
-        useNativeDriver: true,
-      }),
-      Animated.timing(ringA, {
-        toValue: 1,
-        duration: 720,
-        delay: 90,
-        easing: MOTION.easeOut,
-        useNativeDriver: true,
-      }),
-      Animated.timing(ringB, {
-        toValue: 1,
-        duration: 720,
-        delay: 200,
-        easing: MOTION.easeOut,
-        useNativeDriver: true,
-      }),
-      Animated.timing(wipe, {
-        toValue: 1,
-        duration: 520,
-        delay: 380,
-        easing: MOTION.easeOut,
-        useNativeDriver: true,
-      }),
-      Animated.timing(rule, {
-        toValue: 1,
-        duration: 560,
-        delay: 360,
-        easing: MOTION.easeOut,
-        useNativeDriver: true,
-      }),
-      Animated.timing(mark, {
-        toValue: 1,
-        duration: 160,
-        delay: 820,
-        easing: MOTION.easeOut,
-        useNativeDriver: true,
-      }),
-      Animated.timing(caption, {
-        toValue: 1,
-        duration: 320,
-        delay: 640,
-        easing: MOTION.easeOut,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [reduceMotion, width, pop, ringA, ringB, wipe, rule, mark, caption]);
+    island.value = withDelay(40, withSpring(1, SPRING));
+    mark.value = withDelay(160, withSpring(1, SPRING));
+    name.value = withDelay(320, withSpring(1, SPRING));
+  }, [reduceMotion, island, mark, name]);
 
   const handOver = useRef(() => {});
   handOver.current = () => {
     if (handedOver.current) return;
     handedOver.current = true;
-    Animated.parallel([
-      Animated.timing(field, {
-        toValue: 0,
-        duration: MOTION.exit,
-        easing: MOTION.easeIn,
-        useNativeDriver: true,
-      }),
-      Animated.timing(lift, {
-        toValue: 1,
-        duration: MOTION.exit,
-        easing: MOTION.easeIn,
-        useNativeDriver: true,
-      }),
-    ]).start(() => onDone());
+    const done = (finished?: boolean) => {
+      'worklet';
+      if (finished !== false) runOnJS(onDone)();
+    };
+    if (reduceMotion) {
+      fade.value = withTiming(0, { duration: MOTION.exit }, done);
+      return;
+    }
+    leave.value = withTiming(1, { duration: MOTION.view, easing: Easing.bezier(0.7, 0, 0.84, 0) }, done);
   };
 
   useEffect(() => {
@@ -168,62 +112,37 @@ export function BrandSplash({ ready, storeName, onDone }: Props) {
     timers.current.push(setTimeout(() => handOver.current(), wait));
   }, [ready]);
 
-  const liftY = lift.interpolate({ inputRange: [0, 1], outputRange: [0, -16] });
-  const popY = pop.interpolate({ inputRange: [0, 1], outputRange: [18, 0] });
-  const popScale = pop.interpolate({ inputRange: [0, 1], outputRange: [0.84, 1] });
-  const ringAScale = ringA.interpolate({ inputRange: [0, 1], outputRange: [0.78, 1.58] });
-  const ringAOp = ringA.interpolate({ inputRange: [0, 0.2, 1], outputRange: [0, 0.85, 0] });
-  const ringBScale = ringB.interpolate({ inputRange: [0, 1], outputRange: [0.78, 1.72] });
-  const ringBOp = ringB.interpolate({ inputRange: [0, 0.18, 1], outputRange: [0, 0.7, 0] });
+  const fieldStyle = useAnimatedStyle(() => ({
+    opacity: fade.value,
+    transform: [{ translateY: -leave.value * (height + 80) }],
+  }));
+  const islandStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: 0.4 + island.value * 0.6 }, { rotate: `${(1 - island.value) * -24}deg` }],
+    opacity: Math.min(1, island.value * 3),
+  }));
+  const markStyle = useAnimatedStyle(() => ({
+    opacity: Math.min(1, mark.value * 2),
+    transform: [{ scale: 0.8 + mark.value * 0.2 }],
+  }));
+  const nameStyle = useAnimatedStyle(() => ({
+    opacity: Math.min(1, name.value * 2),
+    transform: [{ translateY: (1 - name.value) * 16 }],
+  }));
 
   return (
-    <Animated.View style={[styles.field, { opacity: field }]}>
-      <StatusBar style="light" />
-      <Animated.View style={[styles.lockup, { transform: [{ translateY: liftY }] }]}>
+    <Animated.View style={[styles.field, fieldStyle]}>
+      <StatusBar style={ON_LAND.primary === MART.ink ? 'dark' : 'light'} />
+      <View style={styles.lockup}>
         <View style={styles.stamp} accessibilityElementsHidden>
-          {reduceMotion ? null : (
-            <>
-              <Animated.View
-                pointerEvents="none"
-                style={[
-                  styles.ring,
-                  {
-                    borderColor: MART.fallbackAccent,
-                    opacity: ringAOp,
-                    transform: [{ scale: ringAScale }],
-                  },
-                ]}
-              />
-              <Animated.View
-                pointerEvents="none"
-                style={[
-                  styles.ring,
-                  {
-                    borderColor: MART.gold,
-                    opacity: ringBOp,
-                    transform: [{ scale: ringBScale }],
-                  },
-                ]}
-              />
-            </>
-          )}
-          <Animated.Image
-            source={MARK}
-            accessibilityIgnoresInvertColors
-            style={[
-              styles.markImg,
-              {
-                opacity: pop,
-                transform: [{ translateY: popY }, { scale: popScale }],
-              },
-            ]}
-          />
+          <Animated.View style={[StyleSheet.absoluteFill, styles.centre, islandStyle]}>
+            <Lobe color={ZONE.sun} size={ISLAND} shape={2} />
+          </Animated.View>
+          <Animated.View style={markStyle}>
+            <Image source={MARK} accessibilityIgnoresInvertColors style={styles.markImg} />
+          </Animated.View>
         </View>
 
-        <View
-          onLayout={(event) => setWidth(Math.round(event.nativeEvent.layout.width))}
-          style={styles.wordmarkClip}
-        >
+        <Animated.View style={nameStyle}>
           <Text
             accessibilityRole="header"
             accessibilityLabel={`${wordmark}${storeName ? `, ${storeName}` : ''}`}
@@ -231,60 +150,13 @@ export function BrandSplash({ ready, storeName, onDone }: Props) {
           >
             {wordmark}
           </Text>
-          {width > 0 && reduceMotion === false ? (
-            <Animated.View
-              pointerEvents="none"
-              style={[
-                styles.ink,
-                {
-                  transform: [
-                    {
-                      translateX: wipe.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [0, width],
-                      }),
-                    },
-                  ],
-                },
-              ]}
-            />
+          {storeName ? (
+            <Text numberOfLines={1} style={styles.caption}>
+              {storeName}
+            </Text>
           ) : null}
-        </View>
-
-        <View style={styles.ruleRow}>
-          <View style={styles.ruleTrack}>
-            {width > 0 ? (
-              <Animated.View
-                style={[
-                  styles.ruleFill,
-                  {
-                    transform: [
-                      {
-                        translateX: rule.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [-Math.max(width, STAMP), 0],
-                        }),
-                      },
-                    ],
-                  },
-                ]}
-              />
-            ) : null}
-          </View>
-          <Animated.View
-            style={[
-              styles.endMark,
-              { opacity: mark, transform: [{ scale: mark }] },
-            ]}
-          />
-        </View>
-
-        {storeName ? (
-          <Animated.Text numberOfLines={1} style={[styles.caption, { opacity: caption }]}>
-            {storeName}
-          </Animated.Text>
-        ) : null}
-      </Animated.View>
+        </Animated.View>
+      </View>
     </Animated.View>
   );
 }
@@ -292,7 +164,7 @@ export function BrandSplash({ ready, storeName, onDone }: Props) {
 const styles = StyleSheet.create({
   field: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: MART.fallbackPrimary,
+    backgroundColor: LAND,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -300,71 +172,36 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: SPACE.xxl,
     width: '100%',
-    maxWidth: 320,
+    maxWidth: 340,
   },
   stamp: {
-    width: STAMP,
-    height: STAMP,
+    width: ISLAND,
+    height: ISLAND,
     marginBottom: SPACE.xl,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  ring: {
-    position: 'absolute',
-    width: STAMP,
-    height: STAMP,
-    borderRadius: STAMP / 2,
-    borderWidth: 2,
+  centre: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   markImg: {
     width: STAMP,
     height: STAMP,
-    borderRadius: RADIUS.lg,
-  },
-  wordmarkClip: {
-    overflow: 'hidden',
-    alignSelf: 'stretch',
-    alignItems: 'center',
+    borderRadius: RADIUS.xl,
   },
   wordmark: {
     ...TYPE.display,
-    fontSize: 40,
-    lineHeight: 46,
-    letterSpacing: -1.2,
-    color: ON_BRAND.primary,
+    fontSize: 44,
+    lineHeight: 44,
+    letterSpacing: -2,
+    color: ON_LAND.primary,
     textAlign: 'center',
-  },
-  ink: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: MART.fallbackPrimary,
-  },
-  ruleRow: {
-    marginTop: SPACE.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'stretch',
-    gap: SPACE.xs,
-  },
-  ruleTrack: {
-    flex: 1,
-    height: 2,
-    overflow: 'hidden',
-  },
-  ruleFill: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: MART.gold,
-  },
-  endMark: {
-    width: 7,
-    height: 7,
-    backgroundColor: MART.fallbackAccent,
   },
   caption: {
-    ...TYPE.meta,
-    marginTop: SPACE.md,
-    color: ON_BRAND.secondary,
-    letterSpacing: 0.3,
+    ...TYPE.body,
+    marginTop: SPACE.sm,
+    color: ON_LAND.secondary,
     textAlign: 'center',
-    alignSelf: 'stretch',
   },
 });

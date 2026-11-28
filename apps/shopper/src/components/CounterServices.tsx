@@ -1,26 +1,27 @@
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { ELEVATION, GUTTER, MART, RADIUS, SPACE, TYPE, tint } from '../theme/mart';
+import { StyleSheet, Text, View } from 'react-native';
+import { GUTTER, MART, RADIUS, SPACE, TYPE, ZONE } from '../theme/mart';
+import { PressScale } from './Capsule';
+import { Lobe } from './Coast';
 
 type Service = {
   key: string;
   icon: React.ComponentProps<typeof Ionicons>['name'];
   label: string;
   hint: string;
-  color: string;
+  zone: string;
+  shape: number;
   onPress: () => void;
 };
 
 /**
- * The over-the-counter errands: airtime and power tokens. These used to float
- * over the catalogue as a pill; they belong in the page, next to the shopping.
+ * The over-the-counter errands: airtime and power tokens. They sit in the page next to the shopping,
+ * side by side when the shop offers both.
  */
 export function CounterServices({
   airtimeAvailable,
   showPowerTokens = true,
-  primary,
-  accent,
   onAirtime,
   onTokens,
   flush = false,
@@ -28,8 +29,9 @@ export function CounterServices({
   airtimeAvailable: boolean;
   /** Off only when the server says the shop does not sell power tokens (plan §5.6). */
   showPowerTokens?: boolean;
-  primary: string;
-  accent: string;
+  /** Kept so callers written for the old tiles still compile. Errands take zone colours now. */
+  primary?: string;
+  accent?: string;
   onAirtime: () => void;
   onTokens: () => void;
   /** Skip page gutter when the parent already pads. */
@@ -42,7 +44,8 @@ export function CounterServices({
       icon: 'cellular',
       label: 'Airtime',
       hint: 'Top up any line',
-      color: accent,
+      zone: ZONE.pond,
+      shape: 1,
       onPress: onAirtime,
     });
   }
@@ -52,7 +55,8 @@ export function CounterServices({
       icon: 'flash',
       label: 'Power tokens',
       hint: 'KPLC balance',
-      color: primary,
+      zone: ZONE.lilac,
+      shape: 3,
       onPress: onTokens,
     });
   }
@@ -63,26 +67,29 @@ export function CounterServices({
   return (
     <View style={[styles.row, flush && styles.rowFlush]}>
       {services.map((service) => (
-        <Pressable
-          key={service.key}
-          onPress={service.onPress}
-          accessibilityRole="button"
-          accessibilityLabel={`${service.label} — ${service.hint}`}
-          style={({ pressed }) => [styles.tile, pressed && styles.pressed]}
-        >
-          <View style={[styles.icon, { backgroundColor: tint(service.color, 0.1) }]}>
-            <Ionicons name={service.icon} size={18} color={service.color} />
-          </View>
-          <View style={styles.copy}>
-            <Text numberOfLines={1} style={styles.label}>
-              {service.label}
-            </Text>
-            <Text numberOfLines={1} style={styles.hint}>
-              {service.hint}
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={16} color={MART.inkQuiet} />
-        </Pressable>
+        <View key={service.key} style={styles.cell}>
+          <PressScale
+            onPress={service.onPress}
+            accessibilityRole="button"
+            accessibilityLabel={`${service.label}. ${service.hint}`}
+            style={styles.tile}
+          >
+            <Lobe color={service.zone} size={44} shape={service.shape}>
+              <Ionicons name={service.icon} size={20} color={MART.ink} />
+            </Lobe>
+            <View style={styles.copy}>
+              <Text numberOfLines={1} style={styles.label}>
+                {service.label}
+              </Text>
+              <Text numberOfLines={1} style={styles.hint}>
+                {service.hint}
+              </Text>
+            </View>
+            {services.length === 1 ? (
+              <Ionicons name="chevron-forward" size={18} color={MART.ink} />
+            ) : null}
+          </PressScale>
+        </View>
       ))}
     </View>
   );
@@ -90,30 +97,24 @@ export function CounterServices({
 
 const styles = StyleSheet.create({
   row: {
+    flexDirection: 'row',
     paddingHorizontal: GUTTER,
     gap: SPACE.sm,
   },
   rowFlush: {
     paddingHorizontal: 0,
   },
+  cell: {
+    flex: 1,
+  },
   tile: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACE.md,
-    minHeight: 60,
+    minHeight: 68,
     paddingHorizontal: SPACE.md,
-    borderRadius: RADIUS.md,
-    ...ELEVATION.ruled,
-  },
-  pressed: {
-    backgroundColor: MART.paperSunken,
-  },
-  icon: {
-    width: 36,
-    height: 36,
-    borderRadius: RADIUS.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderRadius: RADIUS.lg,
+    backgroundColor: MART.paperElevated,
   },
   copy: {
     flex: 1,
@@ -121,13 +122,10 @@ const styles = StyleSheet.create({
   },
   label: {
     ...TYPE.label,
-    fontSize: 14,
-    fontWeight: '700',
     color: MART.ink,
   },
   hint: {
     ...TYPE.meta,
-    marginTop: SPACE.xxs,
     color: MART.inkQuiet,
   },
 });

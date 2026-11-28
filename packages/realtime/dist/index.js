@@ -20,6 +20,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // src/index.ts
 var index_exports = {};
 __export(index_exports, {
+  DEFAULT_REALTIME_CHANNELS: () => DEFAULT_REALTIME_CHANNELS,
   buildRealtimeSocketUrl: () => buildRealtimeSocketUrl,
   createRealtimeClient: () => createRealtimeClient
 });
@@ -48,8 +49,10 @@ function buildRealtimeSocketUrl(httpBase, ticketWsUrl, ticket) {
   const pathPart = path.startsWith("/") ? path : `/${path}`;
   return `${origin}${pathPart}?ticket=${encodeURIComponent(ticket)}`;
 }
-function createRealtimeClient(baseURL, api) {
+var DEFAULT_REALTIME_CHANNELS = ["notifications", "pos", "storefront"];
+function createRealtimeClient(baseURL, api, options) {
   const client = api ?? (0, import_core.createApiClient)({ baseURL });
+  const channels = options?.channels ?? DEFAULT_REALTIME_CHANNELS;
   let ws = null;
   let reconnectTimer = null;
   let reconnectAttempt = 0;
@@ -65,8 +68,16 @@ function createRealtimeClient(baseURL, api) {
   }
   async function mintTicket() {
     return client.post("/api/v1/realtime/tickets", {
-      channels: ["notifications", "pos", "storefront"]
+      channels: [...channels]
     });
+  }
+  function send(frame) {
+    if (ws && ws.readyState === 1) {
+      try {
+        ws.send(JSON.stringify(frame));
+      } catch {
+      }
+    }
   }
   function scheduleReconnect() {
     if (stopped || reconnectTimer) return;
@@ -86,13 +97,20 @@ function createRealtimeClient(baseURL, api) {
       ws = new WebSocket(url);
       ws.onopen = () => {
         reconnectAttempt = 0;
+        for (const channel of channels) {
+          send({ op: "subscribe", channel });
+        }
         emitConnection("open");
       };
       ws.onmessage = (event) => {
         try {
-          const data = JSON.parse(String(event.data));
-          const type = data.type ?? data.event ?? "message";
-          emitEvent(type, data.payload ?? data);
+          const frame = JSON.parse(String(event.data));
+          const type = frame.type ?? frame.event ?? "message";
+          if (type === "ping") {
+            send({ op: "pong" });
+            return;
+          }
+          emitEvent(type, frame.data ?? frame.payload ?? frame);
         } catch {
           emitEvent("message", event.data);
         }
@@ -139,6 +157,7 @@ function createRealtimeClient(baseURL, api) {
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
+  DEFAULT_REALTIME_CHANNELS,
   buildRealtimeSocketUrl,
   createRealtimeClient
 });

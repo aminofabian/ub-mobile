@@ -98,3 +98,17 @@ test('a session that ended says to sign in again, not that the server refused th
   assert.match(notice.body, /Do not ring it up again\./);
   assert.doesNotMatch(notice.body, /did not accept|ask your manager/i);
 });
+
+test('a sale paid with a typed M-Pesa code says that nothing has checked the code, in every case, before what not to do', () => {
+  const errors = [setup('shift'), setup('till'), setup('branch'), setup('dispensing'), server(401), server(423), server(500), server(409), server(400), new TypeError('Network request failed')];
+  for (const error of errors) {
+    const plain = describeQueuedSale(error, { app: 'cashier' });
+    const typed = describeQueuedSale(error, { app: 'cashier' }, { typedCode: true });
+    assert.equal(typed.title, plain.title);
+    assert.equal(typed.action, plain.action);
+    assert.match(typed.body, /The M-Pesa code was typed in and nothing has checked it yet: keep the customer's M-Pesa message until the shop has\. Do not ring it up again\.$/, String(error));
+    assert.doesNotMatch(plain.body, /typed in/, 'a sale with no typed code is not told this');
+    assert.equal(typed.body.length > plain.body.length, true);
+  }
+  assert.equal(describeQueuedSale(null, {}, { typedCode: false }).body, describeQueuedSale(null, {}).body);
+});

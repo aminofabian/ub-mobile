@@ -1,76 +1,82 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { addCartLine, createCart, getCart } from '../api/storefront';
-import { cartIdKey } from '../lib/shop-storage';
+import { useCallback, useMemo, useSyncExternalStore } from 'react';
+import {
+  emptyBasket,
+  itemCount as countItems,
+  quantityOf,
+  setQuantity as setBasketQuantity,
+  viewOf,
+  type Basket,
+  type ItemFacts,
+} from '../lib/basket';
+import type { SchedulerState } from '../lib/basket-scheduler';
+import { getBasketSession } from '../lib/basket-session';
 
+const NO_BASKET: Basket = emptyBasket(new Date(0));
+const QUIET: SchedulerState = { status: 'idle', failures: 0, lastError: null };
+const nothing = () => undefined;
+
+/**
+ * The shopper's basket for a shop. It lives on the phone first: a tap is shown at once and told to the shop
+ * a moment later, so it does not need a signal, and a basket kept from last time is there when the app opens.
+ * What the shop says about prices and totals replaces the phone's figures when it answers.
+ */
 export function useCart(slug: string | undefined) {
-  const queryClient = useQueryClient();
+  const session = slug ? getBasketSession(slug) : null;
 
-  const cartIdQuery = useQuery({
-    queryKey: ['cartId', slug],
-    queryFn: async () => {
-      if (!slug) return null;
-      const stored = await AsyncStorage.getItem(cartIdKey(slug));
-      return stored;
+  const basket = useSyncExternalStore(
+    useCallback((listener: () => void) => (session ? session.store.subscribe(listener) : nothing), [session]),
+    () => (session ? session.store.get() : NO_BASKET),
+  );
+  const sending = useSyncExternalStore(
+    useCallback((listener: () => void) => (session ? session.scheduler.subscribe(listener) : nothing), [session]),
+    () => (session ? session.scheduler.state() : QUIET),
+  );
+
+  /** Sets a line to an amount. Zero takes it out. */
+  const setLineQuantity = useCallback(
+    (item: ItemFacts, quantity: number) => {
+      session?.store.update((current) => setBasketQuantity(current, item, quantity, new Date()));
     },
-    enabled: !!slug,
-  });
+    [session],
+  );
 
-  const cartQuery = useQuery({
-    queryKey: ['cart', slug, cartIdQuery.data],
-    queryFn: () => getCart(slug!, cartIdQuery.data!),
-    enabled: !!slug && !!cartIdQuery.data,
-  });
-
-  const setLineQty = useMutation({
-    mutationFn: async ({ itemId, quantity }: { itemId: string; quantity: number }) => {
-      if (!slug) throw new Error('No tenant');
-
-      let cartId = cartIdQuery.data;
-      if (!cartId) {
-        const newCart = await createCart(slug);
-        cartId = newCart.id;
-        if (cartId) {
-          await AsyncStorage.setItem(cartIdKey(slug), cartId);
-        }
-      }
-
-      if (!cartId) throw new Error('Failed to create cart');
-
-      return addCartLine(slug, cartId, { itemId, quantity: Math.max(0, quantity) });
+  /** Adds to a line, or takes from it with a negative amount, from what the basket holds when it runs. */
+  const addToBasket = useCallback(
+    (item: ItemFacts, by: number) => {
+      session?.store.update((current) => setBasketQuantity(current, item, quantityOf(current, item.itemId) + by, new Date()));
     },
-    onSuccess: (updatedCart) => {
-      if (updatedCart.id) {
-        queryClient.setQueryData(['cartId', slug], updatedCart.id);
-        queryClient.setQueryData(['cart', slug, updatedCart.id], updatedCart);
-      }
-      queryClient.invalidateQueries({ queryKey: ['cart', slug] });
-      queryClient.invalidateQueries({ queryKey: ['cartId', slug] });
-    },
-  });
+    [session],
+  );
 
-  const addToCart = useMutation({
-    mutationFn: async ({ itemId, quantity }: { itemId: string; quantity: number }) => {
-      const current =
-        cartQuery.data?.lines?.find((line) => line.itemId === itemId)?.quantity ?? 0;
-      return setLineQty.mutateAsync({ itemId, quantity: current + quantity });
-    },
-  });
+  /**
+   * Sends what the shop has not heard and, when its last word on the prices is old, asks for them again.
+   * Stable, so a screen can call it when it opens without calling again on every redraw.
+   */
+  const retryNow = useCallback(
+    () => (session ? session.refresh() : Promise.resolve({ kind: 'idle' as const })),
+    [session],
+  );
 
-  const lines = cartQuery.data?.lines ?? [];
-  const itemCount = lines.reduce((sum, line) => sum + (line.quantity ?? 0), 0);
-
-  function quantityFor(itemId: string): number {
-    return lines.find((line) => line.itemId === itemId)?.quantity ?? 0;
-  }
+  const view = useMemo(() => viewOf(basket), [basket]);
+  const refusedCount = Object.keys(basket.refused).length;
 
   return {
-    cart: cartQuery.data,
-    cartId: cartIdQuery.data,
-    isLoading: cartQuery.isLoading || cartIdQuery.isLoading,
-    addToCart,
-    setLineQty,
-    itemCount,
-    quantityFor,
+    basket,
+    lines: basket.lines,
+    cartId: basket.cartId,
+    itemCount: countItems(basket),
+    quantityFor: (itemId: string) => quantityOf(basket, itemId),
+    setLineQuantity,
+    addToBasket,
+    view,
+    refused: basket.refused,
+    refusedCount,
+    /** The saved basket has not been read yet. */
+    isLoading: session ? !session.store.isLoaded() : false,
+    status: sending.status,
+    /** The last send got no answer and something is still waiting. */
+    offline: sending.status === 'no-signal' && view.waiting,
+    retryNow,
+    session,
   };
 }

@@ -10,6 +10,7 @@ import {
   generateIdempotencyKey,
   itemLabel,
   QTY_SCALE,
+  setItemWeighed,
   visibleDepartments,
   type DepartmentOption,
   type StockItem,
@@ -465,6 +466,17 @@ function SellCounter({ navigation }: Props) {
         name={weighing ? itemLabel(weighing) : ''}
         perUnitCents={weighing?.sellingCents ?? null}
         onCancel={() => weighing && dropWeighing(weighing.id)}
+        onNotWeighed={
+          weighing
+            ? async () => {
+                const result = await setItemWeighed(api, weighing.id, false);
+                if (!result.ok) return result.words;
+                dropWeighing(weighing.id);
+                setNote({ tone: 'ok', text: `${itemLabel(weighing)} is no longer sold by weight.` });
+                return null;
+              }
+            : undefined
+        }
         onConfirm={(thousandths) => {
           if (!weighing) return null;
           // WeightSheet is in thousandths; the basket is in ten-thousandths (QTY_SCALE).

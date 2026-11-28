@@ -25,6 +25,11 @@ export interface OutboxItem {
   tenantId?: string;
   /** A line of words about what this is (what was in a sale), for the person who has to find it again. Never sent to the server. */
   label?: string;
+  /**
+   * What the app knows about this request that the server is never told (who rang a sale, how its M-Pesa payment was
+   * confirmed, how old its prices were). Plain values only; what they mean is the app's business, not the queue's.
+   */
+  facts?: Record<string, string | number | boolean>;
 }
 
 export interface Outbox {
@@ -41,6 +46,22 @@ export interface OutboxChange {
 
 /** After this many failed attempts, or a conflict, a sale stops being "waiting" and needs a person. The Conflicts screen lists these. */
 export const ATTENTION_AFTER_RETRIES = 3;
+
+/** The most of a server's answer kept with a queued request: enough to say what went wrong, too little to carry a web page. */
+export const STORED_ERROR_LIMIT = 300;
+
+/**
+ * What is kept of a server's answer about a queued request. The queue is one list that is written again whole on every
+ * change, and it holds the sales not yet sent, so an answer is never kept at the size a proxy or a login page might send
+ * it: a page is not kept at all, only that one came.
+ */
+export function storedError(text: string | undefined): string | undefined {
+  if (text === undefined) return undefined;
+  const trimmed = text.trim();
+  if (trimmed.startsWith('<')) return 'The server sent a web page instead of an answer.';
+  const characters = Array.from(trimmed);
+  return characters.length <= STORED_ERROR_LIMIT ? trimmed : `${characters.slice(0, STORED_ERROR_LIMIT).join('')}…`;
+}
 
 export function needsAttention(item: OutboxItem): boolean {
   return Boolean(item.conflictType) || item.retries >= ATTENTION_AFTER_RETRIES;
@@ -269,13 +290,14 @@ function makeOutbox(target: string | undefined): Outbox {
     async markRetry(id, error) {
       await edit(target, (items) =>
         items.some((i) => i.id === id)
-          ? items.map((i) => (i.id === id ? { ...i, retries: i.retries + 1, lastError: error } : i))
+          ? items.map((i) => (i.id === id ? { ...i, retries: i.retries + 1, lastError: storedError(error) } : i))
           : null,
       );
     },
     async update(id, patch) {
+      const safe = 'lastError' in patch ? { ...patch, lastError: storedError(patch.lastError) } : patch;
       await edit(target, (items) =>
-        items.some((i) => i.id === id) ? items.map((i) => (i.id === id ? { ...i, ...patch } : i)) : null,
+        items.some((i) => i.id === id) ? items.map((i) => (i.id === id ? { ...i, ...safe } : i)) : null,
       );
     },
   };

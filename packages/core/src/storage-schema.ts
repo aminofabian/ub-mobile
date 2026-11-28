@@ -151,6 +151,7 @@ async function readLegacy(store: KeyValueStore): Promise<LegacyData> {
     groceryForwards: null,
     spoils: null,
     stockTake: null,
+    stockScope: null,
   };
   const outboxRaw = await store.get(LEGACY_PLAIN.outbox);
 

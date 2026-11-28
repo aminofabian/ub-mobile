@@ -1,22 +1,15 @@
 import { useRoute } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Capsule, Tag } from '../components/Capsule';
+import { Bone, SkeletonScope } from '../components/Skeleton';
+import { StateBlock } from '../components/StateBlock';
 import { useTenant } from '../lib/TenantContext';
 import { usePaymentStatus } from '../hooks/usePaymentStatus';
-import { Bone, SkeletonScope } from '../components/Skeleton';
 import { RootStackParamList } from '../navigation/AppNavigator';
-import {
-  ELEVATION,
-  GUTTER,
-  MART,
-  martFromTenant,
-  ON_BRAND,
-  RADIUS,
-  SPACE,
-  TYPE,
-} from '../theme/mart';
+import { GUTTER, MART, martFromTenant, RADIUS, SPACE, TILE, TYPE, ZONE } from '../theme/mart';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'OrderDetail'>;
 
@@ -29,66 +22,63 @@ export function OrderDetailScreen() {
   const { data: status, isLoading, error, refetch } = usePaymentStatus(tenant.slug, orderId, true);
 
   const tone = status?.paymentFailed
-    ? { bg: MART.dangerSurface, fg: MART.danger, label: 'Payment failed' }
+    ? { zone: ZONE.coral, label: 'Payment failed' }
     : status?.paid
-      ? { bg: MART.successSurface, fg: MART.success, label: 'Paid' }
-      : { bg: MART.warningSurface, fg: MART.warning, label: status?.orderStatus ?? 'Pending' };
+      ? { zone: ZONE.leaf, label: 'Paid' }
+      : { zone: ZONE.sun, label: sentence(status?.orderStatus ?? 'Pending') };
 
   return (
-    <View style={[styles.shell, { paddingBottom: SPACE.xl + insets.bottom }]}>
+    <View style={[styles.shell, { paddingBottom: SPACE.md + insets.bottom }]}>
       <View style={styles.body}>
-        <Text style={styles.title}>Order status</Text>
-        <Text style={styles.orderId}>#{orderId.slice(-8).toUpperCase()}</Text>
+        <Text accessibilityRole="header" style={styles.title}>
+          Order status
+        </Text>
+        <Text selectable style={styles.orderId}>
+          #{orderId.slice(-8).toUpperCase()}
+        </Text>
 
         {isLoading ? (
           <SkeletonScope label="Loading order status" style={styles.loading}>
-            <Bone h={96} />
+            <Bone h={132} r={RADIUS.lg} />
           </SkeletonScope>
         ) : error ? (
-          <View style={styles.card}>
-            <Text style={styles.errorTitle}>We could not load this order</Text>
-            <Text style={styles.errorBody}>
-              {error instanceof Error ? error.message : 'Check your connection and refresh.'}
-            </Text>
-          </View>
+          <StateBlock
+            tone="problem"
+            icon="cloud-offline"
+            title="We could not load this order"
+            body={error instanceof Error ? error.message : 'Check your connection and refresh.'}
+            style={styles.problem}
+          />
         ) : (
-          <View style={[styles.card, { backgroundColor: tone.bg, borderWidth: 0 }]}>
-            <Text style={[styles.statusLabel, { color: tone.fg }]}>{tone.label}</Text>
-            {status?.failureReason ? (
-              <Text style={styles.statusReason}>{status.failureReason}</Text>
-            ) : status?.paid ? (
-              <Text style={styles.statusReason}>
-                Payment confirmed. Collect at the counter with this number.
-              </Text>
-            ) : (
-              <Text style={styles.statusReason}>
-                We are still waiting on confirmation. This refreshes on its own.
-              </Text>
-            )}
+          <View style={styles.card}>
+            <Tag label={tone.label} color={tone.zone} />
+            <Text style={styles.statusReason}>
+              {status?.failureReason
+                ? status.failureReason
+                : status?.paid
+                  ? 'Payment confirmed. Collect at the counter with this number.'
+                  : 'We are still waiting on confirmation. This refreshes on its own.'}
+            </Text>
           </View>
         )}
       </View>
 
-      <Pressable
-        onPress={() => void refetch()}
-        accessibilityRole="button"
-        style={({ pressed }) => [
-          styles.cta,
-          { backgroundColor: mart.primary },
-          pressed && styles.ctaPressed,
-        ]}
-      >
-        <Text style={styles.ctaLabel}>Refresh</Text>
-      </Pressable>
+      <Capsule label="Refresh" chip="refresh" fill={mart.primary} onPress={() => void refetch()} />
     </View>
   );
+}
+
+/** "PENDING_PAYMENT" and "pending payment" both read "Pending payment". */
+function sentence(text: string): string {
+  const words = text.replace(/[_-]+/g, ' ').trim().toLowerCase();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : 'Pending';
 }
 
 const styles = StyleSheet.create({
   shell: {
     flex: 1,
     paddingHorizontal: GUTTER,
-    paddingTop: SPACE.lg,
+    paddingTop: SPACE.md,
     backgroundColor: MART.paper,
   },
   body: {
@@ -101,47 +91,22 @@ const styles = StyleSheet.create({
   orderId: {
     ...TYPE.body,
     marginTop: SPACE.xs,
-    color: MART.inkQuiet,
-    fontVariant: ['tabular-nums'],
+    color: MART.inkMuted,
   },
   loading: {
     marginTop: SPACE.xxl,
   },
+  problem: {
+    paddingHorizontal: 0,
+  },
   card: {
+    ...TILE,
     marginTop: SPACE.xxl,
     padding: SPACE.xl,
-    borderRadius: RADIUS.md,
-    ...ELEVATION.ruled,
-  },
-  statusLabel: {
-    ...TYPE.title,
-    textTransform: 'capitalize',
   },
   statusReason: {
     ...TYPE.body,
-    marginTop: SPACE.sm,
+    marginTop: SPACE.md,
     color: MART.ink,
-  },
-  errorTitle: {
-    ...TYPE.heading,
-    color: MART.ink,
-  },
-  errorBody: {
-    ...TYPE.body,
-    marginTop: SPACE.xs,
-    color: MART.inkMuted,
-  },
-  cta: {
-    minHeight: 52,
-    borderRadius: RADIUS.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ctaPressed: {
-    opacity: 0.9,
-  },
-  ctaLabel: {
-    ...TYPE.heading,
-    color: ON_BRAND.primary,
   },
 });

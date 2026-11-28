@@ -1,4 +1,4 @@
-import { generateIdempotencyKey, type ApiClient } from '@kiosk/core';
+import { findCustomerByPhone as coreFindCustomerByPhone, generateIdempotencyKey, type ApiClient } from '@kiosk/core';
 import type { phase_1 } from '@kiosk/types';
 import type { CartItem } from '../lib/cart';
 import type { CatalogPage } from '../lib/catalog-copy';
@@ -459,24 +459,6 @@ export async function lookupCustomerByPhone(
  * was typed ("0712..." and "254712..." are two numbers to it), so both are looked up, and a number that more than one
  * customer has is reported as such rather than guessed at.
  */
-export async function findCustomerByPhone(
-  api: ApiClient,
-  raw: string
-): Promise<CustomerMatch<PosCustomerHit> | null> {
-  const phone = normalizeKenyanPhone(raw);
-  if (!phone) return null;
-  const rows: PosCustomerHit[] = [];
-  for (const variant of [phone, `0${phone.slice(3)}`]) {
-    rows.push(...(await customersWithPhone(api, variant)));
-  }
-  return matchCustomers(rows);
-}
-
-/**
- * The customer behind an M-Pesa number: the one on file, or a new one made from the number alone (named by the number,
- * because the server wants a name and the till has none). A number that more than one customer has is never guessed at:
- * the sale is simply not linked to anyone.
- */
 export async function ensureCustomerByPhone(
   api: ApiClient,
   raw: string
@@ -499,19 +481,33 @@ export async function ensureCustomerByPhone(
   }
 }
 
+/** Pending grocery invoices waiting for payment at the till. Status must match the server (`pending_payment`). */
 export async function fetchPendingGroceryInvoices(api: ApiClient): Promise<GroceryInvoice[]> {
   const response = await api.get<{ invoices?: GroceryInvoice[] } | GroceryInvoice[]>(
-    '/api/v1/grocery/invoices?status=PENDING'
+    '/api/v1/grocery/invoices?status=pending_payment'
   );
   return Array.isArray(response) ? response : (response.invoices ?? []);
 }
+
+/** What the server answers when a grocery invoice is paid in full: the sale it made, for the receipt screen. */
+export type PayGroceryInvoiceResult = {
+  invoiceId?: string;
+  saleId?: string;
+  status?: string;
+  paidAt?: string;
+  receipt?: SaleResponse;
+};
 
 export async function payGroceryInvoice(
   api: ApiClient,
   invoiceId: string,
   payments: { method: string; amount: number; reference?: string }[]
-): Promise<unknown> {
-  return api.post(`/api/v1/grocery/invoices/${encodeURIComponent(invoiceId)}/pay`, { payments }, { idempotent: true });
+): Promise<PayGroceryInvoiceResult> {
+  return api.post<PayGroceryInvoiceResult>(
+    `/api/v1/grocery/invoices/${encodeURIComponent(invoiceId)}/pay`,
+    { payments },
+    { idempotent: true }
+  );
 }
 
 /** The full invoice, with its lines, by id. Used when the cashier opens a forwarded invoice to ring it up. */
@@ -574,6 +570,8 @@ export async function createCategory(api: ApiClient, name: string): Promise<Cate
 export interface Supplier {
   id: string;
   name: string;
+  /** The shop's code for the supplier: `SYS-UNASSIGNED` marks the migration bucket, which is not a supplier. */
+  code: string | null;
 }
 
 function readSupplier(raw: unknown): Supplier | null {
@@ -581,8 +579,9 @@ function readSupplier(raw: unknown): Supplier | null {
   const o = raw as Record<string, unknown>;
   const id = typeof o.id === 'string' ? o.id : null;
   const name = typeof o.name === 'string' ? o.name : null;
+  const code = typeof o.code === 'string' ? o.code : null;
   if (!id || !name) return null;
-  return { id, name };
+  return { id, name, code };
 }
 
 /** The shop's suppliers (first page). An optional `search` matches a supplier's name (server-side). */
@@ -747,3 +746,9 @@ export async function findSupplierProductByBarcode(api: ApiClient, supplierId: s
   const code = barcode.replace(/[\s\-._]/g, '');
   return products.find((p) => (p.barcode ?? '').replace(/[\s\-._]/g, '') === code) ?? null;
 }
+
+/** Who this number belongs to. One implementation, shared with every staff app (see `@kiosk/core`). */
+export const findCustomerByPhone = coreFindCustomerByPhone as (
+  api: ApiClient,
+  raw: string
+) => Promise<CustomerMatch<PosCustomerHit> | null>;

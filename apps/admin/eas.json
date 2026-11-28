@@ -20,6 +20,7 @@
     },
     "production": {
       "extends": "base",
+      "autoIncrement": true,
       "channel": "generic-admin-production",
       "android": {
         "buildType": "app-bundle"

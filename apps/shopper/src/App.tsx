@@ -1,9 +1,25 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import { ActivityIndicator, Alert, AppState, Linking, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, Linking, Modal, Platform, StyleSheet, Text, View } from 'react-native';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { useFonts } from 'expo-font';
+import {
+  SchibstedGrotesk_400Regular,
+  SchibstedGrotesk_500Medium,
+  SchibstedGrotesk_600SemiBold,
+  SchibstedGrotesk_700Bold,
+  SchibstedGrotesk_800ExtraBold,
+} from '@expo-google-fonts/schibsted-grotesk';
+import {
+  Poppins_400Regular,
+  Poppins_500Medium,
+  Poppins_600SemiBold,
+  Poppins_700Bold,
+  Poppins_800ExtraBold,
+} from '@expo-google-fonts/poppins';
 import {
   bootstrapTenant,
   fetchPlatformConfig,
@@ -44,7 +60,9 @@ import { brandName } from './lib/brand';
 import { problemCopy } from './lib/picker-copy';
 import { useStorefrontRealtime } from './hooks/useStorefrontRealtime';
 import { API_BASE_URL } from './lib/config';
-import { MART, RADIUS, SPACE, TYPE } from './theme/mart';
+import { Capsule } from './components/Capsule';
+import { Lobe } from './components/Coast';
+import { MART, SPACE, TYPE, ZONE } from './theme/mart';
 
 function RealtimeBridge() {
   const tenant = useTenant();
@@ -88,18 +106,12 @@ async function tryResolveShopperDeepLink(
 function BootError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <View style={styles.errorShell}>
-      <View style={styles.errorIcon}>
-        <Ionicons name="cloud-offline-outline" size={24} color={MART.inkMuted} />
-      </View>
+      <Lobe color={ZONE.pond} size={88} shape={2} style={styles.errorIcon}>
+        <Ionicons name="cloud-offline" size={34} color={MART.ink} />
+      </Lobe>
       <Text style={styles.errorTitle}>{brandName(getTenantDisplayName())} is offline</Text>
       <Text style={styles.errorBody}>{message}</Text>
-      <Pressable
-        onPress={onRetry}
-        accessibilityRole="button"
-        style={({ pressed }) => [styles.retry, pressed && styles.retryPressed]}
-      >
-        <Text style={styles.retryLabel}>Try again</Text>
-      </Pressable>
+      <Capsule label="Try again" chip="refresh" onPress={onRetry} stretch={false} style={styles.retry} />
       <StatusBar style="dark" />
     </View>
   );
@@ -303,6 +315,22 @@ export function App() {
     [whiteLabel]
   );
 
+  // The typeface is bundled with the app, so this resolves in a frame or two; the splash covers it. If
+  // it ever fails the app still opens, in the system face.
+  const [fontsLoaded, fontsError] = useFonts({
+    SchibstedGrotesk_400Regular,
+    SchibstedGrotesk_500Medium,
+    SchibstedGrotesk_600SemiBold,
+    SchibstedGrotesk_700Bold,
+    SchibstedGrotesk_800ExtraBold,
+    Poppins_400Regular,
+    Poppins_500Medium,
+    Poppins_600SemiBold,
+    Poppins_700Bold,
+    Poppins_800ExtraBold,
+  });
+  const fontsReady = fontsLoaded || Boolean(fontsError);
+
   const handleSplashDone = useCallback(() => setSplashDone(true), []);
   // The shop finder cannot be closed while a shop is being opened from it.
   const leaveFinder = useCallback(() => {
@@ -344,7 +372,12 @@ export function App() {
 
   const openShop = boot.status === 'ready' ? boot.tenant : null;
 
+  if (!fontsReady) {
+    return <View style={styles.root} />;
+  }
+
   return (
+    <GestureHandlerRootView style={styles.root}>
     <SafeAreaProvider>
       <View style={styles.root}>
         {update.required ? (
@@ -388,6 +421,7 @@ export function App() {
         )}
       </View>
     </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 
@@ -423,40 +457,19 @@ const styles = StyleSheet.create({
     backgroundColor: MART.paper,
   },
   errorIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: RADIUS.md,
-    backgroundColor: MART.paperSunken,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: SPACE.lg,
+    marginBottom: SPACE.xl,
+    marginLeft: -SPACE.sm,
   },
   errorTitle: {
-    ...TYPE.title,
+    ...TYPE.display,
     color: MART.ink,
   },
   errorBody: {
     ...TYPE.body,
-    marginTop: SPACE.sm,
+    marginTop: SPACE.md,
     color: MART.inkMuted,
   },
   retry: {
-    alignSelf: 'flex-start',
-    marginTop: SPACE.xl,
-    minHeight: 48,
-    paddingHorizontal: SPACE.xl,
-    borderRadius: RADIUS.md,
-    backgroundColor: MART.fallbackPrimary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  retryPressed: {
-    opacity: 0.9,
-  },
-  retryLabel: {
-    ...TYPE.label,
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#ffffff',
+    marginTop: SPACE.xxl,
   },
 });

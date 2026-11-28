@@ -21,6 +21,11 @@ export const FLAG = {
    * that a till which starts with no connection still offers services.
    */
   sellsServices: 'kiosk.sells_services',
+  /**
+   * Not a feature flag either: the shop's `inventory.stockLevels.allowNegativeStock`, read here so the till knows
+   * whether an empty shelf may still be sold from. Off only when the shop said so; a shop that has never set it sells.
+   */
+  allowOutOfStock: 'kiosk.allow_out_of_stock',
 } as const;
 
 /** The permissions the till reads. */
@@ -67,14 +72,42 @@ function booleans(raw: unknown, max: number, leave: string | null): Record<strin
  */
 export function parseShopFlags(body: unknown): ShopFlags {
   if (!body || typeof body !== 'object') return {};
-  const { featureFlags: raw, profile, onboarding } = body as { featureFlags?: unknown; profile?: unknown; onboarding?: unknown };
+  const { featureFlags: raw, profile, onboarding, inventory } = body as {
+    featureFlags?: unknown;
+    profile?: unknown;
+    onboarding?: unknown;
+    inventory?: unknown;
+  };
   // The mark for services is the till's own, and the server has no setting of that name: one that came under it would
   // be believed either way, so it is not read.
   const flags = booleans(raw, MAX_FLAGS, FLAG.sellsServices);
   // A shop that runs a service format sells services. The record says so under `profile`, which the till reads here
   // and keeps with the flags, so that it needs no second request.
   if (runsServices(profile, onboarding)) flags[FLAG.sellsServices] = true;
+  // Only recorded when the shop has actually stated it: a shop that never touched the setting keeps a flags object
+  // with nothing in it for it, and `maySellWhenOutOfStock` supplies the default (open).
+  const oversell = statedOversell(inventory);
+  if (oversell !== null) flags[FLAG.allowOutOfStock] = oversell;
   return flags;
+}
+
+/**
+ * The shop's own word on overselling, or null when it has not given one.
+ *
+ * The web reads the same setting for its till, with the same default: a shop that has never touched it may oversell.
+ * Only a real boolean from the server counts — text, a number or a missing field says nothing.
+ */
+function statedOversell(inventory: unknown): boolean | null {
+  if (!inventory || typeof inventory !== 'object') return null;
+  const levels = (inventory as { stockLevels?: unknown }).stockLevels;
+  if (!levels || typeof levels !== 'object') return null;
+  const value = (levels as { allowNegativeStock?: unknown }).allowNegativeStock;
+  return typeof value === 'boolean' ? value : null;
+}
+
+/** Whether this till may put an out-of-stock product in the basket, and so in a sale. */
+export function maySellWhenOutOfStock(flags: ShopFlags): boolean {
+  return flags[FLAG.allowOutOfStock] !== false;
 }
 
 /** The shop formats that sell services: the server's own list (ADR 0014), and how it decides a shop is one. */

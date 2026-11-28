@@ -135,7 +135,7 @@ export function planClose(input: {
 /** "Short by 50.00", "Over by 12.50" or "The count matches", for a difference in cents. */
 export function describeVariance(varianceCents: number): string {
   if (!needsReason(varianceCents)) return 'The count matches';
-  return varianceCents < 0 ? `Short by ${formatMoney(-varianceCents)}` : `Over by ${formatMoney(varianceCents)}`;
+  return varianceCents < 0 ? `Short by KES ${formatMoney(-varianceCents)}` : `Over by KES ${formatMoney(varianceCents)}`;
 }
 
 /** What to say before closing a shift while sales are still on the phone, or nothing when none are. */

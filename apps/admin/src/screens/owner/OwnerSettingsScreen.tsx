@@ -1,11 +1,13 @@
-import React from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Panel, Row, ScreenHeader, SectionHead } from '../../components/owner-ui';
 import { FONT, GUTTER, MART, RADIUS, SPACE, tint, TYPE } from '../../theme/mart';
 import { Appear, MartText } from '../../theme/mart-ui';
+import { fetchCreditTabsSettings, setRequirePhoneVerification, type ApiClient } from '@kiosk/core';
 
 type Props = {
+  api: ApiClient;
   host: string;
   shopName: string;
   branchName: string | null;
@@ -25,7 +27,37 @@ const IN_APP: readonly { icon: IconName; title: string; subtitle: string; open: 
  * The shop at a glance, then the things it can show natively: prices and branches. Receipts and payment
  * setup are not on the phone; a quiet note says so rather than a link off to the web.
  */
-export function OwnerSettingsScreen({ host, shopName, branchName, onOpenCatalogue, onOpenBranches }: Props) {
+export function OwnerSettingsScreen({ api, host, shopName, branchName, onOpenCatalogue, onOpenBranches }: Props) {
+  /** The shop's credit rule: null while it is being read, so the switch never shows a guess. */
+  const [requireVerification, setRequireVerification] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    fetchCreditTabsSettings(api).then(
+      (settings) => alive && setRequireVerification(settings.requirePhoneVerificationForNewTabCustomers),
+      () => alive && setRequireVerification(false)
+    );
+    return () => {
+      alive = false;
+    };
+  }, [api]);
+
+  const toggleVerification = useCallback(async () => {
+    if (busy || requireVerification === null) return;
+    setBusy(true);
+    setProblem(null);
+    try {
+      const settings = await setRequirePhoneVerification(api, !requireVerification);
+      setRequireVerification(settings.requirePhoneVerificationForNewTabCustomers);
+    } catch (error) {
+      setProblem(error instanceof Error && error.message ? error.message : 'Could not change that setting.');
+    } finally {
+      setBusy(false);
+    }
+  }, [api, busy, requireVerification]);
+
   const initials =
     (shopName.trim().split(/\s+/)[0]?.[0] ?? '?').toUpperCase() + (shopName.trim().split(/\s+/)[1]?.[0] ?? '').toUpperCase();
   const prettyHost = (host ?? '').replace(/^https?:\/\//, '').replace(/\/$/, '');
@@ -66,6 +98,40 @@ export function OwnerSettingsScreen({ host, shopName, branchName, onOpenCatalogu
         </Panel>
       </Appear>
 
+      <Appear delay={120} style={{ gap: SPACE.md }}>
+        <SectionHead>Credit</SectionHead>
+        <Panel style={{ gap: SPACE.sm }}>
+          <Pressable
+            onPress={() => void toggleVerification()}
+            disabled={busy || requireVerification === null}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: requireVerification === true, disabled: busy }}
+            accessibilityLabel="Require customer verification before granting credit"
+            style={({ pressed }) => [styles.toggleRow, pressed && { opacity: 0.75 }]}
+          >
+            <Ionicons
+              name={requireVerification ? 'toggle' : 'toggle-outline'}
+              size={30}
+              color={requireVerification ? MART.fallbackPrimary : MART.inkQuiet}
+            />
+            <View style={{ flex: 1, gap: 2 }}>
+              <MartText variant="label">Require customer verification before granting credit</MartText>
+              <MartText variant="meta" color={MART.inkQuiet}>
+                {requireVerification
+                  ? 'A customer must have a verified number before a tab opens for them.'
+                  : 'Off: anyone can take credit, verified or not. The badge only says who has been checked.'}
+              </MartText>
+            </View>
+            {busy ? <ActivityIndicator color={MART.inkQuiet} /> : null}
+          </Pressable>
+          {problem ? (
+            <MartText variant="meta" color={MART.danger}>
+              {problem}
+            </MartText>
+          ) : null}
+        </Panel>
+      </Appear>
+
       <Appear delay={140} style={{ gap: SPACE.md }}>
         <SectionHead>In the app</SectionHead>
         {IN_APP.map((entry) => (
@@ -92,6 +158,7 @@ export function OwnerSettingsScreen({ host, shopName, branchName, onOpenCatalogu
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: MART.paper },
   content: { padding: GUTTER, paddingBottom: SPACE.xxxl, gap: SPACE.lg },
+  toggleRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm },
   shopCard: { alignItems: 'center', gap: SPACE.md, paddingVertical: SPACE.xl },
   logo: {
     width: 64,

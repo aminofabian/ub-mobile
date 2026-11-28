@@ -23,6 +23,17 @@ test('a refusal the phone will not ask about again sends the person to settings,
   assert.equal(/asked|again/i.test(words), false, 'no question is coming');
 });
 
+test('the second chance names the button of the screen the person came from', () => {
+  const words = describeCameraAccess({ kind: 'refused', canAskAgain: true }, 'Scan');
+  assert.match(words, /tap Scan again/);
+  assert.equal(/QR/.test(words), false);
+  assert.equal(
+    describeCameraAccess({ kind: 'refused', canAskAgain: false }, 'Scan'),
+    describeCameraAccess({ kind: 'refused', canAskAgain: false }),
+    'the words that send the person to settings name no button'
+  );
+});
+
 test('the two refusals do not say the same thing', () => {
   assert.notEqual(describeCameraAccess({ kind: 'refused', canAskAgain: true }), describeCameraAccess({ kind: 'refused', canAskAgain: false }));
 });

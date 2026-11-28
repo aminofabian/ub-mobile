@@ -5,6 +5,12 @@ import type { ApiClient } from '@kiosk/core';
 import { fetchOwnerSummary, fetchSalesRegister, type SalesRegisterDay } from '../../api/admin-api';
 import { Message, Panel, ScreenHeader, SectionHead, SkeletonRows } from '../../components/owner-ui';
 import { kesOrDash, signedCents } from '../../lib/owner-money';
+import {
+  fetchRevenueByCategory,
+  fetchSalesByHour,
+  type CategoryRevenue,
+  type SalesHour,
+} from '../../lib/sales-intelligence';
 import { useLoaded } from '../../lib/use-loaded';
 import { HAIRLINE, MART, RADIUS, SHADOW, SPACE, tint, zoneFor } from '../../theme/mart';
 import { Appear, MartText, MiniTile } from '../../theme/mart-ui';
@@ -25,7 +31,19 @@ type Report = {
   /** Profit as a share of revenue, as a whole percent. */
   marginPct: number | null;
   topSkus: { name: string; revenueCents: number | null }[];
+  /** Today's revenue by hour, for the busy-hours bars. */
+  hours: SalesHour[];
+  /** Today's revenue per category, biggest first. */
+  categories: CategoryRevenue[];
 };
+
+/** "9a", "12p", "6p": a short hour-of-day label for the busy-hours axis. */
+function hourLabel(hour: number): string {
+  const h = ((hour % 24) + 24) % 24;
+  if (h === 0) return '12a';
+  if (h === 12) return '12p';
+  return h < 12 ? `${h}a` : `${h - 12}p`;
+}
 
 /** "Mon", "Tue" for a yyyy-mm-dd day, in the shop's week. */
 function dayLabel(iso: string): string {
@@ -34,9 +52,11 @@ function dayLabel(iso: string): string {
 }
 
 async function load(api: ApiClient): Promise<Report> {
-  const [register, summary] = await Promise.all([
+  const [register, summary, hours, categories] = await Promise.all([
     fetchSalesRegister(api, DAYS),
     fetchOwnerSummary(api).catch(() => ({ topSkusLast30Days: [] })),
+    fetchSalesByHour(api).catch(() => null),
+    fetchRevenueByCategory(api).catch(() => null),
   ]);
   const rows: SalesRegisterDay[] = register.days ?? [];
   const days = rows.map((d) => ({
@@ -62,6 +82,8 @@ async function load(api: ApiClient): Promise<Report> {
     topSkus: (summary.topSkusLast30Days ?? [])
       .slice(0, 5)
       .map((s) => ({ name: (s.itemName ?? 'Item').trim(), revenueCents: signedCents(s.revenueLast30Days) })),
+    hours: hours ?? [],
+    categories: categories ?? [],
   };
 }
 
@@ -109,7 +131,10 @@ export function OwnerReportsScreen({ api }: Props) {
   const r = loaded.value;
   const maxRev = Math.max(1, ...r.days.map((d) => d.revenueCents ?? 0));
   const maxSku = Math.max(1, ...r.topSkus.map((s) => s.revenueCents ?? 0));
+  const maxHour = Math.max(1, ...r.hours.map((h) => h.revenueCents ?? 0));
+  const maxCategory = Math.max(1, ...r.categories.map((c) => c.revenueCents ?? 0));
   const hasSales = r.days.some((d) => (d.revenueCents ?? 0) > 0);
+  const hasHourSales = r.hours.some((h) => (h.revenueCents ?? 0) > 0);
 
   return (
     <ScrollView
@@ -211,6 +236,59 @@ export function OwnerReportsScreen({ api }: Props) {
         </Appear>
       ) : null}
 
+      {hasHourSales ? (
+        <Appear delay={200} style={{ gap: SPACE.md }}>
+          <SectionHead>Busy hours today</SectionHead>
+          <Panel>
+            <View style={styles.hourChart}>
+              {r.hours.map((h) => {
+                const height = Math.max(3, Math.round(((h.revenueCents ?? 0) / maxHour) * 72));
+                const peak = (h.revenueCents ?? 0) === maxHour && maxHour > 0;
+                return (
+                  <View key={h.hour} style={styles.hourCol}>
+                    <View style={[styles.hourBar, { height, backgroundColor: peak ? MART.fallbackPrimary : tint(MART.fallbackPrimary, 0.2) }]} />
+                    {h.hour % 3 === 0 ? (
+                      <MartText variant="shelf" color={MART.inkQuiet} style={styles.hourLabel}>
+                        {hourLabel(h.hour)}
+                      </MartText>
+                    ) : (
+                      <MartText variant="shelf" color="transparent" style={styles.hourLabel}>
+                        ·
+                      </MartText>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+          </Panel>
+        </Appear>
+      ) : null}
+
+      {r.categories.length > 0 ? (
+        <Appear delay={240} style={{ gap: SPACE.md }}>
+          <SectionHead>By category today</SectionHead>
+          <Panel style={{ gap: SPACE.lg }}>
+            {r.categories.map((c, i) => {
+              const accent = zoneFor(c.name);
+              const w = Math.max(6, Math.round(((c.revenueCents ?? 0) / maxCategory) * 100));
+              return (
+                <View key={`${c.name}-${i}`} style={{ gap: SPACE.sm }}>
+                  <View style={styles.skuRow}>
+                    <MartText variant="label" numberOfLines={1} style={{ flex: 1 }}>
+                      {c.name}
+                    </MartText>
+                    <MartText variant="price">{kesOrDash(c.revenueCents)}</MartText>
+                  </View>
+                  <View style={styles.track}>
+                    <View style={[styles.trackFill, { width: `${w}%`, backgroundColor: accent }]} />
+                  </View>
+                </View>
+              );
+            })}
+          </Panel>
+        </Appear>
+      ) : null}
+
     </ScrollView>
   );
 }
@@ -265,4 +343,14 @@ const styles = StyleSheet.create({
   skuRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
   track: { height: 8, borderRadius: RADIUS.pill, backgroundColor: MART.paperSunken, overflow: 'hidden' },
   trackFill: { height: 8, borderRadius: RADIUS.pill },
+  hourChart: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    gap: 2,
+    height: 92,
+  },
+  hourCol: { flex: 1, alignItems: 'center', gap: SPACE.xs, justifyContent: 'flex-end' },
+  hourBar: { width: '72%', borderRadius: RADIUS.sm, minHeight: 3 },
+  hourLabel: { fontSize: 9 },
 });

@@ -1,7 +1,9 @@
 import React from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
-import { Button, Text, theme } from '@kiosk/ui';
-import { AuthBackBar } from '../components/AuthBackBar';
+import { Ionicons } from '@expo/vector-icons';
+import { MART, RADIUS, SPACE, tint } from '../theme/mart';
+import { MartButton, MartText, Screen } from '../theme/mart-ui';
+import { Entrance } from '../theme/Entrance';
 import type { Notice, NoticeActionId } from '../lib/notices';
 
 interface NoticeScreenProps {
@@ -13,39 +15,76 @@ interface NoticeScreenProps {
 
 /** A screen with something to say and one way forward, for the places a person can be stopped after signing in. */
 export function NoticeScreen({ notice, onAction, busy = false }: NoticeScreenProps) {
+  const brand = MART.fallbackPrimary;
   return (
-    <View style={styles.container}>
-      <AuthBackBar />
+    <Screen>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Text variant="h1" accessibilityRole="header">
-          {notice.title}
-        </Text>
-        <Text variant="body" style={styles.body}>
-          {notice.body}
-        </Text>
-        {notice.actions.map((action) => (
-          <Button
-            key={action.id}
-            title={action.label}
-            variant={action.primary ? 'primary' : 'secondary'}
-            onPress={() => onAction(action.id)}
-            disabled={busy}
-            style={styles.action}
-          />
-        ))}
+        <Entrance delay={0} style={styles.card}>
+          <View style={[styles.badge, { backgroundColor: tint(brand, 0.12) }]}>
+            <Ionicons name="information-circle-outline" size={30} color={brand} />
+          </View>
+          <MartText variant="title" accessibilityRole="header" style={styles.title}>
+            {notice.title}
+          </MartText>
+          <MartText variant="body" color={MART.inkMuted} style={styles.body}>
+            {notice.body}
+          </MartText>
+          <View style={styles.actions}>
+            {notice.actions.map((action) => (
+              <MartButton
+                key={action.id}
+                label={action.label}
+                kind={action.primary ? 'primary' : 'quiet'}
+                onPress={() => onAction(action.id)}
+                disabled={busy}
+                style={styles.action}
+              />
+            ))}
+          </View>
+        </Entrance>
+
+        <Entrance delay={120} style={styles.footerMark}>
+          <View style={[styles.footerDot, { backgroundColor: brand }]} />
+          <MartText variant="shelf" color={MART.inkQuiet}>
+            POWERED BY KIOSK
+          </MartText>
+        </Entrance>
       </ScrollView>
-    </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    paddingHorizontal: theme.spacing.lg,
-    paddingBottom: theme.spacing.lg,
-    backgroundColor: theme.colors.background,
+  content: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingHorizontal: SPACE.xl,
+    paddingVertical: SPACE.xxxl,
+    gap: SPACE.xxl,
   },
-  content: { flexGrow: 1, justifyContent: 'center' },
-  body: { marginVertical: theme.spacing.lg, color: theme.colors.textMuted },
-  action: { marginTop: theme.spacing.md },
+  card: {
+    alignItems: 'center',
+    gap: SPACE.lg,
+    padding: SPACE.xxl,
+    backgroundColor: MART.paperElevated,
+    borderRadius: RADIUS.xl,
+    shadowColor: MART.ink,
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
+  },
+  badge: {
+    width: 64,
+    height: 64,
+    borderRadius: RADIUS.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: { textAlign: 'center' },
+  body: { textAlign: 'center' },
+  actions: { alignSelf: 'stretch', gap: SPACE.sm, marginTop: SPACE.sm },
+  action: {},
+  footerMark: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.sm },
+  footerDot: { width: 10, height: 10, borderRadius: 999 },
 });

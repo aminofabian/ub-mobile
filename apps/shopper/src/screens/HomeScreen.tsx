@@ -1,8 +1,14 @@
 import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import React, { useCallback, useMemo, useState } from 'react';
+import { Platform, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import Animated, {
+  useAnimatedRef,
+  useAnimatedScrollHandler,
+  useSharedValue,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { phase_15_storefront_public } from '@kiosk/types';
 import { useTenant } from '../lib/TenantContext';
@@ -15,7 +21,7 @@ import { AislePhotoRail } from '../components/AislePhotoRail';
 import { CounterServices } from '../components/CounterServices';
 import { CoverageNotice } from '../components/CoverageNotice';
 import { MartHero } from '../components/MartHero';
-import { MartHomeHeader, MartSearchField } from '../components/MartChrome';
+import { HOME_HEADER_OPEN, MartHomeHeader } from '../components/MartChrome';
 import { ProductCard } from '../components/ProductCard';
 import { StoreSwitcherSheet } from '../components/StoreSwitcherSheet';
 import { ProductGridSkeleton, SkeletonScope, StorefrontBodySkeleton } from '../components/Skeleton';
@@ -24,6 +30,7 @@ import { TypeRail } from '../components/TypeRail';
 import { counterServices } from '../lib/coverage';
 import { useShopNavigator } from '../lib/ShopNavigator';
 import { GUTTER, MART, martFromTenant, SPACE, TYPE } from '../theme/mart';
+import { StateBlock } from '../components/StateBlock';
 import { useBasketFloatReserve } from '../components/BasketFloat';
 import { MainTabParamList, RootStackParamList } from '../navigation/types';
 
@@ -35,7 +42,7 @@ type NavigationProp = CompositeNavigationProp<
 >;
 
 /** The grid pads each cell, so the list itself stops short of the page gutter. */
-const CELL_PAD = SPACE.xs;
+const CELL_PAD = SPACE.sm - 2;
 const LIST_PAD = GUTTER - CELL_PAD;
 
 export function HomeScreen() {
@@ -43,7 +50,15 @@ export function HomeScreen() {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
   const basketReserve = useBasketFloatReserve();
-  const listRef = useRef<FlatList<Item>>(null);
+  const listRef = useAnimatedRef<Animated.FlatList<Item>>();
+  // The header floats over the list. iOS starts the list under it with a content inset, so the pull-to-
+  // refresh spinner shows below the coast; Android pads the content and offsets its spinner instead.
+  const headerRoom = insets.top + HOME_HEADER_OPEN + SPACE.md;
+  const inset = Platform.OS === 'ios';
+  const scrollY = useSharedValue(0);
+  const onScroll = useAnimatedScrollHandler((event) => {
+    scrollY.value = event.contentOffset.y + (inset ? headerRoom : 0);
+  });
   const [selectedTypeId, setSelectedTypeId] = useState<string | null>(null);
   const [dealsOnly, setDealsOnly] = useState(false);
   const shopNavigator = useShopNavigator();
@@ -106,7 +121,7 @@ export function HomeScreen() {
     if (category.id) {
       navigation.navigate('Category', {
         categoryId: category.id,
-        categoryName: category.name ?? 'Aisle',
+        categoryName: category.name ?? 'Category',
         categoryIcon: category.icon,
       });
     }
@@ -129,10 +144,10 @@ export function HomeScreen() {
   }
 
   const shelfTitle = dealsOnly
-    ? 'This week’s deals'
+    ? 'Deals this week'
     : activeType
       ? activeType.label
-      : 'Everything in store';
+      : 'All products';
   const shelfHint =
     typeof totalCount === 'number' && totalCount > catalogItems.length
       ? `Showing ${catalogItems.length} of ${totalCount}`
@@ -142,7 +157,9 @@ export function HomeScreen() {
     <View style={styles.headerBleed}>
       <MartHero
         mart={mart}
-        onShopNow={() => listRef.current?.scrollToOffset({ offset: 420, animated: true })}
+        onShopNow={() =>
+          listRef.current?.scrollToOffset({ offset: 380 - (inset ? headerRoom : 0), animated: true })
+        }
       />
 
       <CoverageNotice tenant={tenant} />
@@ -152,8 +169,6 @@ export function HomeScreen() {
           <CounterServices
             airtimeAvailable={airtimeShown}
             showPowerTokens={services.powerTokens}
-            primary={mart.primary}
-            accent={mart.accent}
             onAirtime={() => navigation.navigate('Airtime')}
             onTokens={() => navigation.navigate('Kplc')}
           />
@@ -162,13 +177,8 @@ export function HomeScreen() {
 
       {(categories?.categories?.length ?? 0) > 0 ? (
         <>
-          <SectionHead title="Shop by aisle" hint="Tap an aisle to browse its shelves" />
-          <AislePhotoRail
-            categories={categories?.categories ?? []}
-            primary={mart.primary}
-            accent={mart.accent}
-            onSelect={handleCategorySelect}
-          />
+          <SectionHead title="Categories" />
+          <AislePhotoRail categories={categories?.categories ?? []} onSelect={handleCategorySelect} />
         </>
       ) : null}
 
@@ -210,28 +220,39 @@ export function HomeScreen() {
   );
 
   return (
-    <View style={[styles.shell, { paddingTop: insets.top }]}>
-      <MartHomeHeader
-        mart={mart}
-        onPressShop={shopNavigator.enabled ? () => setSwitcherOpen(true) : undefined}
-      />
-      <MartSearchField primary={mart.primary} onPress={() => navigation.navigate('Search')} />
-
+    <View style={styles.shell}>
       {bootLoading ? (
-        <StorefrontBodySkeleton />
-      ) : error ? (
-        <View style={styles.errorBlock}>
-          <Text style={styles.errorTitle}>We could not load the store</Text>
-          <Text style={styles.errorBody}>Pull down to try again.</Text>
+        <View style={{ paddingTop: headerRoom }}>
+          <StorefrontBodySkeleton />
         </View>
+      ) : error ? (
+        <StateBlock
+          tone="problem"
+          icon="cloud-offline"
+          title="We could not load the shop"
+          body="Check your connection, then try again."
+          actionLabel="Try again"
+          actionChip="refresh"
+          onAction={handleRefresh}
+          fill={mart.primary}
+          style={{ paddingTop: headerRoom + SPACE.xxl }}
+        />
       ) : (
-        <FlatList
+        <Animated.FlatList
           ref={listRef}
           data={catalogItems}
           keyExtractor={(item, index) => item.id ?? `${item.name ?? 'item'}-${index}`}
-          numColumns={2}
+          numColumns={3}
           style={styles.scroll}
-          contentContainerStyle={[styles.content, { paddingBottom: SPACE.xxxl + basketReserve }]}
+          onScroll={onScroll}
+          scrollEventThrottle={16}
+          contentInset={inset ? { top: headerRoom } : undefined}
+          contentOffset={inset ? { x: 0, y: -headerRoom } : undefined}
+          scrollIndicatorInsets={{ top: headerRoom - insets.top }}
+          contentContainerStyle={[
+            styles.content,
+            { paddingTop: inset ? 0 : headerRoom, paddingBottom: SPACE.xxxl + basketReserve },
+          ]}
           ListHeaderComponent={listHeader}
           renderItem={({ item }) => (
             <View style={styles.cell}>
@@ -246,12 +267,14 @@ export function HomeScreen() {
           ListEmptyComponent={
             <View style={styles.emptyBlock}>
               <Text style={styles.emptyTitle}>
-                {dealsOnly ? 'No deals running today' : 'This shelf is empty'}
+                {dealsOnly ? 'No deals today' : 'Nothing here yet'}
               </Text>
               <Text style={styles.emptyBody}>
                 {dealsOnly
-                  ? 'Show all to browse the rest of the store.'
-                  : 'Try another department, or pull down to refresh.'}
+                  ? 'Show all to browse the rest of the shop.'
+                  : activeType
+                    ? 'Try another department, or pull down to refresh.'
+                    : 'The shop has not listed any products. Pull down to check again.'}
               </Text>
             </View>
           }
@@ -259,10 +282,10 @@ export function HomeScreen() {
             <View style={styles.footer}>
               {catalog.isFetchingNextPage ? (
                 <SkeletonScope label="Loading more products">
-                  <ProductGridSkeleton count={2} />
+                  <ProductGridSkeleton count={3} />
                 </SkeletonScope>
               ) : !dealsOnly && catalogItems.length > 0 && !catalog.hasNextPage ? (
-                <Text style={styles.endText}>That is the full aisle.</Text>
+                <Text style={styles.endText}>That is everything.</Text>
               ) : null}
             </View>
           }
@@ -272,11 +295,21 @@ export function HomeScreen() {
             <RefreshControl
               refreshing={Boolean(catalog.isRefetching && catalogItems.length > 0)}
               onRefresh={handleRefresh}
-              tintColor={mart.primary}
+              tintColor={MART.ink}
+              colors={[mart.primary]}
+              progressViewOffset={inset ? 0 : headerRoom}
             />
           }
         />
       )}
+
+      <StatusBar style={mart.onPrimary.primary === MART.ink ? 'dark' : 'light'} />
+      <MartHomeHeader
+        mart={mart}
+        scrollY={scrollY}
+        onPressShop={shopNavigator.enabled ? () => setSwitcherOpen(true) : undefined}
+        onSearch={() => navigation.navigate('Search')}
+      />
 
       {shopNavigator.enabled ? (
         <StoreSwitcherSheet
@@ -293,44 +326,30 @@ export function HomeScreen() {
 const styles = StyleSheet.create({
   shell: {
     flex: 1,
-    backgroundColor: MART.paperElevated,
+    backgroundColor: MART.paper,
   },
   scroll: {
     flex: 1,
-    backgroundColor: MART.paper,
   },
   content: {
-    paddingTop: SPACE.md,
-    paddingBottom: SPACE.xxxl,
     paddingHorizontal: LIST_PAD,
   },
   /** Sections own the page gutter, so the header escapes the grid's cell pad. */
   headerBleed: {
     marginHorizontal: -LIST_PAD,
+    marginBottom: SPACE.xs,
   },
   services: {
-    marginTop: SPACE.lg,
+    marginTop: SPACE.md,
   },
   cell: {
-    width: '50%',
-    padding: CELL_PAD,
-  },
-  errorBlock: {
-    paddingHorizontal: GUTTER,
-    paddingTop: SPACE.xxl,
-  },
-  errorTitle: {
-    ...TYPE.heading,
-    color: MART.ink,
-  },
-  errorBody: {
-    ...TYPE.body,
-    marginTop: SPACE.xs,
-    color: MART.inkMuted,
+    width: '33.333%',
+    paddingHorizontal: CELL_PAD,
+    paddingBottom: SPACE.md,
   },
   emptyBlock: {
     paddingHorizontal: CELL_PAD,
-    paddingTop: SPACE.lg,
+    paddingTop: SPACE.sm,
   },
   emptyTitle: {
     ...TYPE.heading,
@@ -340,6 +359,7 @@ const styles = StyleSheet.create({
     ...TYPE.body,
     marginTop: SPACE.xs,
     color: MART.inkMuted,
+    maxWidth: 320,
   },
   footer: {
     paddingVertical: SPACE.xl,

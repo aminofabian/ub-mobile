@@ -5,7 +5,7 @@ import type { StoreSnapshot } from '@kiosk/core';
 import { TENANT_HOST_SUFFIX } from '../lib/config';
 import { coverageLimits, shopWebUrl } from '../lib/coverage';
 import { cardFromStore } from '../lib/store-card';
-import { ELEVATION, MART, RADIUS, SPACE, TYPE } from '../theme/mart';
+import { MART, RADIUS, SPACE, TILE, TYPE } from '../theme/mart';
 import { ActionButton } from './ActionButton';
 import { StoreAvatar } from './StoreAvatar';
 
@@ -40,7 +40,7 @@ export function StorePreviewCard({
   return (
     <View style={styles.card}>
       <View style={styles.identity}>
-        <StoreAvatar card={card} size={56} />
+        <StoreAvatar card={card} size={64} />
         <View style={styles.copy}>
           <Text numberOfLines={2} style={styles.name}>
             {card.name}
@@ -53,10 +53,10 @@ export function StorePreviewCard({
 
       {limits.length > 0 ? (
         <View style={styles.coverage} accessibilityRole="summary">
-          <Text style={styles.coverageHead}>WHAT THIS APP COVERS</Text>
+          <Text style={styles.coverageHead}>What this app covers</Text>
           {limits.map((line) => (
             <View key={line} style={styles.limit}>
-              <Ionicons name="information-circle-outline" size={16} color={MART.inkMuted} style={styles.limitIcon} />
+              <Ionicons name="information-circle-outline" size={16} color={MART.info} style={styles.limitIcon} />
               <Text style={styles.limitText}>{line}</Text>
             </View>
           ))}
@@ -68,7 +68,7 @@ export function StorePreviewCard({
               style={styles.webLink}
             >
               <Text style={styles.webLinkText}>Open {card.address} in your browser</Text>
-              <Ionicons name="open-outline" size={14} color={MART.fallbackPrimary} />
+              <Ionicons name="open-outline" size={14} color={MART.ink} />
             </Pressable>
           ) : null}
         </View>
@@ -76,9 +76,11 @@ export function StorePreviewCard({
 
       {note ? <Text style={styles.note}>{note}</Text> : null}
       {error ? (
-        <Text accessibilityLiveRegion="polite" style={styles.error}>
-          {error}
-        </Text>
+        <View style={styles.errorBox}>
+          <Text accessibilityLiveRegion="polite" style={styles.error}>
+            {error}
+          </Text>
+        </View>
       ) : null}
 
       <View style={styles.actions}>
@@ -91,10 +93,9 @@ export function StorePreviewCard({
 
 const styles = StyleSheet.create({
   card: {
-    padding: SPACE.lg,
-    borderRadius: RADIUS.lg,
+    ...TILE,
+    padding: SPACE.xl,
     gap: SPACE.lg,
-    ...ELEVATION.ruled,
   },
   identity: {
     flexDirection: 'row',
@@ -115,21 +116,21 @@ const styles = StyleSheet.create({
     color: MART.inkQuiet,
   },
   coverage: {
-    padding: SPACE.md,
+    padding: SPACE.lg,
     gap: SPACE.sm,
     borderRadius: RADIUS.md,
-    backgroundColor: MART.paperSunken,
+    backgroundColor: MART.infoSurface,
   },
   coverageHead: {
-    ...TYPE.shelf,
-    color: MART.inkMuted,
+    ...TYPE.heading,
+    color: MART.ink,
   },
   limit: {
     flexDirection: 'row',
     gap: SPACE.sm,
   },
   limitIcon: {
-    marginTop: 2,
+    marginTop: 3,
   },
   limitText: {
     ...TYPE.body,
@@ -140,18 +141,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACE.xs,
-    minHeight: 32,
+    minHeight: 44,
   },
   webLinkText: {
     ...TYPE.label,
-    color: MART.fallbackPrimary,
+    color: MART.ink,
+    textDecorationLine: 'underline',
   },
   note: {
     ...TYPE.meta,
     color: MART.inkMuted,
   },
+  errorBox: {
+    padding: SPACE.md,
+    borderRadius: RADIUS.md,
+    backgroundColor: MART.dangerSurface,
+  },
   error: {
-    ...TYPE.meta,
+    ...TYPE.label,
     color: MART.danger,
   },
   actions: {

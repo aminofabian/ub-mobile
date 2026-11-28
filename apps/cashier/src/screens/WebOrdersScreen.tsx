@@ -2,7 +2,8 @@ import React, { useCallback, useRef, useState } from 'react';
 import { Alert, FlatList, Linking, RefreshControl, StyleSheet, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Button, Card, Text, theme } from '@kiosk/ui';
+import { MART, MartText, RADIUS, SPACE } from '@kiosk/staff';
+import { CARD_SURFACE, CashierButton } from '../components/CashierPrimitives';
 import type { ApiClient } from '@kiosk/core';
 import { advanceWebOrder, fetchWebOrders } from '../api/pos-api';
 import { NoticeBar } from '../components/NoticeBar';
@@ -112,10 +113,10 @@ export function WebOrdersScreen({ api, branchId, person }: Props) {
       <NoticeBar notes={notice} onDismiss={() => setNotice([])} />
       {failure ? (
         <View style={styles.failure}>
-          <Text variant="body" style={styles.problem}>
+          <MartText variant="body" style={styles.problem}>
             {failure.words}
-          </Text>
-          {failure.denied ? null : <Button title="Try again" variant="secondary" onPress={() => void load()} />}
+          </MartText>
+          {failure.denied ? null : <CashierButton title="Try again" variant="secondary" onPress={() => void load()} />}
         </View>
       ) : null}
       <FlatList
@@ -125,36 +126,36 @@ export function WebOrdersScreen({ api, branchId, person }: Props) {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void pullToRefresh()} />}
         ListEmptyComponent={
           failure?.denied ? null : orders === null && !failure ? (
-            <Text variant="muted">Loading...</Text>
+            <MartText variant="meta" color={MART.inkQuiet}>Loading...</MartText>
           ) : orders !== null ? (
-            <Text variant="muted">No open web orders for this branch.</Text>
+            <MartText variant="meta" color={MART.inkQuiet}>No open web orders for this branch.</MartText>
           ) : null
         }
         renderItem={({ item: order }) => {
           const step = mayAdvance ? nextStep(order) : null;
           const age = placedWords(order, now);
           return (
-            <Card style={styles.order}>
+            <View style={[CARD_SURFACE, styles.order]}>
               <View style={styles.top}>
-                <Text variant="h2" style={styles.code}>
+                <MartText variant="title" style={styles.code}>
                   {order.code}
-                </Text>
-                <Text variant="body" style={order.paid ? styles.paid : styles.unpaid}>
+                </MartText>
+                <MartText variant="body" style={order.paid ? styles.paid : styles.unpaid}>
                   {statusLabel(order)}
-                </Text>
+                </MartText>
               </View>
-              <Text variant="body">{order.customer}</Text>
-              <Text variant="muted">
+              <MartText variant="body">{order.customer}</MartText>
+              <MartText variant="meta" color={MART.inkQuiet}>
                 {orderTotalWords(order)}
                 {age ? ` - ${age}` : ''}
-              </Text>
-              {!order.paid ? <Text variant="caption">Not paid yet. Payment is taken online or by the owner.</Text> : null}
+              </MartText>
+              {!order.paid ? <MartText variant="meta">Not paid yet. Payment is taken online or by the owner.</MartText> : null}
               <View style={styles.buttons}>
                 {order.phone ? (
-                  <Button title={`Call ${order.phone}`} variant="secondary" onPress={() => void dial(order)} style={styles.button} />
+                  <CashierButton title={`Call ${order.phone}`} variant="secondary" onPress={() => void dial(order)} style={styles.button} />
                 ) : null}
                 {step ? (
-                  <Button
+                  <CashierButton
                     title={acting === order.id ? 'Working...' : step.label}
                     onPress={() => ask(order)}
                     disabled={acting !== null}
@@ -162,7 +163,7 @@ export function WebOrdersScreen({ api, branchId, person }: Props) {
                   />
                 ) : null}
               </View>
-            </Card>
+            </View>
           );
         }}
       />
@@ -171,15 +172,15 @@ export function WebOrdersScreen({ api, branchId, person }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.colors.background, paddingTop: theme.spacing.sm },
-  list: { padding: theme.spacing.md, gap: theme.spacing.md },
-  order: { gap: theme.spacing.xs, borderWidth: 1, borderColor: theme.colors.border },
+  container: { flex: 1, backgroundColor: MART.paper, paddingTop: SPACE.sm },
+  list: { padding: SPACE.md, gap: SPACE.md },
+  order: { gap: SPACE.xs, padding: SPACE.md },
   top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   code: { marginBottom: 0 },
-  paid: { color: theme.colors.success },
-  unpaid: { color: theme.colors.textMuted },
-  buttons: { flexDirection: 'row', gap: theme.spacing.sm, marginTop: theme.spacing.sm },
+  paid: { color: MART.success },
+  unpaid: { color: MART.inkMuted },
+  buttons: { flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.sm },
   button: { flex: 1 },
-  failure: { padding: theme.spacing.md, gap: theme.spacing.sm },
-  problem: { color: theme.colors.danger },
+  failure: { padding: SPACE.md, gap: SPACE.sm },
+  problem: { color: MART.danger },
 });

@@ -5,6 +5,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ApiClient } from '@kiosk/core';
 import { GUTTER, MART, RADIUS, SPACE, tint, MartText } from '@kiosk/staff';
 import { fetchSupplierProducts, fetchSuppliers, type Supplier } from '../api/pos-api';
+import { realSuppliers } from '../lib/supplier-words';
 import type { CashierStackParamList } from '../navigation/AppNavigator';
 
 type Props = NativeStackScreenProps<CashierStackParamList, 'Supplies'> & {
@@ -32,7 +33,7 @@ export function SuppliesScreen({ api, branchId, navigation }: Props) {
   // The full supplier list, read once; the name filter runs over it on the phone for an instant feel.
   useEffect(() => {
     let alive = true;
-    fetchSuppliers(api).then((list) => alive && setAll(list), () => alive && setAll([]));
+    fetchSuppliers(api).then((list) => alive && setAll(realSuppliers(list)), () => alive && setAll([]));
     return () => {
       alive = false;
     };

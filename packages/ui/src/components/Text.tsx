@@ -1,6 +1,7 @@
 import React from 'react';
 import { Text as RNText, StyleSheet, type TextProps, type TextStyle } from 'react-native';
 import { theme } from '../theme';
+import { FONT, WEIGHT } from '../type';
 
 interface KioskTextProps extends TextProps {
   variant?: 'h1' | 'h2' | 'body' | 'caption' | 'muted';
@@ -14,27 +15,42 @@ export function Text({ variant = 'body', style, ...props }: KioskTextProps) {
 const styles = StyleSheet.create({
   base: {
     color: theme.colors.text,
+    fontFamily: FONT.regular,
+    fontWeight: WEIGHT.regular,
   },
   h1: {
-    fontSize: 28,
-    fontWeight: '700',
+    fontFamily: FONT.bold,
+    fontWeight: WEIGHT.bold,
+    fontSize: 26,
+    lineHeight: 32,
+    letterSpacing: -0.4,
     marginBottom: theme.spacing.md,
   },
   h2: {
-    fontSize: 22,
-    fontWeight: '600',
+    fontFamily: FONT.semibold,
+    fontWeight: WEIGHT.semibold,
+    fontSize: 18,
+    lineHeight: 24,
+    letterSpacing: -0.3,
     marginBottom: theme.spacing.sm,
   },
   body: {
-    fontSize: 16,
-    lineHeight: 24,
+    fontFamily: FONT.regular,
+    fontWeight: WEIGHT.regular,
+    fontSize: 15,
+    lineHeight: 22,
   },
   caption: {
-    fontSize: 14,
-    lineHeight: 20,
+    fontFamily: FONT.regular,
+    fontWeight: WEIGHT.regular,
+    fontSize: 13,
+    lineHeight: 19,
   },
   muted: {
-    fontSize: 14,
+    fontFamily: FONT.regular,
+    fontWeight: WEIGHT.regular,
+    fontSize: 13,
+    lineHeight: 19,
     color: theme.colors.textMuted,
   },
 });

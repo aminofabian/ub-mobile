@@ -8,12 +8,16 @@ import { prepareRecall } from '../src/lib/recall-flow';
 import { pickScanned } from '../src/lib/scan-result';
 import {
   describeAddRefusal,
+  describeHandPrices,
+  describeInvoiceFailure,
   describeItemsFailure,
   describeLoadedHolds,
-  holdRefusalWords,
+  describeNoBarcode,
   HOLD_NOT_SAVED,
+  holdRefusalWords,
   HOLDS_NOT_READ,
   RECALL_REFUSED,
+  titleAt,
 } from '../src/lib/till-words';
 import { holderOf } from '../src/lib/till-person';
 
@@ -76,8 +80,16 @@ test('a basket that could not be held says why, and one that was held says nothi
   assert.match(holdRefusalWords({ ok: false, reason: 'empty' }), /Add something/);
   assert.match(holdRefusalWords({ ok: false, reason: 'full' }), new RegExp(`${MAX_HELD} baskets`));
   assert.match(holdRefusalWords({ ok: false, reason: 'big' }), /100 items at most/);
+  assert.match(holdRefusalWords({ ok: false, reason: 'unreadable' }), /cannot be kept on this phone/);
   assert.match(HOLD_NOT_SAVED, /lost/);
-  assert.match(RECALL_REFUSED, /throw one away/);
+});
+
+test('a basket that could not be picked up says what can actually be wrong, not a limit it cannot have hit', () => {
+  // Picking a basket up frees a place before the sale in front of the cashier is put aside, so "you hold too many" is
+  // never the reason. The reasons are: the basket ran out, or the sale in front cannot be put aside.
+  assert.match(RECALL_REFUSED, /run out/);
+  assert.match(RECALL_REFUSED, /finish it first/);
+  assert.doesNotMatch(RECALL_REFUSED, /\d+ baskets/);
 });
 
 test('a refused add says the limit it hit', () => {
@@ -148,4 +160,55 @@ test('a scan with nothing in it never matches a product that has no barcode', ()
   const NO_CODE: CartItem = { id: 'i-9', name: 'Loose sweets', barcode: '', sellingPrice: 5 };
   assert.equal(pickScanned([NO_CODE], '').kind, 'several');
   assert.equal(pickScanned([NO_CODE], '   ').kind, 'several');
+});
+
+test('a screen title says which branch the till is at, and is just the title when that is not known', () => {
+  assert.equal(titleAt('Point of Sale', 'Westlands'), 'Point of Sale · Westlands');
+  assert.equal(titleAt('Point of Sale', null), 'Point of Sale');
+  assert.equal(titleAt('Point of Sale', undefined), 'Point of Sale');
+  assert.equal(titleAt('Point of Sale', '   '), 'Point of Sale');
+  assert.equal(titleAt('Shift', '  Moi   Avenue '), 'Shift · Moi Avenue');
+  assert.equal(titleAt('Shift', 'x'.repeat(100)), `Shift · ${'x'.repeat(40)}`);
+});
+
+test('a hand-set price a person may not use is said before the customer pays, naming the items', () => {
+  const line = (name: string): CartLine => ({ itemId: name, name, quantity: 1, unitPrice: 50, shelfPrice: 65 });
+  assert.equal(
+    describeHandPrices([line('Milk')]),
+    'Milk has a price that was set by hand, and you may not change prices here. Use the shelf price, or ask someone who may.'
+  );
+  assert.equal(
+    describeHandPrices([line('Milk'), line('Bread')]),
+    'Milk, Bread have prices that were set by hand, and you may not change prices here. Use the shelf prices, or ask someone who may.'
+  );
+  assert.match(describeHandPrices([line('A'), line('B'), line('C'), line('D'), line('E')]), /^A, B, C and 2 more have prices/);
+  assert.match(describeHandPrices([line('x'.repeat(100))]), new RegExp(`^${'x'.repeat(40)} has`));
+  assert.match(describeHandPrices([line('   ')]), /^An item has/);
+});
+
+test('a barcode that no product has is shown cleaned and cut, whatever the code held', () => {
+  assert.equal(describeNoBarcode('6001234567890'), 'No product has the barcode 6001234567890.');
+  assert.equal(describeNoBarcode(`${'9'.repeat(200)}`), `No product has the barcode ${'9'.repeat(40)}.`);
+  assert.equal(describeNoBarcode('a\nb\tc'), 'No product has the barcode a b c.');
+  assert.equal(describeNoBarcode('   '), 'No product has that barcode.');
+  assert.equal(describeNoBarcode(undefined), 'No product has that barcode.');
+});
+
+test('a grocery invoice that failed is described in the till\'s words, never the server\'s', () => {
+  assert.equal(describeInvoiceFailure(new ApiError('<html>Gateway</html>', { status: 502 }), 'load'), 'Could not load the invoices. Check the connection and try again.');
+  assert.match(describeInvoiceFailure(new Error('SQLSTATE 23505'), 'pay'), /may not have been paid/);
+  assert.doesNotMatch(describeInvoiceFailure(new Error('SQLSTATE 23505'), 'pay'), /SQLSTATE/);
+  assert.match(describeInvoiceFailure(new ApiError('no', { status: 403 }), 'pay'), /not allowed/);
+});
+
+test('a barcode the phone\'s own list does not have is not said to have no product at all', () => {
+  assert.match(describeNoBarcode('6001', true), /^The list saved on this phone has no product with the barcode 6001\. It may be a product added since\.$/);
+  assert.match(describeNoBarcode('  ', true), /with that barcode/);
+  assert.equal(describeNoBarcode('6001', false), 'No product has the barcode 6001.');
+});
+
+test('a basket with a service in it says it cannot be held, and what to do', () => {
+  const words = holdRefusalWords({ ok: false, reason: 'service' });
+  assert.match(words, /service in it cannot be put on hold/);
+  assert.match(words, /Finish this sale/);
 });

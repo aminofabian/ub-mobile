@@ -1,8 +1,8 @@
 import React, { useEffect } from 'react';
-import { AccessibilityInfo, Platform, Pressable, StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
+import { AccessibilityInfo, Animated, Easing, Platform, Pressable, StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { HAIRLINE, MART, RADIUS, SHADOW, SPACE, TYPE, tint, zoneFor } from '../theme/mart';
-import { MartButton, MartText } from '../theme/mart-ui';
+import { MartButton, MartText, PressableScale } from '../theme/mart-ui';
 import type { Loaded } from '../lib/loaded';
 import type { TileView, Tone } from '../lib/today';
 
@@ -14,7 +14,8 @@ function iconFor(label: string): IconName {
   if (l.includes('on the web')) return 'globe-outline';
   if (l.includes('takings')) return 'cash-outline';
   if (l.includes('till')) return 'desktop-outline';
-  if (l.includes('order') || l.includes('supplier')) return 'cart-outline';
+  if (l.includes('supplier')) return 'receipt-outline';
+  if (l.includes('order')) return 'cart-outline';
   if (l.includes('receive') || l.includes('delivery') || l.includes('stock')) return 'cube-outline';
   if (l.includes('owed') || l.includes('credit')) return 'wallet-outline';
   if (l.includes('report') || l.includes('overview')) return 'bar-chart-outline';
@@ -49,6 +50,77 @@ export function SectionHead({ children, accent }: { children: string; accent?: s
 /** A white surface that holds a form or summary. The soft lift, shared, so every panel on every screen matches. */
 export function Panel({ children, style }: { children: React.ReactNode; style?: object }) {
   return <View style={[styles.panel, style]}>{children}</View>;
+}
+
+/** "just now", "3m", "2h": how long ago a sale rang, kept short so it sits at the end of a row. */
+function timeAgo(ms: number | null, now: number): string {
+  if (ms === null) return '';
+  const secs = Math.max(0, Math.round((now - ms) / 1000));
+  if (secs < 45) return 'just now';
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.round(hours / 24)}d`;
+}
+
+/** The green dot for M-Pesa, orange for cash, grey otherwise — matching the takings split. */
+function methodColor(method: string | null): string {
+  const l = (method ?? '').toLowerCase();
+  if (l.includes('pesa') || l.includes('stk')) return MART.success;
+  if (l.includes('cash')) return MART.fallbackAccent;
+  return MART.inkQuiet;
+}
+
+export type SaleLine = {
+  id: string;
+  soldAt: number | null;
+  itemName: string;
+  quantity: number | null;
+  amount: string;
+  cashierName: string | null;
+  method: string | null;
+};
+
+/**
+ * The live sales tape: the newest sales, each a quiet row with the item, how much, who rang it and when.
+ * Reads more often than the figures above it, so a sale shows up here within a few seconds of being made.
+ */
+export function RecentSalesFeed({ sales, now = Date.now() }: { sales: SaleLine[]; now?: number }) {
+  if (sales.length === 0) {
+    return (
+      <Panel style={styles.feedEmpty}>
+        <Ionicons name="pulse-outline" size={18} color={MART.inkQuiet} />
+        <MartText variant="meta" color={MART.inkQuiet}>
+          No sales yet today — they appear here as they are made.
+        </MartText>
+      </Panel>
+    );
+  }
+  return (
+    <Panel style={{ gap: 0 }}>
+      {sales.map((s, i) => (
+        <View key={`${s.id}:${s.itemName}:${i}`} style={[styles.feedRow, i > 0 && styles.feedRowRule]}>
+          <View style={[styles.feedDot, { backgroundColor: methodColor(s.method) }]} />
+          <View style={{ flex: 1, gap: SPACE.xxs }}>
+            <MartText variant="label" numberOfLines={1}>
+              {s.quantity && s.quantity !== 1 ? `${s.quantity} × ` : ''}
+              {s.itemName}
+            </MartText>
+            <MartText variant="meta" color={MART.inkQuiet} numberOfLines={1}>
+              {[s.cashierName, s.method].filter(Boolean).join(' · ') || '—'}
+            </MartText>
+          </View>
+          <View style={{ alignItems: 'flex-end', gap: SPACE.xxs }}>
+            <MartText variant="price">{s.amount}</MartText>
+            <MartText variant="meta" color={MART.inkQuiet}>
+              {timeAgo(s.soldAt, now)}
+            </MartText>
+          </View>
+        </View>
+      ))}
+    </Panel>
+  );
 }
 
 /**
@@ -140,8 +212,20 @@ const TONE_DOT: Record<Tone, string> = {
   quiet: MART.inkQuiet,
 };
 
+/** A loading placeholder that breathes: a slow opacity pulse, so a waiting screen reads as alive, not frozen. */
 function Bone({ width, height }: { width: number | `${number}%`; height: number }) {
-  return <View style={{ width, height, borderRadius: RADIUS.sm, backgroundColor: MART.paperSunken }} />;
+  const pulse = React.useRef(new Animated.Value(0.5)).current;
+  React.useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: 700, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0.5, duration: 700, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
+  return <Animated.View style={{ width, height, borderRadius: RADIUS.sm, backgroundColor: MART.paperSunken, opacity: pulse }} />;
 }
 
 /**
@@ -168,6 +252,14 @@ type TileProps = {
   onRetry: () => void;
 };
 
+/** A steady colour per payment method so M-Pesa and cash read the same on every refresh. */
+function splitColor(label: string): string {
+  const l = label.toLowerCase();
+  if (l.includes('pesa')) return MART.success;
+  if (l.includes('cash')) return MART.fallbackAccent;
+  return MART.inkQuiet;
+}
+
 function spokenFor(label: string, state: Loaded<TileView>): string {
   return state.state === 'ok'
     ? `${label}: ${state.value.value}${state.value.note ? `. ${state.value.note}` : ''}${state.stale ? '. Out of date.' : ''}`
@@ -188,12 +280,12 @@ function HeroTile({ label, state, onPress, onRetry }: TileProps) {
   const trendColor = trend?.dir === 'down' ? MART.danger : trend?.dir === 'up' ? MART.success : MART.inkQuiet;
   const trendIcon: IconName = trend?.dir === 'down' ? 'trending-down' : trend?.dir === 'up' ? 'trending-up' : 'remove';
   return (
-    <Pressable
+    <PressableScale
       accessibilityRole={press ? 'button' : 'text'}
       accessibilityLabel={spokenFor(label, state)}
       disabled={!press}
       onPress={press}
-      style={({ pressed }) => [styles.hero, pressed && press ? styles.pressedScale : null]}
+      style={styles.hero}
     >
       <View style={styles.heroHead}>
         <View style={styles.heroHeadLeft}>
@@ -234,6 +326,22 @@ function HeroTile({ label, state, onPress, onRetry }: TileProps) {
               </View>
             ) : null}
           </View>
+          {state.value.breakdown && state.value.breakdown.length > 0 ? (
+            <View style={styles.heroSplit}>
+              {state.value.breakdown.map((line) => (
+                <View key={line.label} style={styles.heroSplitRow}>
+                  <View style={[styles.heroSplitDot, { backgroundColor: splitColor(line.label) }]} />
+                  <MartText variant="meta" color={MART.inkMuted} style={{ flex: 1 }} numberOfLines={1}>
+                    {line.label}
+                    {line.count !== null ? `  ·  ${line.count}` : ''}
+                  </MartText>
+                  <MartText variant="label" color={MART.ink} numberOfLines={1}>
+                    {line.value}
+                  </MartText>
+                </View>
+              ))}
+            </View>
+          ) : null}
           {state.stale ? (
             <MartText variant="meta" color={MART.warning}>
               Could not refresh. This is the last answer.
@@ -258,7 +366,7 @@ function HeroTile({ label, state, onPress, onRetry }: TileProps) {
           </MartText>
         </View>
       ) : null}
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -267,12 +375,12 @@ function CompactTile({ label, zoneKey, state, onPress, onRetry }: TileProps) {
   const press = state.state === 'failed' ? onRetry : state.state === 'ok' ? onPress : undefined;
   const accent = state.state === 'ok' ? TONE_DOT[state.value.tone] : zoneFor(zoneKey ?? label);
   return (
-    <Pressable
+    <PressableScale
       accessibilityRole={press ? 'button' : 'text'}
       accessibilityLabel={spokenFor(label, state)}
       disabled={!press}
       onPress={press}
-      style={({ pressed }) => [styles.tile, styles.tileHalf, pressed && press ? styles.pressedScale : null]}
+      style={[styles.tile, styles.tileHalf]}
     >
       <View style={styles.tileHead}>
         <View style={[styles.tileIcon, { backgroundColor: tint(accent, 0.16) }]}>
@@ -323,7 +431,7 @@ function CompactTile({ label, zoneKey, state, onPress, onRetry }: TileProps) {
           </MartText>
         </View>
       ) : null}
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -376,14 +484,14 @@ export function Row({
     );
   }
   return (
-    <Pressable
+    <PressableScale
       accessibilityRole="button"
       accessibilityLabel={label}
       onPress={onPress}
-      style={({ pressed }) => [styles.row, pressed && styles.pressedScale]}
+      style={styles.row}
     >
       {content}
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -562,6 +670,26 @@ const styles = StyleSheet.create({
     ...HAIRLINE,
     ...SHADOW.card,
   },
+  feedEmpty: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACE.sm,
+  },
+  feedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACE.md,
+    paddingVertical: SPACE.md,
+  },
+  feedRowRule: {
+    borderTopWidth: 1,
+    borderTopColor: MART.border,
+  },
+  feedDot: {
+    width: 8,
+    height: 8,
+    borderRadius: RADIUS.pill,
+  },
   messageBadge: {
     width: 60,
     height: 60,
@@ -584,8 +712,7 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.xl,
     gap: SPACE.lg,
     backgroundColor: MART.paperElevated,
-    ...HAIRLINE,
-    ...SHADOW.card,
+    ...SHADOW.hero,
   },
   heroHead: {
     flexDirection: 'row',
@@ -606,7 +733,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  heroValue: { ...TYPE.display, fontSize: 30, lineHeight: 36, letterSpacing: -0.6 },
+  heroValue: { ...TYPE.hero },
   heroFooter: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -617,6 +744,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACE.xxs,
+  },
+  // The M-Pesa / cash split under today's takings: a hairline off, then a quiet line per method.
+  heroSplit: {
+    marginTop: SPACE.sm,
+    paddingTop: SPACE.md,
+    borderTopWidth: 1,
+    borderTopColor: MART.border,
+    gap: SPACE.sm,
+  },
+  heroSplitRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACE.sm,
+  },
+  heroSplitDot: {
+    width: 7,
+    height: 7,
+    borderRadius: RADIUS.pill,
   },
   tile: {
     // Tall enough to hold a two-line note, so a one-line and a two-line tile in the same row match.

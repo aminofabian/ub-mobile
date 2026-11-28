@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, TextInput, View } from 'react-native';
-import { Button, Text, theme } from '@kiosk/ui';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import {
   getOrCreateTillDeviceId,
   parsePairingCode,
@@ -11,7 +11,10 @@ import {
   type PairingPreview,
   type TenantContext,
 } from '@kiosk/core';
-import { AuthBackBar } from '../components/AuthBackBar';
+import { FONT, MART, onFill, RADIUS, SPACE, tint, TYPE } from '../theme/mart';
+import { MartButton, MartText, Screen } from '../theme/mart-ui';
+import { Field } from '../theme/Field';
+import { Entrance } from '../theme/Entrance';
 import { describeCodeProblem, describePairingFailure, describeWrongShop, isSameShop } from '../lib/pair-copy';
 
 export interface PairScannerProps {
@@ -44,6 +47,13 @@ export function PairScreen({ baseURL, tenant, renderScanner, onPaired, onCancel 
   const mounted = useRef(true);
   // A second tap, or a QR read twice, must not send a second request while the first is out.
   const sending = useRef(false);
+
+  const brand = MART.fallbackPrimary;
+  const on = onFill(brand);
+  const initials = useMemo(() => {
+    const parts = tenant.displayName.trim().split(/\s+/).filter(Boolean);
+    return (parts[0]?.[0] ?? 'K').toUpperCase() + (parts[1]?.[0] ?? '').toUpperCase();
+  }, [tenant.displayName]);
 
   useEffect(() => {
     mounted.current = true;
@@ -137,48 +147,82 @@ export function PairScreen({ baseURL, tenant, renderScanner, onPaired, onCancel 
     return <View style={styles.fill}>{renderScanner({ onScanned: scanned, onCancel: () => setStep('enter') })}</View>;
   }
 
-  return (
-    <View style={styles.container}>
-      <AuthBackBar onBack={step === 'confirm' ? () => setStep('enter') : onCancel} backLabel={step === 'confirm' ? 'Back' : 'Cancel'} />
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Text variant="h1" accessibilityRole="header">
-          Pair this phone
-        </Text>
-        <Text variant="muted" style={styles.shop}>
-          {tenant.displayName}
-        </Text>
+  const back = step === 'confirm' ? () => setStep('enter') : onCancel;
+  const backLabel = step === 'confirm' ? 'Back' : 'Cancel';
 
-        {step === 'confirm' && preview ? (
-          <View style={styles.card} accessibilityLabel="Pairing details">
-            <Text variant="caption" style={styles.cardLabel}>
-              This phone will be a till at
-            </Text>
-            <Text variant="h2">{preview.shopName}</Text>
-            <Text variant="body" style={styles.cardLine}>
-              Branch: {preview.branchName}
-            </Text>
-            <Text variant="body" style={styles.cardLine}>
-              You will sign in as: {preview.roleName}
-            </Text>
-            {preview.tillName ? (
-              <Text variant="body" style={styles.cardLine}>
-                Till name: {preview.tillName}
-              </Text>
-            ) : null}
+  return (
+    <Screen style={styles.container}>
+      <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
+        <Entrance delay={0} style={[styles.pass, { backgroundColor: brand }]}>
+          <View style={[styles.glow, { backgroundColor: on.wash }]} pointerEvents="none" />
+          <View style={[styles.orb, styles.orbOne, { backgroundColor: on.wash }]} pointerEvents="none" />
+          <View style={[styles.orb, styles.orbTwo, { backgroundColor: on.hairline }]} pointerEvents="none" />
+          <View style={styles.passTop}>
+            <View style={styles.passBrand}>
+              <View style={[styles.passRing, { borderColor: on.hairline }]}>
+                <View style={[styles.passMark, { backgroundColor: on.primary }]}>
+                  <MartText style={[styles.passMonogram, { color: brand }]}>{initials}</MartText>
+                </View>
+              </View>
+              <MartText variant="shelf" color={on.secondary} numberOfLines={1} style={styles.passStore}>
+                {tenant.displayName.toUpperCase()}
+              </MartText>
+            </View>
+            <Pressable
+              onPress={back}
+              accessibilityRole="button"
+              accessibilityLabel={backLabel}
+              hitSlop={8}
+              style={({ pressed }) => [
+                styles.storeChip,
+                { borderColor: on.hairline, backgroundColor: on.wash },
+                pressed && styles.pressed,
+              ]}
+            >
+              <Ionicons name="chevron-back" size={14} color={on.primary} />
+              <MartText variant="shelf" color={on.primary} style={styles.storeChipText}>
+                {backLabel}
+              </MartText>
+            </Pressable>
           </View>
-        ) : (
-          <>
-            <Text variant="body" style={styles.help}>
-              Enter the code your manager gave you{renderScanner ? ', or scan their QR code' : ''}.
-            </Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Pairing code"
+          <MartText variant="display" color={on.primary} style={styles.passTitle}>
+            Pair this phone
+          </MartText>
+          <MartText variant="body" color={on.secondary} style={styles.passHint}>
+            {step === 'confirm' ? 'Check the details, then confirm.' : 'Turn this phone into a till for the shop.'}
+          </MartText>
+        </Entrance>
+
+        <Entrance delay={90} style={styles.formBody}>
+          {step === 'confirm' && preview ? (
+            <View style={styles.summary} accessibilityLabel="Pairing details">
+              <View style={[styles.summaryBadge, { backgroundColor: tint(brand, 0.12) }]}>
+                <Ionicons name="phone-portrait-outline" size={22} color={brand} />
+              </View>
+              <MartText variant="meta" color={MART.inkQuiet}>
+                This phone will be a till at
+              </MartText>
+              <MartText variant="title">{preview.shopName}</MartText>
+              <View style={styles.summaryRows}>
+                <SummaryRow icon="git-branch-outline" label="Branch" value={preview.branchName} />
+                <SummaryRow icon="person-outline" label="You sign in as" value={preview.roleName} />
+                {preview.tillName ? (
+                  <SummaryRow icon="pricetag-outline" label="Till name" value={preview.tillName} />
+                ) : null}
+              </View>
+            </View>
+          ) : (
+            <Field
+              on="tile"
+              label="Pairing code"
+              icon="key-outline"
+              placeholder="Enter the code"
               value={text}
               onChangeText={(value) => {
                 setText(value);
                 if (message) setMessage(null);
               }}
+              hint={`Your manager made this code${renderScanner ? ', or scan their QR code below' : ' for this phone'}.`}
               autoCapitalize="characters"
               autoCorrect={false}
               autoComplete="off"
@@ -186,63 +230,181 @@ export function PairScreen({ baseURL, tenant, renderScanner, onPaired, onCancel 
               returnKeyType="go"
               onSubmitEditing={() => void look(text)}
               editable={!busy}
+              style={styles.codeInput}
               accessibilityLabel="Pairing code"
             />
-          </>
-        )}
+          )}
 
-        {message ? (
-          <Text variant="body" style={styles.problem} accessibilityLiveRegion="polite">
-            {message}
-          </Text>
-        ) : null}
+          {message ? (
+            <View style={styles.problemBox} accessibilityLiveRegion="polite">
+              <Ionicons name="alert-circle-outline" size={18} color={MART.danger} />
+              <MartText variant="body" color={MART.danger} style={styles.problemText}>
+                {message}
+              </MartText>
+            </View>
+          ) : null}
 
-        {step === 'confirm' ? (
-          <Button title={busy ? 'Pairing...' : 'Pair this phone'} onPress={() => void pairNow()} disabled={busy} />
-        ) : (
-          <>
-            <Button title={busy ? 'Checking...' : 'Continue'} onPress={() => void look(text)} disabled={busy || text.trim().length === 0} />
-            {renderScanner ? (
-              <Button title="Scan QR code" variant="secondary" onPress={() => setStep('scan')} disabled={busy} style={styles.secondary} />
-            ) : null}
-          </>
-        )}
+          {step === 'confirm' ? (
+            <MartButton
+              label={busy ? 'Pairing…' : 'Pair this phone'}
+              busy={busy}
+              onPress={() => void pairNow()}
+              disabled={busy}
+              style={styles.submit}
+            />
+          ) : (
+            <>
+              <MartButton
+                label={busy ? 'Checking…' : 'Continue'}
+                busy={busy}
+                onPress={() => void look(text)}
+                disabled={busy || text.trim().length === 0}
+                style={styles.submit}
+              />
+              {renderScanner ? (
+                <MartButton label="Scan QR code" kind="quiet" onPress={() => setStep('scan')} disabled={busy} />
+              ) : null}
+            </>
+          )}
+        </Entrance>
+
+        <Entrance delay={180} style={styles.footer}>
+          <View style={styles.footerMark}>
+            <View style={[styles.footerDot, { backgroundColor: brand }]} />
+            <MartText variant="shelf" color={MART.inkQuiet}>
+              POWERED BY KIOSK
+            </MartText>
+          </View>
+        </Entrance>
       </ScrollView>
+    </Screen>
+  );
+}
+
+function SummaryRow({
+  icon,
+  label,
+  value,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: string;
+}) {
+  return (
+    <View style={styles.summaryRow}>
+      <Ionicons name={icon} size={18} color={MART.inkQuiet} />
+      <MartText variant="meta" color={MART.inkQuiet} style={styles.summaryRowLabel}>
+        {label}
+      </MartText>
+      <MartText variant="label" numberOfLines={1} style={styles.summaryRowValue}>
+        {value}
+      </MartText>
     </View>
   );
 }
 
+const EDGE = SPACE.xxl; // 28
+
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  container: {
-    flex: 1,
-    paddingHorizontal: theme.spacing.lg,
-    paddingBottom: theme.spacing.lg,
-    backgroundColor: theme.colors.background,
+  container: { paddingHorizontal: 0, paddingBottom: SPACE.lg },
+  form: { flexGrow: 1 },
+  pass: {
+    paddingHorizontal: EDGE,
+    paddingTop: 72, // clears the status bar / Dynamic Island without a SafeAreaProvider dependency
+    paddingBottom: SPACE.xxxl,
+    borderBottomLeftRadius: 40,
+    borderBottomRightRadius: 40,
+    gap: SPACE.xs,
+    overflow: 'hidden',
+    shadowColor: MART.fallbackPrimary,
+    shadowOpacity: 0.2,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 6,
   },
-  content: { flexGrow: 1, justifyContent: 'center' },
-  shop: { marginBottom: theme.spacing.lg },
-  help: { marginBottom: theme.spacing.md, color: theme.colors.textMuted },
-  input: {
+  glow: { position: 'absolute', width: 320, height: 320, borderRadius: 999, top: -160, left: -80, opacity: 0.5 },
+  orb: { position: 'absolute', borderRadius: 999 },
+  orbOne: { width: 180, height: 180, top: -70, right: -50 },
+  orbTwo: { width: 110, height: 110, top: 40, right: 60 },
+  passTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: SPACE.md,
+    marginBottom: SPACE.lg,
+  },
+  passBrand: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
+  passRing: { width: 56, height: 56, borderRadius: 999, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  passMark: { width: 44, height: 44, borderRadius: RADIUS.pill, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  passMonogram: { ...TYPE.label, fontFamily: FONT.black },
+  passStore: { flex: 1 },
+  passTitle: {},
+  passHint: {},
+  storeChip: {
+    minHeight: 34,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACE.xxs,
+    justifyContent: 'center',
+    paddingHorizontal: SPACE.md,
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.md,
-    padding: theme.spacing.md,
-    marginBottom: theme.spacing.md,
-    fontSize: 18,
-    minHeight: 48,
-    letterSpacing: 2,
+    borderRadius: RADIUS.pill,
   },
-  card: {
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.lg,
-    backgroundColor: theme.colors.surface,
-    padding: theme.spacing.md,
-    marginBottom: theme.spacing.lg,
+  storeChipText: { letterSpacing: 0.2 },
+  pressed: { opacity: 0.6 },
+  formBody: {
+    gap: SPACE.lg,
+    marginTop: -32,
+    marginHorizontal: SPACE.lg,
+    paddingHorizontal: SPACE.md,
+    paddingTop: SPACE.xl,
+    paddingBottom: SPACE.xl,
+    backgroundColor: MART.paperElevated,
+    borderRadius: RADIUS.xl,
+    shadowColor: MART.ink,
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
   },
-  cardLabel: { color: theme.colors.textMuted, marginBottom: theme.spacing.xs },
-  cardLine: { marginTop: theme.spacing.sm },
-  problem: { color: theme.colors.danger, marginBottom: theme.spacing.md },
-  secondary: { marginTop: theme.spacing.md },
+  codeInput: { letterSpacing: 2 },
+  summary: {
+    gap: SPACE.sm,
+    padding: SPACE.lg,
+    borderRadius: RADIUS.lg,
+    backgroundColor: MART.paper,
+  },
+  summaryBadge: {
+    width: 48,
+    height: 48,
+    borderRadius: RADIUS.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACE.xs,
+  },
+  summaryRows: { gap: SPACE.sm, marginTop: SPACE.sm },
+  summaryRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm },
+  summaryRowLabel: { width: 112 },
+  summaryRowValue: { flex: 1, textAlign: 'right' },
+  problemBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SPACE.sm,
+    padding: SPACE.md,
+    borderRadius: RADIUS.md,
+    backgroundColor: MART.dangerSurface,
+  },
+  problemText: { flex: 1 },
+  submit: {
+    marginTop: SPACE.xs,
+    shadowColor: MART.fallbackPrimary,
+    shadowOpacity: 0.28,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
+  footer: { marginTop: 'auto', paddingTop: SPACE.xxl, alignItems: 'center' },
+  footerMark: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm },
+  footerDot: { width: 10, height: 10, borderRadius: 999 },
 });

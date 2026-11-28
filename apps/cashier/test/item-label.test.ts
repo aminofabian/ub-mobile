@@ -15,6 +15,20 @@ test('a product with an option its name does not say gets the option', () => {
   assert.equal(itemLabel({ name: 'Rice', variantName: '2kg', size: '1kg' }), 'Rice · 2kg', 'the option before the size');
 });
 
+test('an option the name already says is only recognised as whole words', () => {
+  assert.equal(itemLabel({ name: 'Rice 12kg', variantName: '2kg' }), 'Rice 12kg · 2kg', '"2kg" is not in "12kg"');
+  assert.equal(itemLabel({ name: 'Pack of 12', variantName: '2' }), 'Pack of 12 · 2', '"2" is not in "12"');
+  assert.equal(itemLabel({ name: 'Cola 500ml', variantName: '500' }), 'Cola 500ml · 500', 'a part of a word is not the word');
+  assert.equal(itemLabel({ name: 'Rice (2kg)', variantName: '2kg' }), 'Rice (2kg)', 'brackets and commas end a word');
+  assert.equal(itemLabel({ name: 'Rice, 2kg, white', variantName: '2kg' }), 'Rice, 2kg, white');
+  assert.equal(itemLabel({ name: 'Sukari 2kg', variantName: 'Sukari 2kg' }), 'Sukari 2kg', 'an option that is the whole name says nothing more');
+});
+
+test('the option is found when the first place it appears is part of a longer word and a later one is not', () => {
+  assert.equal(itemLabel({ name: 'Rice 12kg or 2kg', variantName: '2kg' }), 'Rice 12kg or 2kg');
+  assert.equal(itemLabel({ name: 'Rice 12kg and 120kg', variantName: '2kg' }), 'Rice 12kg and 120kg · 2kg', 'it is nowhere as a word');
+});
+
 test('an option an import left as a placeholder is not shown', () => {
   for (const variantName of ['variant', 'Option', 'VARIATION', ' default ', '', null, undefined, '3f2a1b4c-0000-4000-8000-00000000abcd']) {
     assert.equal(itemLabel({ name: 'Rice', variantName }), 'Rice', String(variantName));

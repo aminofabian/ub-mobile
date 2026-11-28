@@ -26,11 +26,12 @@ export function MainTabs() {
 
   return (
     <Tab.Navigator
-      tabBar={(props) => <MartTabBar {...props} primary={mart.primary} />}
+      tabBar={(props) => <MartTabBar {...props} primary={mart.primary} accent={mart.accent} />}
       screenOptions={{
         headerShown: false,
         headerTitleStyle: styles.headerTitle,
-        headerStyle: { backgroundColor: MART.paperElevated },
+        headerStyle: { backgroundColor: MART.paper },
+        headerTitleAlign: 'left',
         headerShadowVisible: false,
         headerTintColor: MART.ink,
         lazy: false,
@@ -39,23 +40,21 @@ export function MainTabs() {
       <Tab.Screen
         name="Home"
         component={HomeScreen}
-        options={{ tabBarLabel: 'Aisles', tabBarAccessibilityLabel: 'Aisles' }}
+        options={{ tabBarLabel: 'Home', tabBarAccessibilityLabel: 'Home' }}
       />
       <Tab.Screen
         name="Search"
         component={SearchScreen}
         options={{
-          headerShown: true,
-          title: 'Find',
-          tabBarLabel: 'Find',
-          tabBarAccessibilityLabel: 'Find products',
+          title: 'Search',
+          tabBarLabel: 'Search',
+          tabBarAccessibilityLabel: 'Search products',
         }}
       />
       <Tab.Screen
         name="Cart"
         component={CartScreen}
         options={{
-          headerShown: true,
           title: 'Basket',
           tabBarLabel: 'Basket',
           tabBarBadge: itemCount > 0 ? itemCount : undefined,
@@ -75,8 +74,8 @@ export function MainTabs() {
           },
         })}
         options={{
-          tabBarLabel: 'Pass',
-          tabBarAccessibilityLabel: 'Store pass, wallet, and history',
+          tabBarLabel: 'Account',
+          tabBarAccessibilityLabel: 'Account: wallet, points and orders',
         }}
       />
     </Tab.Navigator>
@@ -85,7 +84,7 @@ export function MainTabs() {
 
 const styles = StyleSheet.create({
   headerTitle: {
-    ...TYPE.heading,
+    ...TYPE.title,
     color: MART.ink,
   },
 });

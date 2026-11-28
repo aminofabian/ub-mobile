@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { GUTTER, MART, RADIUS, SPACE, TYPE } from '../theme/mart';
+import { ChipButton } from './Capsule';
 
 interface SearchBarProps {
   value: string;
@@ -16,18 +17,19 @@ export function SearchBar({
   value,
   onChangeText,
   onBarcodePress,
-  placeholder = 'Search products...',
+  placeholder = 'Search the shop',
   autoFocus = false,
-  accent = MART.fallbackPrimary,
+  accent = MART.fallbackAccent,
 }: SearchBarProps) {
   return (
     <View style={styles.row}>
       <View style={styles.field}>
-        <Ionicons name="search" size={18} color={MART.inkQuiet} />
+        <Ionicons name="search" size={20} color={MART.ink} />
         <TextInput
           style={styles.input}
           placeholder={placeholder}
           placeholderTextColor={MART.inkQuiet}
+          selectionColor={MART.ink}
           value={value}
           onChangeText={onChangeText}
           autoFocus={autoFocus}
@@ -42,19 +44,18 @@ export function SearchBar({
             hitSlop={8}
             style={styles.clear}
           >
-            <Ionicons name="close-circle" size={18} color={MART.inkQuiet} />
+            <Ionicons name="close-circle" size={20} color={MART.inkMuted} />
           </Pressable>
         ) : null}
       </View>
       {onBarcodePress ? (
-        <Pressable
+        <ChipButton
+          icon="barcode-outline"
+          label="Scan a barcode"
           onPress={onBarcodePress}
-          accessibilityRole="button"
-          accessibilityLabel="Scan barcode"
-          style={[styles.scan, { backgroundColor: accent }]}
-        >
-          <Ionicons name="barcode-outline" size={22} color="#fff" />
-        </Pressable>
+          fill={accent}
+          size={52}
+        />
       ) : null}
     </View>
   );
@@ -70,33 +71,25 @@ const styles = StyleSheet.create({
   },
   field: {
     flex: 1,
-    minHeight: 48,
-    paddingHorizontal: SPACE.md,
+    height: 52,
+    paddingLeft: SPACE.lg,
+    paddingRight: SPACE.sm,
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACE.sm,
-    borderWidth: 1,
-    borderColor: MART.border,
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.pill,
     backgroundColor: MART.paperElevated,
   },
   input: {
     ...TYPE.body,
     flex: 1,
-    minHeight: 48,
-    fontSize: 16,
+    height: 52,
+    lineHeight: undefined,
     color: MART.ink,
   },
   clear: {
-    width: 32,
-    height: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  scan: {
-    width: 48,
-    height: 48,
-    borderRadius: RADIUS.md,
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
   },

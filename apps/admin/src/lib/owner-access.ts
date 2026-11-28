@@ -28,6 +28,10 @@ export type OwnerAccess = {
    * the two the screen opens and then fails, so neither alone is offered.
    */
   receive: boolean;
+  /** Selling from the back office: the till's own permission, `sales.sell`. */
+  sell: boolean;
+  /** The counter invoices, and what is owed on them (`grocery.invoices.read`). */
+  invoices: boolean;
 };
 
 function has(user: AccessUser, permission: string): boolean {
@@ -46,14 +50,18 @@ export function ownerAccess(person: AccessUser): OwnerAccess {
     credit: has(user, 'credits.customers.read'),
     recordPayments: has(user, 'credits.claims.review'),
     receive: has(user, 'purchasing.path_a.read') && has(user, 'purchasing.path_a.write'),
+    sell: has(user, 'sales.sell'),
+    invoices: has(user, 'grocery.invoices.read'),
   };
 }
 
-export type OwnerTab = 'Today' | 'Orders' | 'Stock' | 'Credit' | 'More';
+export type OwnerTab = 'Sell' | 'Today' | 'Invoices' | 'Orders' | 'Stock' | 'Credit' | 'More';
 
 /** The tabs this person gets, in order. Today and More are always there: Today says what it cannot show, and More signs out. */
 export function visibleTabs(access: OwnerAccess): OwnerTab[] {
-  const tabs: OwnerTab[] = ['Today'];
+  // Selling comes first for anyone who may: it is the job the shop actually does.
+  const tabs: OwnerTab[] = access.sell ? ['Sell', 'Today'] : ['Today'];
+  if (access.invoices) tabs.push('Invoices');
   if (access.orders) tabs.push('Orders');
   if (access.stock) tabs.push('Stock');
   if (access.credit) tabs.push('Credit');

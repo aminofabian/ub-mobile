@@ -1,19 +1,29 @@
 // src/components/Button.tsx
-import { TouchableOpacity, Text, StyleSheet } from "react-native";
+import { useRef } from "react";
+import { Animated, Easing, Pressable, Text, StyleSheet } from "react-native";
 
 // src/theme.ts
 var theme = {
   colors: {
-    primary: "#28a745",
-    primaryDark: "#1e7e34",
-    background: "#ffffff",
-    surface: "#f8f9fa",
-    text: "#212529",
-    textMuted: "#6c757d",
-    border: "#dee2e6",
-    danger: "#dc3545",
-    warning: "#ffc107",
-    success: "#28a745"
+    // Amber is the accent only (the primary button, active states), not a fill background.
+    primary: "#F08A24",
+    primaryDark: "#D97515",
+    /** The ground of every screen: the counter's warm cream. */
+    background: "#FBF7F1",
+    /** Cards and fields: pure white, set apart by a hairline, not a shadow. */
+    surface: "#ffffff",
+    /** A quiet sunken well: pressed tiles, skeleton bones. */
+    surfaceSunken: "#F6F1E8",
+    text: "#17130D",
+    textMuted: "#6B6357",
+    /** Darkest quiet tone that still clears 4.5:1 on the background. */
+    textQuiet: "#9C9384",
+    /** Hairline dividers and card edges. */
+    border: "#EDE6DA",
+    borderStrong: "#DCD2C2",
+    danger: "#a8281b",
+    warning: "#7a5a00",
+    success: "#2f6b12"
   },
   spacing: {
     xs: 4,
@@ -23,50 +33,105 @@ var theme = {
     xl: 32
   },
   borderRadius: {
-    sm: 4,
-    md: 8,
-    lg: 12,
-    xl: 16
+    // Rounder, in step with mart: capsule controls, soft tiles.
+    sm: 10,
+    md: 16,
+    lg: 22,
+    xl: 32
   }
+};
+
+// src/type.ts
+import { Platform } from "react-native";
+var SYSTEM_FACE = Platform.select({ ios: "System", android: "sans-serif", default: "System" });
+var FONT = {
+  regular: "DMSans_400Regular",
+  medium: "DMSans_500Medium",
+  semibold: "DMSans_600SemiBold",
+  bold: "DMSans_700Bold",
+  black: "DMSans_700Bold"
+};
+function setUiFont(family) {
+  FONT.regular = family.regular;
+  FONT.medium = family.medium;
+  FONT.semibold = family.semibold;
+  FONT.bold = family.bold;
+  FONT.black = family.black;
+}
+function resetUiFont() {
+  setUiFont({ regular: SYSTEM_FACE, medium: SYSTEM_FACE, semibold: SYSTEM_FACE, bold: SYSTEM_FACE, black: SYSTEM_FACE });
+}
+var WEIGHT = {
+  regular: "400",
+  medium: "500",
+  semibold: "600",
+  bold: "700",
+  black: "800"
 };
 
 // src/components/Button.tsx
 import { jsx } from "react/jsx-runtime";
+var EASE_OUT = Easing.bezier(0.16, 1, 0.3, 1);
+function tintedLift(fill) {
+  return {
+    shadowColor: fill,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.26,
+    shadowRadius: 12,
+    elevation: 4
+  };
+}
 function Button({ title, onPress, variant = "primary", disabled, style, textStyle }) {
   const backgroundColor = {
     primary: theme.colors.primary,
     secondary: theme.colors.surface,
     danger: theme.colors.danger
   }[variant];
-  const color = variant === "secondary" ? theme.colors.text : "#ffffff";
-  return /* @__PURE__ */ jsx(
-    TouchableOpacity,
+  const color = variant === "secondary" ? theme.colors.text : "#fffdf6";
+  const scale = useRef(new Animated.Value(1)).current;
+  const press = (to, duration) => Animated.timing(scale, { toValue: to, duration, easing: EASE_OUT, useNativeDriver: true }).start();
+  return /* @__PURE__ */ jsx(Animated.View, { style: { transform: [{ scale }] }, children: /* @__PURE__ */ jsx(
+    Pressable,
     {
       onPress,
       disabled,
-      activeOpacity: 0.8,
-      style: [styles.button, { backgroundColor }, disabled && styles.disabled, style],
+      onPressIn: () => !disabled && press(0.97, 130),
+      onPressOut: () => press(1, 220),
+      style: [
+        styles.button,
+        { backgroundColor },
+        // Secondary is an outlined capsule on white; the fills carry the colour and a soft lift in that colour.
+        variant === "secondary" ? styles.outlined : !disabled ? tintedLift(backgroundColor) : null,
+        disabled && styles.disabled,
+        style
+      ],
       accessibilityRole: "button",
       accessibilityLabel: title,
       children: /* @__PURE__ */ jsx(Text, { style: [styles.text, { color }, textStyle], children: title })
     }
-  );
+  ) });
 }
 var styles = StyleSheet.create({
   button: {
     paddingVertical: theme.spacing.md,
     paddingHorizontal: theme.spacing.lg,
-    borderRadius: theme.borderRadius.md,
+    borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
-    minHeight: 48
+    minHeight: 52
+  },
+  outlined: {
+    borderWidth: 1.5,
+    borderColor: theme.colors.borderStrong
   },
   disabled: {
-    opacity: 0.6
+    opacity: 0.55
   },
   text: {
-    fontSize: 16,
-    fontWeight: "600"
+    fontFamily: FONT.medium,
+    fontWeight: WEIGHT.medium,
+    fontSize: 15,
+    letterSpacing: -0.1
   }
 });
 
@@ -78,13 +143,15 @@ function Card({ children, style }) {
 }
 var styles2 = StyleSheet2.create({
   card: {
-    backgroundColor: theme.colors.background,
+    backgroundColor: theme.colors.surface,
     borderRadius: theme.borderRadius.lg,
+    borderWidth: StyleSheet2.hairlineWidth,
+    borderColor: theme.colors.border,
     padding: theme.spacing.md,
-    shadowColor: "#000",
+    shadowColor: "#1a2416",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
     elevation: 2
   }
 });
@@ -97,34 +164,221 @@ function Text2({ variant = "body", style, ...props }) {
 }
 var styles3 = StyleSheet3.create({
   base: {
-    color: theme.colors.text
+    color: theme.colors.text,
+    fontFamily: FONT.regular,
+    fontWeight: WEIGHT.regular
   },
   h1: {
-    fontSize: 28,
-    fontWeight: "700",
+    fontFamily: FONT.bold,
+    fontWeight: WEIGHT.bold,
+    fontSize: 26,
+    lineHeight: 32,
+    letterSpacing: -0.4,
     marginBottom: theme.spacing.md
   },
   h2: {
-    fontSize: 22,
-    fontWeight: "600",
+    fontFamily: FONT.semibold,
+    fontWeight: WEIGHT.semibold,
+    fontSize: 18,
+    lineHeight: 24,
+    letterSpacing: -0.3,
     marginBottom: theme.spacing.sm
   },
   body: {
-    fontSize: 16,
-    lineHeight: 24
+    fontFamily: FONT.regular,
+    fontWeight: WEIGHT.regular,
+    fontSize: 15,
+    lineHeight: 22
   },
   caption: {
-    fontSize: 14,
-    lineHeight: 20
+    fontFamily: FONT.regular,
+    fontWeight: WEIGHT.regular,
+    fontSize: 13,
+    lineHeight: 19
   },
   muted: {
-    fontSize: 14,
+    fontFamily: FONT.regular,
+    fontWeight: WEIGHT.regular,
+    fontSize: 13,
+    lineHeight: 19,
     color: theme.colors.textMuted
   }
 });
+
+// src/components/Banner.tsx
+import { StyleSheet as StyleSheet4, View as View2 } from "react-native";
+import { jsx as jsx4 } from "react/jsx-runtime";
+var TONES = {
+  info: { background: "#cfe8ff", border: "#aed4fb", text: "#0b5cab" },
+  warn: { background: "#fbf3a0", border: "#f3e67a", text: "#7a5a00" },
+  danger: { background: "#ffd5cd", border: "#f7b6aa", text: "#a8281b" },
+  ok: { background: "#d9f0c6", border: "#bfe3a4", text: "#2f6b12" }
+};
+function Banner({ tone = "info", children, style }) {
+  const colors = TONES[tone];
+  return /* @__PURE__ */ jsx4(
+    View2,
+    {
+      accessibilityRole: tone === "warn" || tone === "danger" ? "alert" : void 0,
+      style: [styles4.box, { backgroundColor: colors.background, borderColor: colors.border }, style],
+      children: typeof children === "string" ? /* @__PURE__ */ jsx4(Text2, { variant: "caption", style: { color: colors.text }, children }) : children
+    }
+  );
+}
+var styles4 = StyleSheet4.create({
+  box: {
+    borderWidth: 1,
+    borderRadius: theme.borderRadius.md,
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    marginBottom: theme.spacing.sm
+  }
+});
+
+// src/components/Field.tsx
+import { useState } from "react";
+import { StyleSheet as StyleSheet5, TextInput, View as View3 } from "react-native";
+import { jsx as jsx5, jsxs } from "react/jsx-runtime";
+function Field({ label, error, hint, style, onFocus, onBlur, ...input }) {
+  const [focused, setFocused] = useState(false);
+  return /* @__PURE__ */ jsxs(View3, { style: [styles5.wrap, style], children: [
+    label ? /* @__PURE__ */ jsx5(Text2, { variant: "caption", style: styles5.label, children: label }) : null,
+    /* @__PURE__ */ jsx5(
+      TextInput,
+      {
+        placeholderTextColor: theme.colors.textMuted,
+        autoCorrect: false,
+        accessibilityLabel: label ?? input.placeholder,
+        ...input,
+        onFocus: (e) => {
+          setFocused(true);
+          onFocus?.(e);
+        },
+        onBlur: (e) => {
+          setFocused(false);
+          onBlur?.(e);
+        },
+        style: [styles5.input, focused && !error ? styles5.inputFocused : null, error ? styles5.inputError : null]
+      }
+    ),
+    error ? /* @__PURE__ */ jsx5(Text2, { variant: "caption", style: styles5.error, children: error }) : hint ? /* @__PURE__ */ jsx5(Text2, { variant: "muted", children: hint }) : null
+  ] });
+}
+var styles5 = StyleSheet5.create({
+  wrap: { marginBottom: theme.spacing.sm },
+  label: { fontFamily: FONT.medium, fontWeight: WEIGHT.medium, marginBottom: theme.spacing.xs },
+  input: {
+    minHeight: 52,
+    borderWidth: 1.5,
+    borderColor: theme.colors.borderStrong,
+    borderRadius: theme.borderRadius.md,
+    paddingHorizontal: theme.spacing.md,
+    fontFamily: FONT.regular,
+    fontWeight: WEIGHT.regular,
+    fontSize: 15,
+    color: theme.colors.text,
+    backgroundColor: theme.colors.surface
+  },
+  // Active: the edge brightens to the brand green and the box lifts with a faint green-tinted ring.
+  inputFocused: {
+    borderColor: theme.colors.primary,
+    shadowColor: theme.colors.primary,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.16,
+    shadowRadius: 6,
+    elevation: 2
+  },
+  inputError: { borderColor: theme.colors.danger },
+  error: { color: theme.colors.danger, marginTop: theme.spacing.xs }
+});
+
+// src/components/Row.tsx
+import { Pressable as Pressable2, StyleSheet as StyleSheet6, View as View4 } from "react-native";
+import { Fragment, jsx as jsx6, jsxs as jsxs2 } from "react/jsx-runtime";
+var TONES2 = { normal: theme.colors.text, warn: theme.colors.warning, danger: theme.colors.danger, ok: theme.colors.success };
+function Row({ title, subtitle, right, rightTone = "normal", onPress, disabled, style }) {
+  const body = /* @__PURE__ */ jsxs2(Fragment, { children: [
+    /* @__PURE__ */ jsxs2(View4, { style: styles6.left, children: [
+      /* @__PURE__ */ jsx6(Text2, { style: styles6.title, numberOfLines: 2, children: title }),
+      subtitle ? /* @__PURE__ */ jsx6(Text2, { variant: "muted", numberOfLines: 2, children: subtitle }) : null
+    ] }),
+    right ? /* @__PURE__ */ jsx6(Text2, { style: { ...styles6.right, color: TONES2[rightTone] }, children: right }) : null
+  ] });
+  if (!onPress) return /* @__PURE__ */ jsx6(View4, { style: [styles6.row, style], children: body });
+  return /* @__PURE__ */ jsx6(
+    Pressable2,
+    {
+      onPress,
+      disabled,
+      accessibilityRole: "button",
+      accessibilityLabel: subtitle ? `${title}. ${subtitle}` : title,
+      style: ({ pressed }) => [styles6.row, pressed && styles6.pressed, disabled && styles6.disabled, style],
+      children: body
+    }
+  );
+}
+var styles6 = StyleSheet6.create({
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    minHeight: 56,
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    borderBottomWidth: StyleSheet6.hairlineWidth,
+    borderBottomColor: theme.colors.border,
+    backgroundColor: theme.colors.surface
+  },
+  pressed: { backgroundColor: theme.colors.surfaceSunken },
+  disabled: { opacity: 0.5 },
+  left: { flex: 1, paddingRight: theme.spacing.sm },
+  title: { fontFamily: FONT.semibold, fontWeight: WEIGHT.semibold, fontSize: 15, letterSpacing: -0.2 },
+  right: { fontFamily: FONT.semibold, fontWeight: WEIGHT.semibold, fontSize: 15, letterSpacing: -0.2 }
+});
+
+// src/components/Chip.tsx
+import { Pressable as Pressable3, StyleSheet as StyleSheet7 } from "react-native";
+import { jsx as jsx7 } from "react/jsx-runtime";
+function Chip({ label, selected = false, onPress, disabled, style }) {
+  return /* @__PURE__ */ jsx7(
+    Pressable3,
+    {
+      onPress,
+      disabled,
+      accessibilityRole: "button",
+      accessibilityState: { selected, disabled: !!disabled },
+      style: [styles7.chip, selected && styles7.selected, disabled && styles7.disabled, style],
+      children: /* @__PURE__ */ jsx7(Text2, { variant: "caption", style: selected ? styles7.labelSelected : styles7.label, children: label })
+    }
+  );
+}
+var styles7 = StyleSheet7.create({
+  chip: {
+    minHeight: 40,
+    justifyContent: "center",
+    paddingHorizontal: theme.spacing.md,
+    marginRight: theme.spacing.sm,
+    marginBottom: theme.spacing.sm,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: theme.colors.borderStrong,
+    backgroundColor: theme.colors.surface
+  },
+  selected: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
+  disabled: { opacity: 0.5 },
+  label: { fontFamily: FONT.medium, fontWeight: WEIGHT.medium },
+  labelSelected: { fontFamily: FONT.medium, fontWeight: WEIGHT.medium, color: "#fffdf6" }
+});
 export {
+  Banner,
   Button,
   Card,
+  Chip,
+  FONT,
+  Field,
+  Row,
   Text2 as Text,
+  WEIGHT,
+  resetUiFont,
+  setUiFont,
   theme
 };

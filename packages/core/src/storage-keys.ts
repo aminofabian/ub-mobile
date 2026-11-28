@@ -71,6 +71,8 @@ export const PLAIN_FIELDS = [
   'spoils',
   /** Stock: the stock take being counted, with the counts typed so far, so counting goes on with no connection. */
   'stockTake',
+  /** Stock: which supplier the last count was held to, so a supplier walk survives leaving the screen. */
+  'stockScope',
 ] as const;
 
 export type SecureField = (typeof SECURE_FIELDS)[number];

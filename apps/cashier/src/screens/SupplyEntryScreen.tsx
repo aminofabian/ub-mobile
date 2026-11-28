@@ -12,6 +12,7 @@ import {
   type SupplierProduct,
 } from '../api/pos-api';
 import type { CashierStackParamList } from '../navigation/AppNavigator';
+import { supplierNameOrLink } from '../lib/supplier-words';
 
 type Props = NativeStackScreenProps<CashierStackParamList, 'SupplyEntry'> & {
   api: ApiClient;
@@ -169,7 +170,7 @@ export function SupplyEntryScreen({ api, branchId, route, navigation, renderScan
           SUPPLY FROM
         </MartText>
         <MartText variant="title" numberOfLines={1}>
-          {supplierName}
+          {supplierNameOrLink({ name: supplierName })}
         </MartText>
 
         {drafts.length === 0 ? (

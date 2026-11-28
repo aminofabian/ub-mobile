@@ -35,6 +35,7 @@ __export(index_exports, {
   APP_NAMES: () => APP_NAMES,
   ApiError: () => ApiError,
   BRANCH_LOCKED_ROLE_KEYS: () => BRANCH_LOCKED_ROLE_KEYS,
+  CANCEL_REASONS: () => CANCEL_REASONS,
   CATALOG_ITEMS_READ: () => CATALOG_ITEMS_READ,
   DEFAULT_PLATFORM_CONFIG: () => DEFAULT_PLATFORM_CONFIG,
   DEFAULT_PLATFORM_HOST_SUFFIX: () => DEFAULT_PLATFORM_HOST_SUFFIX,
@@ -46,13 +47,21 @@ __export(index_exports, {
   INVENTORY_READ: () => INVENTORY_READ,
   INVENTORY_TRANSFER: () => INVENTORY_TRANSFER,
   INVENTORY_WRITE: () => INVENTORY_WRITE,
+  INVOICES_PATH: () => INVOICES_PATH,
   ITEM_PAGE_SIZE: () => ITEM_PAGE_SIZE,
   MAX_BASELINE: () => MAX_BASELINE,
+  MAX_CANCEL_REASON: () => MAX_CANCEL_REASON,
   MAX_DISPLAY_NAME_LENGTH: () => MAX_DISPLAY_NAME_LENGTH,
   MAX_KNOWN_STAFF: () => MAX_KNOWN_STAFF,
   MAX_QTY_UNITS: () => MAX_QTY_UNITS,
   MAX_SPOIL_LINES: () => MAX_SPOIL_LINES,
+  MAX_TYPED_CENTS: () => MAX_TYPED_CENTS,
+  MAX_UNITS: () => MAX_UNITS,
+  MAX_WEIGHT_THOUSANDTHS: () => MAX_WEIGHT_THOUSANDTHS,
   MIN_SEARCH_LENGTH: () => MIN_SEARCH_LENGTH,
+  MPESA_CODE_MAX: () => MPESA_CODE_MAX,
+  MPESA_CODE_MIN: () => MPESA_CODE_MIN,
+  MPESA_CODE_USUAL: () => MPESA_CODE_USUAL,
   NATIVE_KIOSK_CLIENT_HEADER: () => NATIVE_KIOSK_CLIENT_HEADER,
   NATIVE_KIOSK_CLIENT_VALUE: () => NATIVE_KIOSK_CLIENT_VALUE,
   PAIRING_CODE_MAX_LENGTH: () => PAIRING_CODE_MAX_LENGTH,
@@ -60,6 +69,7 @@ __export(index_exports, {
   PURCHASING_PATH_A_WRITE: () => PURCHASING_PATH_A_WRITE,
   QTY_SCALE: () => QTY_SCALE,
   READ_TIMEOUT_MS: () => READ_TIMEOUT_MS,
+  SERVICE_ID_PREFIX: () => SERVICE_ID_PREFIX,
   SHOP_CODE_ALPHABET: () => SHOP_CODE_ALPHABET,
   SHOP_CODE_MAX_LENGTH: () => SHOP_CODE_MAX_LENGTH,
   SHOP_CODE_MIN_LENGTH: () => SHOP_CODE_MIN_LENGTH,
@@ -78,17 +88,30 @@ __export(index_exports, {
   activateStore: () => activateStore,
   addKnownStaff: () => addKnownStaff,
   addSpoil: () => addSpoil,
+  addUnit: () => addUnit,
+  addWeight: () => addWeight,
   allocationPreviewPath: () => allocationPreviewPath,
   apiRequest: () => apiRequest,
   appsThatFit: () => appsThatFit,
   asSetupRequired: () => asSetupRequired,
+  backToShelf: () => backToShelf,
   batchDecreaseBody: () => batchDecreaseBody,
   beginSending: () => beginSending,
   beginSpoil: () => beginSpoil,
   bootstrapStore: () => bootstrapStore,
   bootstrapTenant: () => bootstrapTenant,
+  canCancel: () => canCancel,
+  cancelBody: () => cancelBody,
+  cancelFailureWords: () => cancelFailureWords,
+  cancelOutcome: () => cancelOutcome,
+  cancelOutcomeOf: () => cancelOutcomeOf,
+  cancelPath: () => cancelPath,
+  cannotAdd: () => cannotAdd,
+  cartCents: () => cartCents,
+  cashSuggestions: () => cashSuggestions,
   checkTillRegistration: () => checkTillRegistration,
   claimSpoils: () => claimSpoils,
+  classifyCancel: () => classifyCancel,
   classifyStore: () => classifyStore,
   classifyWrite: () => classifyWrite,
   cleanDisplayText: () => cleanDisplayText,
@@ -101,9 +124,12 @@ __export(index_exports, {
   compareVersions: () => compareVersions,
   counterModes: () => counterModes,
   createApiClient: () => createApiClient,
+  createCustomer: () => createCustomer,
   createKeeper: () => createKeeper,
+  customersWithPhone: () => customersWithPhone,
   decodeSpoils: () => decodeSpoils,
   describeFailure: () => describeFailure,
+  describePlanProblem: () => describePlanProblem,
   describeSetup: () => describeSetup,
   describeShopCodeProblem: () => describeShopCodeProblem,
   describeStoreResult: () => describeStoreResult,
@@ -112,13 +138,16 @@ __export(index_exports, {
   encodeSpoils: () => encodeSpoils,
   endSession: () => endSession,
   ensureStorageReady: () => ensureStorageReady,
+  expiryWords: () => expiryWords,
   fetchBranches: () => fetchBranches,
   fetchCategories: () => fetchCategories,
+  fetchCreditTabsSettings: () => fetchCreditTabsSettings,
   fetchDepartments: () => fetchDepartments,
   fetchMe: () => fetchMe,
   fetchPlatformConfig: () => fetchPlatformConfig,
   fetchPublicMobileConfig: () => fetchPublicMobileConfig,
   fetchShiftsDisabled: () => fetchShiftsDisabled,
+  findCustomerByPhone: () => findCustomerByPhone,
   findNewSpoil: () => findNewSpoil,
   firstName: () => firstName,
   fitsApp: () => fitsApp,
@@ -128,7 +157,10 @@ __export(index_exports, {
   formatApiProblemMessage: () => formatApiProblemMessage,
   formatCents: () => formatCents,
   formatKes: () => formatKes,
+  formatKg: () => formatKg,
+  formatMoney: () => formatMoney,
   formatQty: () => formatQty,
+  fromCents: () => fromCents,
   generateIdempotencyKey: () => generateIdempotencyKey,
   getAccessToken: () => getAccessToken,
   getActiveTenantId: () => getActiveTenantId,
@@ -140,9 +172,14 @@ __export(index_exports, {
   getTenantHeaders: () => getTenantHeaders,
   getUnsentSummary: () => getUnsentSummary,
   getWhiteLabelExtra: () => getWhiteLabelExtra,
+  handPriced: () => handPriced,
+  howToSell: () => howToSell,
   interpretTillAnswer: () => interpretTillAnswer,
+  invoicePath: () => invoicePath,
+  invoicesPath: () => invoicesPath,
   isApiError: () => isApiError,
   isBranchLockedRole: () => isBranchLockedRole,
+  isMpesaCode: () => isMpesaCode,
   isProvisionalId: () => isProvisionalId,
   isShopperDeepLinkIntent: () => isShopperDeepLinkIntent,
   isSpoilReason: () => isSpoilReason,
@@ -150,6 +187,11 @@ __export(index_exports, {
   isWhiteLabelApp: () => isWhiteLabelApp,
   itemLabel: () => itemLabel,
   itemsPath: () => itemsPath,
+  kgToThousandths: () => kgToThousandths,
+  lineCents: () => lineCents,
+  lineThousandths: () => lineThousandths,
+  lineTotalCents: () => lineTotalCents,
+  lineWords: () => lineWords,
   listRememberedStores: () => listRememberedStores,
   loadActiveStore: () => loadActiveStore,
   loadKnownStaff: () => loadKnownStaff,
@@ -159,17 +201,23 @@ __export(index_exports, {
   loginWithPin: () => loginWithPin,
   logout: () => logout,
   markSessionEnded: () => markSessionEnded,
+  matchCustomers: () => matchCustomers,
   mayCloseStockTake: () => mayCloseStockTake,
   mayCountStock: () => mayCountStock,
   mayMoveStock: () => mayMoveStock,
   mayOrderAtCounter: () => mayOrderAtCounter,
   maySellAtCounter: () => maySellAtCounter,
+  mpesaCodeLooksOdd: () => mpesaCodeLooksOdd,
   nextSpoil: () => nextSpoil,
+  normalizeKenyanPhone: () => normalizeKenyanPhone,
+  normalizeMpesaCode: () => normalizeMpesaCode,
+  onShelfPrice: () => onShelfPrice,
   openRememberedStore: () => openRememberedStore,
   openStore: () => openStore,
   outboxKey: () => outboxKey,
   parseKnownStaff: () => parseKnownStaff,
   parseMe: () => parseMe,
+  parseMoney: () => parseMoney,
   parsePairingCode: () => parsePairingCode,
   parsePairingPreview: () => parsePairingPreview,
   parsePairingScan: () => parsePairingScan,
@@ -184,15 +232,19 @@ __export(index_exports, {
   parseStoreInput: () => parseStoreInput,
   parseTenantDeepLink: () => parseTenantDeepLink,
   parseVersion: () => parseVersion,
+  parseWeightKg: () => parseWeightKg,
   pinLoginBranchId: () => pinLoginBranchId,
   pinnedTo: () => pinnedTo,
   plainHost: () => plainHost,
   planDecreaseCalls: () => planDecreaseCalls,
+  planPayments: () => planPayments,
   planSetOnHand: () => planSetOnHand,
   previewDeepLink: () => previewDeepLink,
   previewPairing: () => previewPairing,
   previewStore: () => previewStore,
   previewStoreByCode: () => previewStoreByCode,
+  previewWeighedLine: () => previewWeighedLine,
+  priceChanged: () => priceChanged,
   priceToCents: () => priceToCents,
   provisionalId: () => provisionalId,
   publicApiRequest: () => publicApiRequest,
@@ -203,11 +255,16 @@ __export(index_exports, {
   readAuthTokens: () => readAuthTokens,
   readCategories: () => readCategories,
   readCookieFromSetCookie: () => readCookieFromSetCookie,
+  readCreditTabsSettings: () => readCreditTabsSettings,
+  readCustomerCard: () => readCustomerCard,
   readDepartments: () => readDepartments,
   readFailureWords: () => readFailureWords,
   readHistory: () => readHistory,
+  readInstant: () => readInstant,
+  readInvoices: () => readInvoices,
   readItemHistory: () => readItemHistory,
   readItemsPage: () => readItemsPage,
+  readOneInvoice: () => readOneInvoice,
   readSetCookieLines: () => readSetCookieLines,
   readShiftsDisabled: () => readShiftsDisabled,
   readStockItem: () => readStockItem,
@@ -220,6 +277,7 @@ __export(index_exports, {
   rememberStaff: () => rememberStaff,
   rememberTillRegistered: () => rememberTillRegistered,
   removeKnownStaff: () => removeKnownStaff,
+  removeLine: () => removeLine,
   removeSpoil: () => removeSpoil,
   removeTenantSecret: () => removeTenantSecret,
   removeTenantValue: () => removeTenantValue,
@@ -236,17 +294,27 @@ __export(index_exports, {
   searchTerms: () => searchTerms,
   serializeKnownStaff: () => serializeKnownStaff,
   sessionWasEnded: () => sessionWasEnded,
+  setCustomerPhoneVerified: () => setCustomerPhoneVerified,
+  setItemWeighed: () => setItemWeighed,
+  setLinePrice: () => setLinePrice,
+  setLineWeighed: () => setLineWeighed,
   setReason: () => setReason,
+  setRequirePhoneVerification: () => setRequirePhoneVerification,
   setSpoilUnits: () => setSpoilUnits,
+  setUnits: () => setUnits,
+  setWeight: () => setWeight,
   shiftsAreDisabled: () => shiftsAreDisabled,
+  sortInvoices: () => sortInvoices,
   spoilDone: () => spoilDone,
   spoilNotDone: () => spoilNotDone,
   spoilOperations: () => spoilOperations,
   spoilSkipped: () => spoilSkipped,
   spoilUnitCostCents: () => spoilUnitCostCents,
   spoilVerdict: () => spoilVerdict,
+  stateWords: () => stateWords,
   stockAppMayWrite: () => stockAppMayWrite,
   stockIncreaseBody: () => stockIncreaseBody,
+  stockManagerMayEdit: () => stockManagerMayEdit,
   storeTokens: () => storeTokens,
   subscribeActiveStore: () => subscribeActiveStore,
   subscribeActiveStoreId: () => subscribeActiveStoreId,
@@ -255,6 +323,9 @@ __export(index_exports, {
   tenantHost: () => tenantHost,
   tenantHostSuffix: () => tenantHostSuffix,
   tenantKeeper: () => tenantKeeper,
+  thousandthsToKg: () => thousandthsToKg,
+  toCents: () => toCents,
+  totalCents: () => totalCents,
   unitsToQty: () => unitsToQty,
   unreadableOutboxKey: () => unreadableOutboxKey,
   unwrapOpened: () => unwrapOpened,
@@ -263,6 +334,10 @@ __export(index_exports, {
   visibleDepartments: () => visibleDepartments,
   wastageBody: () => wastageBody,
   webHomeForRole: () => webHomeForRole,
+  weighedItemOf: () => weighedItemOf,
+  weightForSpend: () => weightForSpend,
+  weightProblemWords: () => weightProblemWords,
+  wholeShillings: () => wholeShillings,
   withOutboxLock: () => withOutboxLock,
   withTimeout: () => withTimeout,
   writeTenantSecret: () => writeTenantSecret,
@@ -416,7 +491,9 @@ var PLAIN_FIELDS = [
   /** Grocery and Stock: the write-offs being listed, and the one write-off that was sent and not yet confirmed, so a closed app cannot lose track of it. */
   "spoils",
   /** Stock: the stock take being counted, with the counts typed so far, so counting goes on with no connection. */
-  "stockTake"
+  "stockTake",
+  /** Stock: which supplier the last count was held to, so a supplier walk survives leaving the screen. */
+  "stockScope"
 ];
 var RESERVED_IDS = /* @__PURE__ */ new Set([
   "tenant",
@@ -768,7 +845,8 @@ async function readLegacy(store) {
     groceryBasket: null,
     groceryForwards: null,
     spoils: null,
-    stockTake: null
+    stockTake: null,
+    stockScope: null
   };
   const outboxRaw = await store.get(LEGACY_PLAIN.outbox);
   return {
@@ -2678,9 +2756,9 @@ function shiftsAreDisabled(shop) {
 }
 function readShiftsDisabled(body) {
   if (!body || typeof body !== "object") return false;
-  const flags = body.featureFlags;
-  if (!flags || typeof flags !== "object") return false;
-  return flags["shifts.disabled"] === true;
+  const flags2 = body.featureFlags;
+  if (!flags2 || typeof flags2 !== "object") return false;
+  return flags2["shifts.disabled"] === true;
 }
 async function fetchShiftsDisabled(baseURL, host, options = {}) {
   const address = host?.trim();
@@ -3180,6 +3258,25 @@ function text2(raw, max) {
   const cleaned = cleanDisplayText(raw, max);
   return cleaned ? cleaned : null;
 }
+function webAddress2(value) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return /^https?:\/\//i.test(trimmed) ? trimmed : null;
+}
+function imageUrlOf(row) {
+  const thumb = webAddress2(row.thumbnailUrl);
+  if (thumb) return thumb;
+  const key = webAddress2(row.imageKey);
+  if (key) return key;
+  if (!Array.isArray(row.images)) return null;
+  for (const image of row.images) {
+    if (!image || typeof image !== "object") continue;
+    const photo = image;
+    const url = webAddress2(photo.secureUrl) ?? webAddress2(photo.url) ?? webAddress2(photo.s3Key);
+    if (url) return url;
+  }
+  return null;
+}
 function readStockItem(raw) {
   if (!raw || typeof raw !== "object") return null;
   const row = raw;
@@ -3201,7 +3298,8 @@ function readStockItem(raw) {
     active: row.active !== false,
     sellable: row.isSellable !== false,
     buyingCents: priceToCents(row.buyingPrice),
-    sellingCents: priceToCents(row.sellingPrice)
+    sellingCents: priceToCents(row.sellingPrice),
+    imageUrl: imageUrlOf(row)
   };
 }
 function itemLabel(item) {
@@ -3290,6 +3388,689 @@ function readDepartments(raw) {
 }
 async function fetchDepartments(api) {
   return readDepartments(await api.get("/api/v1/item-types"));
+}
+async function setItemWeighed(api, itemId2, weighed) {
+  const id3 = itemId2.trim();
+  if (!id3) return { ok: false, words: "That item has no id, so the server cannot be asked." };
+  try {
+    const answer = await api.put(`/api/v1/pos/items/${encodeURIComponent(id3)}/weighed`, { weighed });
+    const held = answer && typeof answer === "object" ? answer.isWeighed : void 0;
+    if (held === void 0) return { ok: true };
+    return held === weighed ? { ok: true } : { ok: false, words: "The server kept the old setting." };
+  } catch (error) {
+    const words = error instanceof Error && error.message ? error.message : "Could not reach the server.";
+    return { ok: false, words };
+  }
+}
+
+// src/money.ts
+var MAX_TYPED_CENTS = 1e7 * 100;
+function toCents(amount) {
+  return Number.isFinite(amount) ? Math.round(amount * 100) : null;
+}
+function fromCents(cents) {
+  return cents / 100;
+}
+function formatMoney(cents) {
+  const negative = cents < 0;
+  const whole2 = Math.floor(Math.abs(Math.round(cents)) / 100);
+  const fraction = Math.abs(Math.round(cents)) % 100;
+  const grouped = String(whole2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `${negative ? "-" : ""}${grouped}.${String(fraction).padStart(2, "0")}`;
+}
+var TYPED_AMOUNT = /^(?:\d{1,3}(?:,\d{3})+|\d+)?(?:\.\d{1,2})?$/;
+function parseMoney(text3) {
+  const typed = text3.trim();
+  if (!typed || !TYPED_AMOUNT.test(typed)) return null;
+  const [whole2 = "", fraction = ""] = typed.replace(/,/g, "").split(".");
+  const cents = Number(whole2 || "0") * 100 + Number(fraction.padEnd(2, "0"));
+  return Number.isSafeInteger(cents) && cents <= MAX_TYPED_CENTS ? cents : null;
+}
+function lineCents(quantity, unitPrice) {
+  if (!Number.isFinite(quantity) || !Number.isFinite(unitPrice) || quantity <= 0 || unitPrice < 0) return null;
+  const thousandths = BigInt(Math.round(quantity * 1e3));
+  const tenThousandths = BigInt(Math.round(unitPrice * 1e4));
+  const cents = (thousandths * tenThousandths + BigInt(5e4)) / BigInt(1e5);
+  return cents <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(cents) : null;
+}
+function totalCents(lines) {
+  let total = 0;
+  for (const line of lines) {
+    const cents = lineCents(line.quantity, line.unitPrice);
+    if (cents === null) return null;
+    total += cents;
+  }
+  return Number.isSafeInteger(total) ? total : null;
+}
+
+// src/weight.ts
+var MAX_WEIGHT_THOUSANDTHS = 999999;
+var WEIGHT_TEXT = /^(\d*)(?:\.(\d*))?$/;
+function parseWeightKg(text3) {
+  const typed = text3.trim();
+  if (!typed) return { ok: false, problem: "empty" };
+  const match = WEIGHT_TEXT.exec(typed);
+  if (!match) return { ok: false, problem: "not_a_number" };
+  const whole2 = match[1] ?? "";
+  const fraction = match[2] ?? "";
+  if (!whole2 && !fraction) return { ok: false, problem: "not_a_number" };
+  const significant = fraction.replace(/0+$/, "");
+  if (significant.length > 3) return { ok: false, problem: "too_many_decimals" };
+  const thousandths = Number(whole2 || "0") * 1e3 + Number(significant.padEnd(3, "0"));
+  if (thousandths === 0) return { ok: false, problem: "zero" };
+  if (thousandths > MAX_WEIGHT_THOUSANDTHS) return { ok: false, problem: "too_heavy" };
+  return { ok: true, thousandths };
+}
+function weightProblemWords(problem) {
+  switch (problem) {
+    case "empty":
+      return "Enter the weight in kg.";
+    case "not_a_number":
+      return "Use digits and a point, like 1.25.";
+    case "too_many_decimals":
+      return "Three decimals at most (grams), like 0.125.";
+    case "zero":
+      return "The weight must be above zero.";
+    case "too_heavy":
+      return "That is over 999.999 kg. Check the weight.";
+  }
+}
+function thousandthsToKg(thousandths) {
+  return Math.round(thousandths) / 1e3;
+}
+function kgToThousandths(kg) {
+  if (!Number.isFinite(kg)) return null;
+  const thousandths = Math.round(kg * 1e3);
+  return thousandths > 0 && thousandths <= MAX_WEIGHT_THOUSANDTHS ? thousandths : null;
+}
+function formatKg(thousandths) {
+  const rounded = Math.max(0, Math.round(thousandths));
+  const whole2 = Math.floor(rounded / 1e3);
+  const fraction = rounded % 1e3;
+  const decimals = fraction === 0 ? "" : `.${String(fraction).padStart(3, "0").replace(/0+$/, "")}`;
+  return `${whole2}${decimals} kg`;
+}
+function howToSell(item) {
+  if (item.weighed !== true) return { kind: "units" };
+  if (item.packageVariant === true) {
+    return { kind: "blocked", why: "This item is sold as a pack, not by weight. Ask the owner to fix it in the catalogue." };
+  }
+  const unit = (item.unitType ?? "").trim().toLowerCase();
+  if (unit === "kg") return { kind: "kg" };
+  if (unit === "g" || unit === "lb") {
+    return {
+      kind: "blocked",
+      why: `This item is priced per ${unit}, and the till sells by weight in kg only. Ask the owner to change it to kg.`
+    };
+  }
+  return { kind: "blocked", why: "This item is marked as weighed but has no weight unit. Ask the owner to set it to kg." };
+}
+function previewWeighedLine(unitPrice, text3) {
+  const entry = parseWeightKg(text3);
+  if (!entry.ok) return { ok: false, words: weightProblemWords(entry.problem) };
+  const totalCents2 = lineCents(thousandthsToKg(entry.thousandths), unitPrice);
+  if (totalCents2 === null) return { ok: false, words: "This item has no usable price." };
+  return { ok: true, thousandths: entry.thousandths, weight: formatKg(entry.thousandths), totalCents: totalCents2 };
+}
+function weightForSpend(unitPricePerKg, spendText) {
+  const spend = Number(spendText.replace(/[^0-9.]/g, ""));
+  if (!Number.isFinite(spend) || spend <= 0) {
+    return { ok: false, words: "Enter how much the customer is spending." };
+  }
+  if (!Number.isFinite(unitPricePerKg) || unitPricePerKg <= 0) {
+    return { ok: false, words: "This item has no usable price per kg." };
+  }
+  const kg = spend / unitPricePerKg;
+  const thousandths = kgToThousandths(kg);
+  if (thousandths === null) {
+    return { ok: false, words: "That amount is too small or too large to weigh." };
+  }
+  const totalCents2 = lineCents(thousandthsToKg(thousandths), unitPricePerKg);
+  if (totalCents2 === null) return { ok: false, words: "This item has no usable price." };
+  return { ok: true, thousandths, weight: formatKg(thousandths), totalCents: totalCents2 };
+}
+
+// src/cart.ts
+var SERVICE_ID_PREFIX = "svc:";
+var MAX_UNITS = 9999;
+function cannotAdd(item) {
+  const how = howToSell(item);
+  if (how.kind === "blocked") return how.why;
+  if (!(item.sellingPrice > 0) || !Number.isFinite(item.sellingPrice)) {
+    return "This item has no price. Ask the owner to set one.";
+  }
+  return null;
+}
+function indexOfLine(cart, itemId2) {
+  return cart.findIndex((line) => line.itemId === itemId2);
+}
+function lineThousandths(line) {
+  return Math.round(line.quantity * 1e3);
+}
+function replaceAt(cart, at, next) {
+  return cart.map((line, index) => index === at ? next : line);
+}
+function addUnit(cart, item) {
+  if (cannotAdd(item) !== null || howToSell(item).kind !== "units") return null;
+  const at = indexOfLine(cart, item.id);
+  const line = cart[at];
+  if (!line) {
+    return [...cart, { itemId: item.id, name: item.name, quantity: 1, unitPrice: item.sellingPrice }];
+  }
+  if (line.weighed || line.quantity + 1 > MAX_UNITS) return null;
+  return replaceAt(cart, at, { ...line, quantity: line.quantity + 1 });
+}
+function addWeight(cart, item, thousandths) {
+  if (cannotAdd(item) !== null || howToSell(item).kind !== "kg") return null;
+  if (!Number.isSafeInteger(thousandths) || thousandths <= 0) return null;
+  const at = indexOfLine(cart, item.id);
+  const line = cart[at];
+  if (!line) {
+    if (thousandths > MAX_WEIGHT_THOUSANDTHS) return null;
+    return [
+      ...cart,
+      { itemId: item.id, name: item.name, quantity: thousandthsToKg(thousandths), unitPrice: item.sellingPrice, weighed: true }
+    ];
+  }
+  if (!line.weighed) return null;
+  const sum = lineThousandths(line) + thousandths;
+  if (sum > MAX_WEIGHT_THOUSANDTHS) return null;
+  return replaceAt(cart, at, { ...line, quantity: thousandthsToKg(sum) });
+}
+function setWeight(cart, itemId2, thousandths) {
+  const at = indexOfLine(cart, itemId2);
+  const line = cart[at];
+  if (!line || !line.weighed) return null;
+  if (!Number.isSafeInteger(thousandths) || thousandths <= 0 || thousandths > MAX_WEIGHT_THOUSANDTHS) return null;
+  return replaceAt(cart, at, { ...line, quantity: thousandthsToKg(thousandths) });
+}
+function setUnits(cart, itemId2, quantity) {
+  const at = indexOfLine(cart, itemId2);
+  const line = cart[at];
+  if (!line || line.weighed || !Number.isInteger(quantity)) return null;
+  if (quantity <= 0) return removeLine(cart, itemId2);
+  if (quantity > MAX_UNITS) return null;
+  return replaceAt(cart, at, { ...line, quantity });
+}
+function removeLine(cart, itemId2) {
+  return cart.filter((line) => line.itemId !== itemId2);
+}
+function setLineWeighed(cart, itemId2, weighed) {
+  const at = indexOfLine(cart, itemId2);
+  const line = cart[at];
+  if (!line || line.service) return cart;
+  const already = line.weighed === true;
+  if (already === weighed) return cart;
+  if (weighed) {
+    return replaceAt(cart, at, { ...line, weighed: true });
+  }
+  const units = Math.max(1, Math.min(MAX_UNITS, Math.round(line.quantity)));
+  const next = { ...line, quantity: units };
+  delete next.weighed;
+  return replaceAt(cart, at, next);
+}
+function weighedItemOf(line) {
+  return { id: line.itemId, name: line.name, sellingPrice: line.unitPrice, weighed: true, unitType: "kg" };
+}
+function onShelfPrice(line, shelfPrice) {
+  return {
+    itemId: line.itemId,
+    name: line.name,
+    quantity: line.quantity,
+    unitPrice: shelfPrice,
+    ...line.weighed ? { weighed: true } : {},
+    ...line.service ? { service: line.service } : {}
+  };
+}
+function setLinePrice(cart, itemId2, cents) {
+  const at = indexOfLine(cart, itemId2);
+  const line = cart[at];
+  if (!line || line.service || !Number.isSafeInteger(cents) || cents <= 0) return null;
+  const shelf = line.shelfPrice ?? line.unitPrice;
+  if (cents === toCents(shelf)) return replaceAt(cart, at, onShelfPrice(line, shelf));
+  return replaceAt(cart, at, { ...line, unitPrice: fromCents(cents), shelfPrice: shelf });
+}
+function priceChanged(line) {
+  return line.shelfPrice !== void 0 && toCents(line.shelfPrice) !== toCents(line.unitPrice);
+}
+function handPriced(cart) {
+  return cart.filter(priceChanged);
+}
+function backToShelf(cart) {
+  return cart.map(
+    (line) => priceChanged(line) && line.shelfPrice !== void 0 ? onShelfPrice(line, line.shelfPrice) : line
+  );
+}
+function lineTotalCents(line) {
+  return lineCents(line.quantity, line.unitPrice);
+}
+function cartCents(cart) {
+  return totalCents(cart.map((line) => ({ quantity: line.quantity, unitPrice: line.unitPrice })));
+}
+function lineWords(line) {
+  const cents = toCents(line.unitPrice);
+  const price = cents === null ? "-" : formatMoney(cents);
+  const total = lineTotalCents(line);
+  const shelf = priceChanged(line) && line.shelfPrice !== void 0 ? toCents(line.shelfPrice) : null;
+  return {
+    quantity: line.weighed ? formatKg(lineThousandths(line)) : String(line.quantity),
+    price: line.weighed ? `${price} per kg` : price,
+    total: total === null ? "-" : formatMoney(total),
+    ...shelf !== null ? { was: formatMoney(shelf) } : {}
+  };
+}
+
+// src/tender.ts
+var MPESA_CODE_MIN = 6;
+var MPESA_CODE_MAX = 20;
+var MPESA_CODE_USUAL = 10;
+var ORDER = ["cash", "mpesa", "credit"];
+function isPositiveCents(value) {
+  return Number.isSafeInteger(value) && value > 0;
+}
+function normalizeMpesaCode(raw) {
+  return raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+function isMpesaCode(raw) {
+  const code = normalizeMpesaCode(raw);
+  return code.length >= MPESA_CODE_MIN && code.length <= MPESA_CODE_MAX;
+}
+function mpesaCodeLooksOdd(raw) {
+  return normalizeMpesaCode(raw).length !== MPESA_CODE_USUAL;
+}
+function wholeShillings(cents) {
+  return Math.floor(cents / 100) * 100;
+}
+function fail(problem, cents) {
+  return cents === void 0 ? { ok: false, problem } : { ok: false, problem, cents };
+}
+function planPayments({ totalCents: totalCents2, tenders, customerId }) {
+  if (!isPositiveCents(totalCents2)) return fail("no_total");
+  if (tenders.length === 0) return fail("no_tender");
+  const seen = /* @__PURE__ */ new Set();
+  for (const tender of tenders) {
+    if (!isPositiveCents(tender.cents)) return fail("bad_amount");
+    if (seen.has(tender.kind)) return fail("repeated");
+    seen.add(tender.kind);
+  }
+  for (const tender of tenders) {
+    if (tender.kind === "mpesa") {
+      if (tender.cents % 100 !== 0) return fail("mpesa_whole");
+      if (!isMpesaCode(tender.code)) return fail("mpesa_code");
+    }
+    if (tender.kind === "credit" && !(typeof customerId === "string" && customerId.trim())) {
+      return fail("credit_customer");
+    }
+  }
+  const sum = tenders.reduce((total, tender) => total + tender.cents, 0);
+  if (sum < totalCents2) return fail("short", totalCents2 - sum);
+  if (sum > totalCents2) return fail("over", sum - totalCents2);
+  const payments = [];
+  let cashReceived;
+  let changeCents = 0;
+  for (const tender of [...tenders].sort((a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind))) {
+    switch (tender.kind) {
+      case "cash": {
+        if (tender.handedCents !== void 0) {
+          if (!Number.isSafeInteger(tender.handedCents) || tender.handedCents < tender.cents) {
+            return fail("cash_handed_short");
+          }
+          cashReceived = fromCents(tender.handedCents);
+          changeCents = tender.handedCents - tender.cents;
+        }
+        payments.push({ method: "cash", amount: fromCents(tender.cents) });
+        break;
+      }
+      case "mpesa":
+        payments.push({ method: "mpesa_manual", amount: fromCents(tender.cents), reference: normalizeMpesaCode(tender.code) });
+        break;
+      case "credit":
+        payments.push({ method: "customer_credit", amount: fromCents(tender.cents) });
+        break;
+    }
+  }
+  return cashReceived === void 0 ? { ok: true, payments, changeCents } : { ok: true, payments, cashReceived, changeCents };
+}
+function describePlanProblem(plan) {
+  switch (plan.problem) {
+    case "no_total":
+      return "There is nothing to pay yet.";
+    case "no_tender":
+      return "Choose how the customer is paying.";
+    case "bad_amount":
+      return "Enter an amount for each way of paying.";
+    case "repeated":
+      return "Each way of paying can only be used once.";
+    case "mpesa_whole":
+      return "M-Pesa takes whole shillings. Take the cents in cash.";
+    case "mpesa_code":
+      return "Enter the M-Pesa code from the customer's message.";
+    case "credit_customer":
+      return "Choose the customer who is taking this on credit.";
+    case "short":
+      return plan.cents === void 0 ? "The payments do not cover the total." : `Still to pay ${formatMoney(plan.cents)}.`;
+    case "over":
+      return plan.cents === void 0 ? "The payments are more than the total." : `That is ${formatMoney(plan.cents)} more than the total.`;
+    case "cash_handed_short":
+      return "The cash handed over is less than the cash to take.";
+  }
+}
+var NOTE_STEPS = [5e3, 1e4, 5e4, 1e5];
+function cashSuggestions(dueCents) {
+  if (!isPositiveCents(dueCents)) return [];
+  const amounts = [dueCents];
+  for (const step of NOTE_STEPS) {
+    const roundedUp = Math.ceil(dueCents / step) * step;
+    if (roundedUp > amounts[amounts.length - 1]) amounts.push(roundedUp);
+  }
+  return amounts;
+}
+
+// src/stock-access.ts
+var DEFAULT_STOCK_SETTINGS = { spoils: true, stockEdit: true, orderPad: true };
+function stockLevels(body) {
+  if (!body || typeof body !== "object") return null;
+  const inventory = body.inventory;
+  const levels = inventory && typeof inventory === "object" ? inventory.stockLevels : null;
+  if (!levels || typeof levels !== "object") return null;
+  return levels;
+}
+function parseStockSettings(body) {
+  const switches = stockLevels(body);
+  if (!switches) return DEFAULT_STOCK_SETTINGS;
+  return {
+    spoils: switches.allowSpoilsForGroceryClerk !== false,
+    stockEdit: switches.allowStockEditForGroceryClerk !== false,
+    orderPad: switches.allowOrderPadForGroceryClerk !== false
+  };
+}
+function stockManagerMayEdit(body) {
+  const switches = stockLevels(body);
+  if (!switches) return true;
+  return switches.allowStockEditForStockManager !== false;
+}
+var INVENTORY_WRITE = "inventory.write";
+var STOCK_TAKE_RUN = "stocktake.run";
+var STOCK_TAKE_APPROVE = "stocktake.approve";
+var INVENTORY_TRANSFER = "inventory.transfer";
+var CATALOG_ITEMS_READ = "catalog.items.read";
+var INVENTORY_READ = "inventory.read";
+var GROCERY_INVOICES_CREATE = "grocery.invoices.create";
+var GROCERY_INVOICES_PAY = "grocery.invoices.pay";
+var GROCERY_INVOICES_CANCEL = "grocery.invoices.cancel";
+var PURCHASING_PATH_A_WRITE = "purchasing.path_a.write";
+function has(user, permission) {
+  return user.permissions.includes(permission);
+}
+function isGroceryCounterRole(roleKey) {
+  const key = (roleKey ?? "").trim().toLowerCase();
+  return key === "grocery_clerk" || key === "grocery_manager";
+}
+function maySellAtCounter(user) {
+  return has(user, GROCERY_INVOICES_CREATE) || isGroceryCounterRole(user.roleKey);
+}
+function mayOrderAtCounter(user, settings) {
+  if (!settings.orderPad) return false;
+  return has(user, PURCHASING_PATH_A_WRITE) || isGroceryCounterRole(user.roleKey);
+}
+function counterModes(user, settings) {
+  const modes = [];
+  if (maySellAtCounter(user)) modes.push("sell");
+  const mayWrite = has(user, INVENTORY_WRITE) || isGroceryCounterRole(user.roleKey);
+  if (mayWrite && settings.spoils) modes.push("spoils");
+  if (mayWrite && settings.stockEdit) modes.push("stockEdit");
+  return modes;
+}
+function stockAppMayWrite(user, managerMayEdit = true) {
+  if (has(user, INVENTORY_WRITE)) return true;
+  return managerMayEdit && (user.roleKey ?? "").trim().toLowerCase() === "stock_manager";
+}
+function mayCountStock(user) {
+  return has(user, STOCK_TAKE_RUN);
+}
+function mayCloseStockTake(user) {
+  return has(user, STOCK_TAKE_APPROVE);
+}
+function mayMoveStock(user) {
+  return has(user, INVENTORY_TRANSFER);
+}
+
+// src/grocery-invoices.ts
+var STATES = ["pending_payment", "paid", "cancelled", "expired"];
+function stateOf(value) {
+  const text3 = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return STATES.find((state) => state === text3) ?? "other";
+}
+function readInstant(value) {
+  if (typeof value === "number") {
+    if (!Number.isFinite(value) || value <= 0) return null;
+    return value < 1e11 ? Math.round(value * 1e3) : Math.round(value);
+  }
+  if (typeof value !== "string" || value === "") return null;
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+function maybeText(value, max) {
+  return cleanDisplayText(value, max) || null;
+}
+function readInvoice(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const row = raw;
+  if (typeof row.id !== "string" || row.id === "") return null;
+  const lineCount = typeof row.lineCount === "number" && Number.isInteger(row.lineCount) && row.lineCount >= 0 ? row.lineCount : Array.isArray(row.lines) ? row.lines.length : 0;
+  return {
+    id: row.id,
+    code: maybeText(row.barcodeCode, 40),
+    state: stateOf(row.status),
+    totalCents: priceToCents(row.grandTotal),
+    lineCount,
+    createdBy: typeof row.createdBy === "string" && row.createdBy !== "" ? row.createdBy : null,
+    createdByName: maybeText(row.createdByName, 80),
+    createdAt: readInstant(row.createdAt),
+    expiresAt: readInstant(row.expiresAt),
+    lockedByName: maybeText(row.lockedByName, 80),
+    remote: row.remote === true,
+    customerPhone: maybeText(row.customerPhone, 24)
+  };
+}
+function readInvoices(raw) {
+  const rows = Array.isArray(raw) ? raw : raw && typeof raw === "object" && Array.isArray(raw.invoices) ? raw.invoices : null;
+  if (!rows) return null;
+  const invoices = [];
+  for (const row of rows) {
+    const invoice = readInvoice(row);
+    if (invoice) invoices.push(invoice);
+  }
+  return invoices;
+}
+function readOneInvoice(raw) {
+  return readInvoice(raw);
+}
+var INVOICES_PATH = "/api/v1/grocery/invoices";
+function invoicesPath(branchId, state) {
+  const status = state && state !== "other" ? `&status=${state}` : "";
+  return `${INVOICES_PATH}?branchId=${encodeURIComponent(branchId)}${status}`;
+}
+function invoicePath(id3) {
+  return `${INVOICES_PATH}/${encodeURIComponent(id3)}`;
+}
+function cancelPath(id3) {
+  return `${invoicePath(id3)}/cancel`;
+}
+var stateWords = {
+  pending_payment: "Waiting for payment",
+  paid: "Paid",
+  cancelled: "Cancelled",
+  expired: "Expired",
+  other: "Unknown"
+};
+function sortInvoices(invoices) {
+  return [...invoices].sort((a, b) => (b.createdAt ?? -1) - (a.createdAt ?? -1));
+}
+function expiryWords(invoice, now) {
+  if (invoice.state !== "pending_payment" || invoice.expiresAt === null) return null;
+  const minutes = Math.ceil((invoice.expiresAt - now) / 6e4);
+  if (minutes <= 0) return "Expired";
+  if (minutes < 60) return `Expires in ${minutes} min`;
+  return `Expires in ${Math.ceil(minutes / 60)} h`;
+}
+var CANCEL_REASONS = [
+  { key: "changed_mind", words: "Customer changed their mind" },
+  { key: "wrong_items", words: "Wrong items on it" },
+  { key: "sent_twice", words: "Sent twice by mistake" },
+  { key: "price", words: "Price problem" },
+  { key: "other", words: "Other" }
+];
+var MAX_CANCEL_REASON = 200;
+function canCancel(invoice, user) {
+  return invoice.state === "pending_payment" && user.permissions.includes(GROCERY_INVOICES_CANCEL);
+}
+function cancelBody(reason, typed) {
+  const preset = CANCEL_REASONS.find((candidate) => candidate.key === reason);
+  if (!preset) return null;
+  const text3 = reason === "other" ? cleanDisplayText(typed, MAX_CANCEL_REASON) : preset.words;
+  return text3 ? { reason: text3 } : null;
+}
+function classifyCancel(error) {
+  if (!isApiError(error) || error.foreign) return "doubt";
+  const { status } = error;
+  if (status === 401 || status === 408 || status === 423 || status === 429 || status >= 500) return "doubt";
+  if (status === 409) return "moved_on";
+  if (status === 404) return "gone";
+  if (status === 403) return "not_allowed";
+  return status >= 400 ? "refused" : "doubt";
+}
+var cancelFailureWords = {
+  moved_on: "This invoice is no longer waiting for payment. It may have been paid or have expired.",
+  gone: "This invoice could not be found on your account.",
+  not_allowed: "You are not allowed to cancel invoices.",
+  refused: "The server did not accept the cancellation."
+};
+function cancelOutcome(raw) {
+  return cancelOutcomeOf(readOneInvoice(raw));
+}
+function cancelOutcomeOf(invoice) {
+  if (!invoice) return "unknown";
+  if (invoice.state === "cancelled") return "cancelled";
+  if (invoice.state === "pending_payment") return "open";
+  return invoice.state === "other" ? "unknown" : "closed";
+}
+
+// src/customer-match.ts
+function matchCustomers(rows) {
+  const byId = /* @__PURE__ */ new Map();
+  for (const row of rows) if (!byId.has(row.id)) byId.set(row.id, row);
+  if (byId.size === 0) return { kind: "none" };
+  if (byId.size === 1) return { kind: "one", customer: [...byId.values()][0] };
+  return { kind: "several" };
+}
+
+// src/phone.ts
+function normalizeKenyanPhone(raw) {
+  let digits = raw.replace(/[^0-9]/g, "");
+  if (digits.startsWith("0")) {
+    digits = `254${digits.slice(1)}`;
+  } else if (!digits.startsWith("254")) {
+    digits = `254${digits}`;
+  }
+  digits = digits.replace(/^2540([17]\d{8})$/, "254$1");
+  return /^254[17]\d{8}$/.test(digits) ? digits : null;
+}
+
+// src/customer-lookup.ts
+async function customersWithPhone(api, phone) {
+  const q = phone.trim();
+  if (!q) return [];
+  const params = new URLSearchParams({ page: "0", size: "5", phone: q });
+  const answer = await api.get(`/api/v1/customers?${params}`);
+  return Array.isArray(answer) ? answer : answer.content ?? [];
+}
+async function findCustomerByPhone(api, raw) {
+  const phone = normalizeKenyanPhone(raw);
+  if (!phone) return null;
+  const rows = [];
+  for (const variant of [phone, `0${phone.slice(3)}`]) {
+    rows.push(...await customersWithPhone(api, variant));
+  }
+  return matchCustomers(rows);
+}
+async function createCustomer(api, input) {
+  const name = input.name.trim().slice(0, 500);
+  const phone = normalizeKenyanPhone(input.phone) ?? input.phone.trim().slice(0, 50);
+  const created = await api.post("/api/v1/customers", {
+    name,
+    phones: [{ phone: phone.startsWith("254") ? `0${phone.slice(3)}` : phone, primary: true }]
+  });
+  const row = created && typeof created === "object" ? created : null;
+  const id3 = typeof row?.id === "string" ? row.id : "";
+  if (!id3) throw new Error("The server did not say which customer it made.");
+  const saved = typeof row?.name === "string" && row.name.trim() ? row.name.trim() : name;
+  return { id: id3, name: saved };
+}
+function readPhones(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue;
+    const row = entry;
+    const id3 = typeof row.id === "string" ? row.id.trim() : "";
+    if (!id3) continue;
+    const verifiedAt = typeof row.verifiedAt === "string" ? Date.parse(row.verifiedAt) : NaN;
+    out.push({
+      id: id3,
+      phone: typeof row.phone === "string" && row.phone.trim() ? row.phone.trim() : null,
+      primary: row.primary === true,
+      verifiedAt: Number.isNaN(verifiedAt) ? null : verifiedAt
+    });
+  }
+  return out;
+}
+function readCustomerCard(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const row = raw;
+  const id3 = typeof row.id === "string" ? row.id.trim() : "";
+  if (!id3) return null;
+  const phones = readPhones(row.phones);
+  return {
+    id: id3,
+    name: typeof row.name === "string" ? row.name.trim() : "Customer",
+    phones,
+    // Verified when any number on the customer is: the badge is about the person, not one line of their record.
+    verified: phones.some((phone) => phone.verifiedAt !== null)
+  };
+}
+async function setCustomerPhoneVerified(api, input) {
+  const path = `/api/v1/customers/${encodeURIComponent(input.customerId)}/phones/${encodeURIComponent(input.phoneId)}/verify`;
+  const answer = input.verified ? await api.post(path) : await api.delete(path);
+  return readCustomerCard(answer);
+}
+
+// src/credit-settings.ts
+var DEFAULTS = {
+  requirePhoneVerificationForNewTabCustomers: false,
+  allowCashierTabClearance: false,
+  allowCashierSearchCustomersByName: false
+};
+function flags(raw) {
+  return raw && typeof raw === "object" ? raw : {};
+}
+function readCreditTabsSettings(business) {
+  const inventory = flags(flags(business).inventory);
+  const creditTabs = flags(inventory.creditTabs);
+  return {
+    requirePhoneVerificationForNewTabCustomers: typeof creditTabs.requirePhoneVerificationForNewTabCustomers === "boolean" ? creditTabs.requirePhoneVerificationForNewTabCustomers : DEFAULTS.requirePhoneVerificationForNewTabCustomers,
+    allowCashierTabClearance: typeof creditTabs.allowCashierTabClearance === "boolean" ? creditTabs.allowCashierTabClearance : DEFAULTS.allowCashierTabClearance,
+    allowCashierSearchCustomersByName: typeof creditTabs.allowCashierSearchCustomersByName === "boolean" ? creditTabs.allowCashierSearchCustomersByName : DEFAULTS.allowCashierSearchCustomersByName
+  };
+}
+async function fetchCreditTabsSettings(api) {
+  return readCreditTabsSettings(await api.get("/api/v1/businesses/me"));
+}
+async function setRequirePhoneVerification(api, required) {
+  const answer = await api.patch("/api/v1/businesses/me", {
+    inventory: { creditTabs: { requirePhoneVerificationForNewTabCustomers: required } }
+  });
+  return readCreditTabsSettings(answer);
 }
 
 // src/stock-adjust.ts
@@ -3427,65 +4208,6 @@ function classifyWrite(error) {
   if (status === 401 || status === 408 || status === 423 || status === 429 || status >= 500) return { kind: "doubt" };
   if (status >= 400) return { kind: "refused", words: cleanDisplayText(error.hint || error.message, 140) || "The server did not accept that." };
   return { kind: "doubt" };
-}
-
-// src/stock-access.ts
-var DEFAULT_STOCK_SETTINGS = { spoils: true, stockEdit: true, orderPad: true };
-function parseStockSettings(body) {
-  if (!body || typeof body !== "object") return DEFAULT_STOCK_SETTINGS;
-  const inventory = body.inventory;
-  const levels = inventory && typeof inventory === "object" ? inventory.stockLevels : null;
-  if (!levels || typeof levels !== "object") return DEFAULT_STOCK_SETTINGS;
-  const switches = levels;
-  return {
-    spoils: switches.allowSpoilsForGroceryClerk !== false,
-    stockEdit: switches.allowStockEditForGroceryClerk !== false,
-    orderPad: switches.allowOrderPadForGroceryClerk !== false
-  };
-}
-var INVENTORY_WRITE = "inventory.write";
-var STOCK_TAKE_RUN = "stocktake.run";
-var STOCK_TAKE_APPROVE = "stocktake.approve";
-var INVENTORY_TRANSFER = "inventory.transfer";
-var CATALOG_ITEMS_READ = "catalog.items.read";
-var INVENTORY_READ = "inventory.read";
-var GROCERY_INVOICES_CREATE = "grocery.invoices.create";
-var GROCERY_INVOICES_PAY = "grocery.invoices.pay";
-var GROCERY_INVOICES_CANCEL = "grocery.invoices.cancel";
-var PURCHASING_PATH_A_WRITE = "purchasing.path_a.write";
-function has(user, permission) {
-  return user.permissions.includes(permission);
-}
-function isGroceryCounterRole(roleKey) {
-  const key = (roleKey ?? "").trim().toLowerCase();
-  return key === "grocery_clerk" || key === "grocery_manager";
-}
-function maySellAtCounter(user) {
-  return has(user, GROCERY_INVOICES_CREATE) || isGroceryCounterRole(user.roleKey);
-}
-function mayOrderAtCounter(user, settings) {
-  if (!settings.orderPad) return false;
-  return has(user, PURCHASING_PATH_A_WRITE) || isGroceryCounterRole(user.roleKey);
-}
-function counterModes(user, settings) {
-  const modes = [];
-  if (maySellAtCounter(user)) modes.push("sell");
-  const mayWrite = has(user, INVENTORY_WRITE) || isGroceryCounterRole(user.roleKey);
-  if (mayWrite && settings.spoils) modes.push("spoils");
-  if (mayWrite && settings.stockEdit) modes.push("stockEdit");
-  return modes;
-}
-function stockAppMayWrite(user) {
-  return has(user, INVENTORY_WRITE) || (user.roleKey ?? "").trim().toLowerCase() === "stock_manager";
-}
-function mayCountStock(user) {
-  return has(user, STOCK_TAKE_RUN);
-}
-function mayCloseStockTake(user) {
-  return has(user, STOCK_TAKE_APPROVE);
-}
-function mayMoveStock(user) {
-  return has(user, INVENTORY_TRANSFER);
 }
 
 // src/departments.ts
@@ -3813,6 +4535,7 @@ function readFailureWords(error) {
   APP_NAMES,
   ApiError,
   BRANCH_LOCKED_ROLE_KEYS,
+  CANCEL_REASONS,
   CATALOG_ITEMS_READ,
   DEFAULT_PLATFORM_CONFIG,
   DEFAULT_PLATFORM_HOST_SUFFIX,
@@ -3824,13 +4547,21 @@ function readFailureWords(error) {
   INVENTORY_READ,
   INVENTORY_TRANSFER,
   INVENTORY_WRITE,
+  INVOICES_PATH,
   ITEM_PAGE_SIZE,
   MAX_BASELINE,
+  MAX_CANCEL_REASON,
   MAX_DISPLAY_NAME_LENGTH,
   MAX_KNOWN_STAFF,
   MAX_QTY_UNITS,
   MAX_SPOIL_LINES,
+  MAX_TYPED_CENTS,
+  MAX_UNITS,
+  MAX_WEIGHT_THOUSANDTHS,
   MIN_SEARCH_LENGTH,
+  MPESA_CODE_MAX,
+  MPESA_CODE_MIN,
+  MPESA_CODE_USUAL,
   NATIVE_KIOSK_CLIENT_HEADER,
   NATIVE_KIOSK_CLIENT_VALUE,
   PAIRING_CODE_MAX_LENGTH,
@@ -3838,6 +4569,7 @@ function readFailureWords(error) {
   PURCHASING_PATH_A_WRITE,
   QTY_SCALE,
   READ_TIMEOUT_MS,
+  SERVICE_ID_PREFIX,
   SHOP_CODE_ALPHABET,
   SHOP_CODE_MAX_LENGTH,
   SHOP_CODE_MIN_LENGTH,
@@ -3856,17 +4588,30 @@ function readFailureWords(error) {
   activateStore,
   addKnownStaff,
   addSpoil,
+  addUnit,
+  addWeight,
   allocationPreviewPath,
   apiRequest,
   appsThatFit,
   asSetupRequired,
+  backToShelf,
   batchDecreaseBody,
   beginSending,
   beginSpoil,
   bootstrapStore,
   bootstrapTenant,
+  canCancel,
+  cancelBody,
+  cancelFailureWords,
+  cancelOutcome,
+  cancelOutcomeOf,
+  cancelPath,
+  cannotAdd,
+  cartCents,
+  cashSuggestions,
   checkTillRegistration,
   claimSpoils,
+  classifyCancel,
   classifyStore,
   classifyWrite,
   cleanDisplayText,
@@ -3879,9 +4624,12 @@ function readFailureWords(error) {
   compareVersions,
   counterModes,
   createApiClient,
+  createCustomer,
   createKeeper,
+  customersWithPhone,
   decodeSpoils,
   describeFailure,
+  describePlanProblem,
   describeSetup,
   describeShopCodeProblem,
   describeStoreResult,
@@ -3890,13 +4638,16 @@ function readFailureWords(error) {
   encodeSpoils,
   endSession,
   ensureStorageReady,
+  expiryWords,
   fetchBranches,
   fetchCategories,
+  fetchCreditTabsSettings,
   fetchDepartments,
   fetchMe,
   fetchPlatformConfig,
   fetchPublicMobileConfig,
   fetchShiftsDisabled,
+  findCustomerByPhone,
   findNewSpoil,
   firstName,
   fitsApp,
@@ -3906,7 +4657,10 @@ function readFailureWords(error) {
   formatApiProblemMessage,
   formatCents,
   formatKes,
+  formatKg,
+  formatMoney,
   formatQty,
+  fromCents,
   generateIdempotencyKey,
   getAccessToken,
   getActiveTenantId,
@@ -3918,9 +4672,14 @@ function readFailureWords(error) {
   getTenantHeaders,
   getUnsentSummary,
   getWhiteLabelExtra,
+  handPriced,
+  howToSell,
   interpretTillAnswer,
+  invoicePath,
+  invoicesPath,
   isApiError,
   isBranchLockedRole,
+  isMpesaCode,
   isProvisionalId,
   isShopperDeepLinkIntent,
   isSpoilReason,
@@ -3928,6 +4687,11 @@ function readFailureWords(error) {
   isWhiteLabelApp,
   itemLabel,
   itemsPath,
+  kgToThousandths,
+  lineCents,
+  lineThousandths,
+  lineTotalCents,
+  lineWords,
   listRememberedStores,
   loadActiveStore,
   loadKnownStaff,
@@ -3937,17 +4701,23 @@ function readFailureWords(error) {
   loginWithPin,
   logout,
   markSessionEnded,
+  matchCustomers,
   mayCloseStockTake,
   mayCountStock,
   mayMoveStock,
   mayOrderAtCounter,
   maySellAtCounter,
+  mpesaCodeLooksOdd,
   nextSpoil,
+  normalizeKenyanPhone,
+  normalizeMpesaCode,
+  onShelfPrice,
   openRememberedStore,
   openStore,
   outboxKey,
   parseKnownStaff,
   parseMe,
+  parseMoney,
   parsePairingCode,
   parsePairingPreview,
   parsePairingScan,
@@ -3962,15 +4732,19 @@ function readFailureWords(error) {
   parseStoreInput,
   parseTenantDeepLink,
   parseVersion,
+  parseWeightKg,
   pinLoginBranchId,
   pinnedTo,
   plainHost,
   planDecreaseCalls,
+  planPayments,
   planSetOnHand,
   previewDeepLink,
   previewPairing,
   previewStore,
   previewStoreByCode,
+  previewWeighedLine,
+  priceChanged,
   priceToCents,
   provisionalId,
   publicApiRequest,
@@ -3981,11 +4755,16 @@ function readFailureWords(error) {
   readAuthTokens,
   readCategories,
   readCookieFromSetCookie,
+  readCreditTabsSettings,
+  readCustomerCard,
   readDepartments,
   readFailureWords,
   readHistory,
+  readInstant,
+  readInvoices,
   readItemHistory,
   readItemsPage,
+  readOneInvoice,
   readSetCookieLines,
   readShiftsDisabled,
   readStockItem,
@@ -3998,6 +4777,7 @@ function readFailureWords(error) {
   rememberStaff,
   rememberTillRegistered,
   removeKnownStaff,
+  removeLine,
   removeSpoil,
   removeTenantSecret,
   removeTenantValue,
@@ -4014,17 +4794,27 @@ function readFailureWords(error) {
   searchTerms,
   serializeKnownStaff,
   sessionWasEnded,
+  setCustomerPhoneVerified,
+  setItemWeighed,
+  setLinePrice,
+  setLineWeighed,
   setReason,
+  setRequirePhoneVerification,
   setSpoilUnits,
+  setUnits,
+  setWeight,
   shiftsAreDisabled,
+  sortInvoices,
   spoilDone,
   spoilNotDone,
   spoilOperations,
   spoilSkipped,
   spoilUnitCostCents,
   spoilVerdict,
+  stateWords,
   stockAppMayWrite,
   stockIncreaseBody,
+  stockManagerMayEdit,
   storeTokens,
   subscribeActiveStore,
   subscribeActiveStoreId,
@@ -4033,6 +4823,9 @@ function readFailureWords(error) {
   tenantHost,
   tenantHostSuffix,
   tenantKeeper,
+  thousandthsToKg,
+  toCents,
+  totalCents,
   unitsToQty,
   unreadableOutboxKey,
   unwrapOpened,
@@ -4041,6 +4834,10 @@ function readFailureWords(error) {
   visibleDepartments,
   wastageBody,
   webHomeForRole,
+  weighedItemOf,
+  weightForSpend,
+  weightProblemWords,
+  wholeShillings,
   withOutboxLock,
   withTimeout,
   writeTenantSecret,

@@ -10,7 +10,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,20 +17,18 @@ import { useTenant } from '../lib/TenantContext';
 import { usePaymentOptions } from '../hooks/usePaymentOptions';
 import { useStkPush } from '../hooks/useStkPush';
 import { usePaymentStatus } from '../hooks/usePaymentStatus';
+import { Capsule } from '../components/Capsule';
+import { Coast, COAST_SWELL } from '../components/Coast';
+import { Field } from '../components/Field';
 import { Bone, SkeletonScope } from '../components/Skeleton';
+import { doneFeel, failFeel, stepFeel } from '../lib/haptics';
 import { looksLikeKenyanMobile } from '../lib/phone';
 import { formatMoney } from '../lib/media';
 import { RootStackParamList } from '../navigation/AppNavigator';
-import {
-  ELEVATION,
-  GUTTER,
-  MART,
-  martFromTenant,
-  ON_BRAND,
-  RADIUS,
-  SPACE,
-  TYPE,
-} from '../theme/mart';
+import { FONT, GUTTER, MART, martFromTenant, RADIUS, SPACE, TILE, TYPE } from '../theme/mart';
+
+/** Where the amount's coast rests, below the stack header. */
+const AMOUNT_HEIGHT = 148;
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Payment'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -42,7 +39,9 @@ export function PaymentScreen() {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
   const mart = martFromTenant(tenant);
-  const { orderId, grandTotal, currency, customerPhone } = route.params;
+  const { orderId, grandTotal, currency, customerPhone, orderCode, pickup } = route.params;
+  // The short code is what the shop reads out; the end of the long id is only a fallback.
+  const orderLabel = orderCode ?? orderId.slice(-8).toUpperCase();
 
   const { data: paymentOptions, isLoading: optionsLoading } = usePaymentOptions(tenant.slug);
   const stkPush = useStkPush(tenant.slug, orderId);
@@ -55,15 +54,25 @@ export function PaymentScreen() {
   useEffect(() => {
     if (status?.paid) {
       setPolling(false);
-      navigation.replace('OrderConfirmation', { orderId });
+      navigation.replace('OrderConfirmation', { orderId, orderCode, pickup });
     }
-  }, [status, navigation, orderId]);
+  }, [status, navigation, orderId, orderCode, pickup]);
 
   useEffect(() => {
     if (status?.paymentFailed) {
       setPolling(false);
     }
   }, [status?.paymentFailed]);
+
+  // One tick each, the first time the answer arrives: paid, or not.
+  const paid = Boolean(status?.paid);
+  const failed = Boolean(status?.paymentFailed);
+  useEffect(() => {
+    if (paid) doneFeel();
+  }, [paid]);
+  useEffect(() => {
+    if (failed) failFeel();
+  }, [failed]);
 
   const onlineMethods = paymentOptions?.online ?? [];
   const manualMethods = paymentOptions?.manual ?? [];
@@ -89,10 +98,10 @@ export function PaymentScreen() {
     return (
       <View style={styles.shell}>
         <SkeletonScope label="Loading payment options" style={styles.loading}>
-          <Bone h={84} />
-          <Bone h={50} />
-          <Bone h={44} />
-          <Bone h={52} />
+          <Bone h={AMOUNT_HEIGHT - SPACE.lg} r={RADIUS.xl} />
+          <Bone h={26} w={180} />
+          <Bone h={54} r={RADIUS.pill} />
+          <Bone h={56} r={RADIUS.pill} />
         </SkeletonScope>
       </View>
     );
@@ -100,6 +109,7 @@ export function PaymentScreen() {
 
   const phoneValid = looksLikeKenyanMobile(phone);
   const canPay = phoneValid && Boolean(selectedOnline) && !stkPush.isPending;
+  const on = mart.onPrimary;
 
   return (
     <KeyboardAvoidingView
@@ -109,16 +119,22 @@ export function PaymentScreen() {
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: SPACE.xxl + insets.bottom }]}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        <View style={[styles.amount, { backgroundColor: mart.primary }]}>
-          <Text style={styles.amountLabel}>Amount due</Text>
-          <Text style={styles.amountValue}>{formatMoney(currency, grandTotal)}</Text>
-          <Text style={styles.amountMeta}>Order #{orderId.slice(-8).toUpperCase()}</Text>
+        <View style={styles.amount}>
+          <Coast color={mart.primary} height={AMOUNT_HEIGHT} />
+          <Text style={[styles.amountLabel, { color: on.secondary }]}>Amount due</Text>
+          <Text style={[styles.amountValue, { color: on.primary }]}>
+            {formatMoney(currency, grandTotal)}
+          </Text>
+          <Text style={[styles.amountMeta, { color: on.secondary }]}>Order {orderLabel}</Text>
         </View>
 
         {onlineMethods.length > 0 ? (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Pay with M-Pesa</Text>
+            <Text accessibilityRole="header" style={styles.sectionTitle}>
+              Pay with M-Pesa
+            </Text>
 
             {onlineMethods.length > 1 ? (
               <View style={styles.methods} accessibilityRole="radiogroup">
@@ -127,15 +143,20 @@ export function PaymentScreen() {
                   return (
                     <Pressable
                       key={method.configId}
-                      onPress={() => setSelectedOnline(method.configId)}
+                      onPress={() => {
+                        stepFeel();
+                        setSelectedOnline(method.configId);
+                      }}
                       accessibilityRole="radio"
                       accessibilityState={{ selected }}
-                      style={[
+                      style={({ pressed }) => [
                         styles.methodChip,
                         selected && { backgroundColor: mart.primary, borderColor: mart.primary },
+                        pressed && styles.pressed,
                       ]}
                     >
-                      <Text style={[styles.methodText, selected && styles.methodTextOn]}>
+                      {selected ? <Ionicons name="checkmark" size={16} color={on.primary} /> : null}
+                      <Text style={[styles.methodText, selected && { color: on.primary }]}>
                         {method.displayName}
                       </Text>
                     </Pressable>
@@ -144,27 +165,23 @@ export function PaymentScreen() {
               </View>
             ) : null}
 
-            <Text style={styles.fieldLabel}>M-Pesa number</Text>
-            <Text style={styles.fieldHint}>The PIN prompt goes to this phone.</Text>
-            <TextInput
-              style={[styles.input, phone.length > 0 && !phoneValid && styles.inputError]}
+            <Field
+              label="M-Pesa number"
+              icon="call-outline"
               placeholder="0712 345 678"
-              placeholderTextColor={MART.inkQuiet}
               value={phone}
               onChangeText={setPhone}
               keyboardType="phone-pad"
               editable={!polling}
               accessibilityLabel="M-Pesa phone number"
+              hint="The PIN prompt goes to this phone."
+              error={phone.length > 0 && !phoneValid ? 'Enter a Kenyan mobile, e.g. 0712 345 678.' : null}
+              style={styles.phoneInput}
             />
-            {phone.length > 0 && !phoneValid ? (
-              <Text style={styles.fieldError}>
-                Enter a Kenyan mobile, e.g. 0712 345 678.
-              </Text>
-            ) : null}
 
             {polling ? (
               <View style={styles.waiting}>
-                <ActivityIndicator color={mart.primary} />
+                <ActivityIndicator color={MART.ink} />
                 <View style={styles.waitingCopy}>
                   <Text style={styles.waitingTitle}>Check your phone</Text>
                   <Text style={styles.waitingBody}>
@@ -173,36 +190,33 @@ export function PaymentScreen() {
                 </View>
               </View>
             ) : (
-              <Pressable
+              <Capsule
+                label={
+                  stkPush.isPending ? 'Sending prompt…' : `Pay ${formatMoney(currency, grandTotal)}`
+                }
+                chip="arrow-forward"
+                fill={mart.primary}
+                busy={stkPush.isPending}
+                disabled={!canPay && !stkPush.isPending}
                 onPress={() => void handlePayOnline()}
-                disabled={!canPay}
-                accessibilityRole="button"
-                style={({ pressed }) => [
-                  styles.cta,
-                  { backgroundColor: mart.primary },
-                  !canPay && styles.ctaDisabled,
-                  pressed && styles.ctaPressed,
-                ]}
-              >
-                <Text style={styles.ctaLabel}>
-                  {stkPush.isPending
-                    ? 'Sending prompt…'
-                    : `Pay ${formatMoney(currency, grandTotal)}`}
-                </Text>
-              </Pressable>
+                style={styles.cta}
+              />
             )}
 
             {stkPush.error ? (
-              <Text accessibilityLiveRegion="polite" style={styles.error}>
-                {stkPush.error instanceof Error
-                  ? stkPush.error.message
-                  : 'We could not send the M-Pesa prompt. Try again.'}
-              </Text>
+              <View style={styles.failed}>
+                <Ionicons name="alert-circle" size={22} color={MART.danger} />
+                <Text accessibilityLiveRegion="polite" style={[styles.failedBody, styles.waitingCopy]}>
+                  {stkPush.error instanceof Error
+                    ? stkPush.error.message
+                    : 'We could not send the M-Pesa prompt. Try again.'}
+                </Text>
+              </View>
             ) : null}
 
             {status?.paymentFailed ? (
-              <View style={styles.failed}>
-                <Ionicons name="alert-circle-outline" size={20} color={MART.danger} />
+              <View style={styles.failed} accessibilityLiveRegion="polite">
+                <Ionicons name="alert-circle" size={22} color={MART.danger} />
                 <View style={styles.waitingCopy}>
                   <Text style={styles.failedTitle}>Payment did not go through</Text>
                   <Text style={styles.failedBody}>
@@ -216,7 +230,7 @@ export function PaymentScreen() {
 
         {manualMethods.length > 0 ? (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>
+            <Text accessibilityRole="header" style={styles.sectionTitle}>
               {onlineMethods.length > 0 ? 'Or pay at the counter' : 'Pay at the counter'}
             </Text>
             {manualMethods.map((method) => (
@@ -235,11 +249,14 @@ export function PaymentScreen() {
 
         {onlineMethods.length === 0 && manualMethods.length === 0 ? (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>No payment method set up</Text>
-            <Text style={styles.manualBody}>
-              Your order is saved. Pay at the counter and mention order #
-              {orderId.slice(-8).toUpperCase()}.
+            <Text accessibilityRole="header" style={styles.sectionTitle}>
+              No payment method set up
             </Text>
+            <View style={styles.manualCard}>
+              <Text style={styles.manualBody}>
+                Your order is saved. Pay at the counter and mention order {orderLabel}.
+              </Text>
+            </View>
           </View>
         ) : null}
       </ScrollView>
@@ -259,86 +276,62 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: GUTTER,
-    paddingTop: SPACE.md,
   },
+  /** The amount sits on land: a coast in the shop's colour that runs off both sides. */
   amount: {
-    padding: SPACE.xl,
-    borderRadius: RADIUS.md,
+    marginHorizontal: -GUTTER,
+    paddingHorizontal: GUTTER,
+    paddingTop: SPACE.lg,
+    height: AMOUNT_HEIGHT + COAST_SWELL,
   },
   amountLabel: {
-    ...TYPE.meta,
-    color: ON_BRAND.secondary,
+    ...TYPE.label,
   },
   amountValue: {
     ...TYPE.display,
-    marginTop: SPACE.xxs,
-    fontSize: 34,
-    lineHeight: 38,
-    color: ON_BRAND.primary,
+    fontSize: 40,
+    lineHeight: 44,
+    marginTop: SPACE.xs,
   },
   amountMeta: {
     ...TYPE.meta,
     marginTop: SPACE.sm,
-    color: ON_BRAND.secondary,
-    fontVariant: ['tabular-nums'],
   },
   section: {
     marginTop: SPACE.xxl,
   },
   sectionTitle: {
-    ...TYPE.heading,
-    marginBottom: SPACE.md,
+    ...TYPE.title,
+    marginBottom: SPACE.lg,
     color: MART.ink,
   },
   methods: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: SPACE.sm,
-    marginBottom: SPACE.lg,
+    marginBottom: SPACE.xl,
   },
   methodChip: {
     minHeight: 44,
     paddingHorizontal: SPACE.lg,
-    justifyContent: 'center',
-    borderRadius: RADIUS.md,
-    ...ELEVATION.ruled,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACE.xs,
+    borderRadius: RADIUS.pill,
+    borderWidth: 1.5,
+    borderColor: MART.ink,
   },
   methodText: {
     ...TYPE.label,
     color: MART.ink,
   },
-  methodTextOn: {
-    color: ON_BRAND.primary,
+  pressed: {
+    opacity: 0.7,
   },
-  fieldLabel: {
-    ...TYPE.label,
-    fontWeight: '700',
-    color: MART.ink,
-  },
-  fieldHint: {
-    ...TYPE.meta,
-    marginTop: SPACE.xxs,
-    color: MART.inkQuiet,
-  },
-  input: {
-    ...TYPE.heading,
-    marginTop: SPACE.sm,
-    minHeight: 52,
-    paddingHorizontal: SPACE.md,
-    borderWidth: 1,
-    borderColor: MART.border,
-    borderRadius: RADIUS.md,
-    backgroundColor: MART.paperElevated,
-    color: MART.ink,
+  phoneInput: {
+    fontFamily: FONT.semibold,
+    fontSize: 18,
     letterSpacing: 0.4,
-  },
-  inputError: {
-    borderColor: MART.danger,
-  },
-  fieldError: {
-    ...TYPE.meta,
-    marginTop: SPACE.xs,
-    color: MART.danger,
   },
   waiting: {
     flexDirection: 'row',
@@ -346,46 +339,24 @@ const styles = StyleSheet.create({
     gap: SPACE.md,
     marginTop: SPACE.xl,
     padding: SPACE.lg,
-    borderRadius: RADIUS.md,
-    ...ELEVATION.ruled,
+    borderRadius: RADIUS.lg,
+    backgroundColor: MART.infoSurface,
   },
   waitingCopy: {
     flex: 1,
     minWidth: 0,
   },
   waitingTitle: {
-    ...TYPE.label,
-    fontSize: 14,
-    fontWeight: '700',
+    ...TYPE.heading,
     color: MART.ink,
   },
   waitingBody: {
-    ...TYPE.meta,
+    ...TYPE.body,
     marginTop: SPACE.xxs,
-    lineHeight: 18,
-    color: MART.inkMuted,
+    color: MART.ink,
   },
   cta: {
     marginTop: SPACE.xl,
-    minHeight: 52,
-    borderRadius: RADIUS.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ctaDisabled: {
-    opacity: 0.4,
-  },
-  ctaPressed: {
-    opacity: 0.9,
-  },
-  ctaLabel: {
-    ...TYPE.heading,
-    color: ON_BRAND.primary,
-  },
-  error: {
-    ...TYPE.meta,
-    marginTop: SPACE.md,
-    color: MART.danger,
   },
   failed: {
     flexDirection: 'row',
@@ -393,31 +364,24 @@ const styles = StyleSheet.create({
     gap: SPACE.md,
     marginTop: SPACE.lg,
     padding: SPACE.lg,
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.lg,
     backgroundColor: MART.dangerSurface,
   },
   failedTitle: {
-    ...TYPE.label,
-    fontSize: 14,
-    fontWeight: '700',
+    ...TYPE.heading,
     color: MART.danger,
   },
   failedBody: {
-    ...TYPE.meta,
+    ...TYPE.body,
     marginTop: SPACE.xxs,
-    lineHeight: 18,
     color: MART.ink,
   },
   manualCard: {
+    ...TILE,
     marginBottom: SPACE.sm,
-    padding: SPACE.lg,
-    borderRadius: RADIUS.md,
-    ...ELEVATION.ruled,
   },
   manualLabel: {
-    ...TYPE.label,
-    fontSize: 14,
-    fontWeight: '700',
+    ...TYPE.heading,
     color: MART.ink,
   },
   manualBody: {
@@ -426,9 +390,10 @@ const styles = StyleSheet.create({
     color: MART.inkMuted,
   },
   manualTill: {
-    ...TYPE.heading,
-    marginTop: SPACE.sm,
+    ...TYPE.price,
+    fontSize: 22,
+    lineHeight: 26,
+    marginTop: SPACE.md,
     color: MART.ink,
-    fontVariant: ['tabular-nums'],
   },
 });

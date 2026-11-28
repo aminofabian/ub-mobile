@@ -13,7 +13,8 @@ export interface SyncEngineOptions {
   intervalMs?: number;
   maxRetries?: number;
   onConflict?: (item: OutboxItem) => void;
-  onSynced?: (item: OutboxItem) => void;
+  /** A queued request was taken by the server. `response` is what the server answered. */
+  onSynced?: (item: OutboxItem, response?: unknown) => void;
   /** A sale has failed `maxRetries` times and will not be tried again by itself. Called once, when it gets there. */
   onNeedsAttention?: (item: OutboxItem) => void;
 }
@@ -50,9 +51,13 @@ export function createSyncEngine(options: SyncEngineOptions): SyncEngine {
     if (item.conflictType === REFUSED) return;
 
     try {
-      await replayItem(client, item);
+      const response = await replayItem(client, item);
       await queue.remove(item.id);
-      onSynced?.(item);
+      try {
+        onSynced?.(item, response);
+      } catch {
+        // A listener that fails must not turn a sale the server has taken into a failure.
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Sync failed';
       // What the failure means is read from its status (see replay-failure.ts), never from the words of the message.

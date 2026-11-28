@@ -46,7 +46,7 @@ export type AttemptPlan =
  */
 export function planAttempt(
   previous: ReceiptAttempt | null,
-  input: { signature: string; poNumber: string },
+  input: { signature: string; poNumber: string; invoice?: { number: string; date: string } | null },
   make: { key: () => string; now: () => number }
 ): AttemptPlan {
   if (previous && previous.signature === input.signature) return { kind: 'go', attempt: previous };
@@ -58,9 +58,10 @@ export function planAttempt(
       signature: input.signature,
       goodsReceiptKey: make.key(),
       invoiceKey: make.key(),
-      invoiceNumber: `${input.poNumber}-R${String(at.getTime()).slice(-4)}`,
+      // The supplier's own number when the clerk typed it; otherwise a receipt number the shop can still trace.
+      invoiceNumber: input.invoice?.number?.trim() || `${input.poNumber}-R${String(at.getTime()).slice(-4)}`,
       receivedAt: at.toISOString(),
-      invoiceDate: at.toISOString().slice(0, 10),
+      invoiceDate: input.invoice?.date?.trim() || at.toISOString().slice(0, 10),
       goodsReceiptId: null,
     },
   };

@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import { theme } from '@kiosk/ui';
+import { SPACE } from '@kiosk/staff';
 import { ConnectionPill } from './ConnectionPill';
 import { UnsentBadge } from './UnsentBadge';
 import { useReach } from '../store/reach-store';
@@ -24,5 +24,5 @@ export function HeaderStatus({ look }: { look: () => Promise<boolean> }) {
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, paddingRight: theme.spacing.sm },
+  row: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, paddingRight: SPACE.sm },
 });

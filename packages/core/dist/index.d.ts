@@ -1039,7 +1039,7 @@ declare function redeemPairing(code: string, deviceKey: string, baseURL: string,
 /** Kept in SecureStore. */
 declare const SECURE_FIELDS: readonly ["accessToken", "refreshToken", "tillDeviceId", "deviceSecret"];
 /** Kept in AsyncStorage. */
-declare const PLAIN_FIELDS: readonly ["profile", "tabPhone", "airtimeRecipient", "airtimePayer", "knownStaff", "tillSeen", "heldBaskets", "catalog", "shopFlags", "tillLog", "savedPrinter", "topSellers", "shiftPulse", "firstRun", "groceryDrafts", "groceryBasket", "groceryForwards", "spoils", "stockTake"];
+declare const PLAIN_FIELDS: readonly ["profile", "tabPhone", "airtimeRecipient", "airtimePayer", "knownStaff", "tillSeen", "heldBaskets", "catalog", "shopFlags", "tillLog", "savedPrinter", "topSellers", "shiftPulse", "firstRun", "groceryDrafts", "groceryBasket", "groceryForwards", "spoils", "stockTake", "stockScope"];
 type SecureField = (typeof SECURE_FIELDS)[number];
 type PlainField = (typeof PLAIN_FIELDS)[number];
 declare function isProvisionalId(id: string): boolean;
@@ -1128,6 +1128,8 @@ type StockItem = {
     itemTypeId: string | null;
     buyingCents: number | null;
     sellingCents: number | null;
+    /** An https thumbnail, when the catalogue has one. A storage key with no host is left out. */
+    imageUrl: string | null;
 };
 /**
  * A price as the server sent it (a number, or a number in text) in whole cents, rounding half up. Null when it is not
@@ -1203,6 +1205,560 @@ type DepartmentOption = {
 };
 declare function readDepartments(raw: unknown): DepartmentOption[];
 declare function fetchDepartments(api: ApiClient): Promise<DepartmentOption[]>;
+/**
+ * Marks a product as sold by weight, or stops treating it that way.
+ *
+ * The counter's worry is always the same: a kilo-priced product was scanned like a packet, or a packet was weighed like
+ * a kilo. Fixing it here saves a trip to the back office, and the server answers with the flag it now holds, so the
+ * screen can believe what it shows.
+ */
+type WeighToggle = {
+    ok: true;
+} | {
+    ok: false;
+    words: string;
+};
+declare function setItemWeighed(api: ApiClient, itemId: string, weighed: boolean): Promise<WeighToggle>;
+
+/**
+ * Money at the till is counted in whole cents, as integers, everywhere inside the app. Shillings with two decimals
+ * appear only at the edges: on the screen, and in what is sent to the server. Adding prices as ordinary
+ * floating-point numbers drifts (0.1 + 0.2 is 0.30000000000000004), and a payment a hair under the total is refused
+ * by the server as not covering it.
+ */
+/** The most one amount typed by hand can be: ten million shillings. A slipped finger, not a sale. */
+declare const MAX_TYPED_CENTS: number;
+/** Shillings as the server sends them (at most two decimals) to whole cents. Null for anything that is not a number. */
+declare function toCents(amount: number): number | null;
+/** Whole cents to shillings, for the server. The result has at most two decimals. */
+declare function fromCents(cents: number): number;
+/** 125050 -> "1,250.50". Always two decimals, thousands grouped by commas. */
+declare function formatMoney(cents: number): string;
+/**
+ * What a person typed into an amount box, in cents, or null when it is not an amount. Strict on purpose: "12,50" is
+ * refused rather than read as 1,250, because a comma here is a thousands separator and a slip like that moves
+ * a hundred times the money.
+ */
+declare function parseMoney(text: string): number | null;
+/**
+ * What one basket line costs in cents, rounded half up the way the server rounds a line (quantity times unit price,
+ * to two decimals). Quantity is read to thousandths (weighed goods), the price to ten-thousandths. Null for a
+ * quantity or price that is not a number, a quantity that is not above zero, or a price below zero.
+ */
+declare function lineCents(quantity: number, unitPrice: number): number | null;
+/** The basket's total in cents. Null when any line has no usable quantity or price: the sale cannot be paid yet. */
+declare function totalCents(lines: {
+    quantity: number;
+    unitPrice: number;
+}[]): number | null;
+
+/**
+ * Selling by weight. The server takes a weighed item in kilograms only, to at most three decimals (grams), above
+ * zero. A weighed item priced per gram or per pound, or sold as a pack, is turned away at the server, so the till
+ * says so before the sale rather than after the customer has paid.
+ */
+/** The most one line may weigh: 999.999 kg. A slipped finger ("12500" for "1.25"), not a sale. */
+declare const MAX_WEIGHT_THOUSANDTHS = 999999;
+type WeightProblem = 'empty' | 'not_a_number' | 'too_many_decimals' | 'zero' | 'too_heavy';
+type WeightEntry = {
+    ok: true;
+    thousandths: number;
+} | {
+    ok: false;
+    problem: WeightProblem;
+};
+/**
+ * What a person typed into a weight box, in thousandths of a kilogram (grams), or why it is not a weight.
+ * "1.25", "1.", ".5" and "2" are weights; "1,25", "1.2345", "0", "-1", "1e3" and "" are not.
+ */
+declare function parseWeightKg(text: string): WeightEntry;
+/** What to tell the cashier about a weight that cannot be used. */
+declare function weightProblemWords(problem: WeightProblem): string;
+/** A stored weight (thousandths of a kilogram) as the number of kilograms the server is sent. Exact to three decimals. */
+declare function thousandthsToKg(thousandths: number): number;
+/** Kilograms as a basket line holds them, in thousandths. Null for anything that is not a usable weight. */
+declare function kgToThousandths(kg: number): number | null;
+/** 1250 -> "1.25 kg", 2000 -> "2 kg", 125 -> "0.125 kg". */
+declare function formatKg(thousandths: number): string;
+/** The parts of an item that decide how it can be sold. */
+interface Sellable {
+    weighed?: boolean;
+    unitType?: string;
+    /** Sold as a pack whose stock is held on another item. */
+    packageVariant?: boolean;
+}
+type SaleMode = 
+/** Whole units, one tap each. */
+{
+    kind: 'units';
+}
+/** By weight, in kilograms. */
+ | {
+    kind: 'kg';
+}
+/** The server would refuse it: `why` is for the cashier. */
+ | {
+    kind: 'blocked';
+    why: string;
+};
+/** How the server lets this item be sold. */
+declare function howToSell(item: Sellable): SaleMode;
+type WeighedPreview = {
+    ok: true;
+    thousandths: number;
+    weight: string;
+    totalCents: number;
+} | {
+    ok: false;
+    words: string;
+};
+/** What the weight prompt shows for what has been typed so far: the line total, or what is wrong with it. */
+declare function previewWeighedLine(unitPrice: number, text: string): WeighedPreview;
+/**
+ * The weight that a given amount of money buys at a per-kilogram price — so a cashier can serve "KES
+ * 100 of sugar" without doing the division. At KES 180/kg, 100 shillings is 100/180 = 0.556 kg. The
+ * weight is rounded to the gram (the scale's own step), and the money it then actually comes to is
+ * worked out back from that weight, so what the till charges always matches the weight on the label.
+ */
+interface SpendPreview {
+    ok: boolean;
+    /** The weight the money buys, in thousandths of a kg. */
+    thousandths?: number;
+    /** That weight, said in words: "0.556 kg". */
+    weight?: string;
+    /** What the sale actually comes to at that rounded weight (a few cents off the amount asked). */
+    totalCents?: number;
+    words?: string;
+}
+declare function weightForSpend(unitPricePerKg: number, spendText: string): SpendPreview;
+
+/**
+ * The basket, as plain functions: each takes the basket and gives back a new one (or null when it cannot be done),
+ * and none changes what it was given. The store only holds the answer.
+ */
+/** What the till needs to know of an item to put it in the basket. */
+interface CartItem extends Sellable {
+    id: string;
+    name: string;
+    barcode?: string;
+    sellingPrice: number;
+    stockOnHand?: number;
+    /** A photo of the product for the grid tile, when the shop has one (an HTTPS URL). */
+    imageUrl?: string | null;
+    /**
+     * A family parent that only groups its sizes/variants — it is not sold itself. Tapping it opens the
+     * size picker rather than adding to the basket. Its price/stock on the tile stand for the family.
+     */
+    variantParent?: true;
+}
+/**
+ * What makes a basket line a service: which one, who did it, and what was chosen on it (see `service-sale`). A service
+ * is sold with no product behind it, so the sale names these in place of an item.
+ */
+interface ServiceTag {
+    serviceId: string;
+    /** The staff profile the server records as having done the work: not the cashier. */
+    performerId: string;
+    /** Who it was, as the till says it. */
+    performerName: string;
+    /** What was chosen on it (a length, an extra): the ids the service gave them, in the order the service lists them. */
+    optionIds: string[];
+}
+/** A service line's `itemId` starts with this. No product's id does: it only keeps one line per service, person, choice and price. */
+declare const SERVICE_ID_PREFIX = "svc:";
+interface CartLine {
+    itemId: string;
+    name: string;
+    /** Whole units, or kilograms (three decimals at most) for a line sold by weight. */
+    quantity: number;
+    /** Shillings per unit, or per kilogram for a weighed line: what is sent to the server. */
+    unitPrice: number;
+    /** A line sold by weight: its quantity is in kilograms. */
+    weighed?: true;
+    /** The shelf price this line was changed from. Present only while the price on the line is not the shelf price. */
+    shelfPrice?: number;
+    /** Present when the line is a service and not a product: its `itemId` is then made up, and is no product's. */
+    service?: ServiceTag;
+}
+/** The most of one item that taps can add: a slipped finger, not a sale. */
+declare const MAX_UNITS = 9999;
+/** Why an item cannot be rung up as it stands, in words for the cashier. Null when it can. */
+declare function cannotAdd(item: CartItem): string | null;
+/** A line's weight in thousandths of a kilogram. */
+declare function lineThousandths(line: CartLine): number;
+/** One more of an item sold by the unit. Null when the item is sold by weight or is not for sale, or the line is full. */
+declare function addUnit(cart: readonly CartLine[], item: CartItem): CartLine[] | null;
+/**
+ * A weighing of an item sold by weight. A second weighing of the same item is added to the first: one line per item.
+ * Null when the item cannot be sold by weight, or the line would pass the most one line may weigh.
+ */
+declare function addWeight(cart: readonly CartLine[], item: CartItem, thousandths: number): CartLine[] | null;
+/** Weighs a line again: the new weight replaces the old one. Null for a line that is not weighed, or a bad weight. */
+declare function setWeight(cart: readonly CartLine[], itemId: string, thousandths: number): CartLine[] | null;
+/** A new count of units for a line. Zero or less takes the line out. Null for a weighed line, a part of a unit, or too many. */
+declare function setUnits(cart: readonly CartLine[], itemId: string, quantity: number): CartLine[] | null;
+declare function removeLine(cart: readonly CartLine[], itemId: string): CartLine[];
+/**
+ * Switch a line between selling by the unit and selling by weight, after the shop's record of the
+ * product has been changed to match. Going to weight, the number already on the line becomes a weight
+ * in kilograms (the cashier re-weighs it next); going to units, it is rounded to whole units, at
+ * least one. A service line never changes. Returns the cart unchanged when the line is already how it
+ * is asked to be, or is not there.
+ */
+declare function setLineWeighed(cart: readonly CartLine[], itemId: string, weighed: boolean): CartLine[];
+/** A weighed line as the item to weigh again: what it is called, its price per kilogram as it stands, sold in kg. */
+declare function weighedItemOf(line: CartLine): CartItem;
+/** The line at the given price with no change remembered: it is the shelf price. */
+declare function onShelfPrice(line: CartLine, shelfPrice: number): CartLine;
+/**
+ * The cashier's price for a line, in cents. The shelf price it came from is kept so the change stays visible, and
+ * typing the shelf price again puts the line back on it. Null when the line is not there or the price is not above zero.
+ */
+declare function setLinePrice(cart: readonly CartLine[], itemId: string, cents: number): CartLine[] | null;
+/** Whether the price on the line is not the shelf price. */
+declare function priceChanged(line: CartLine): boolean;
+/** The lines whose price was set by hand: not the shelf price. */
+declare function handPriced(cart: readonly CartLine[]): CartLine[];
+/** The basket with every price that was set by hand put back to the shelf price. Anyone may do this. */
+declare function backToShelf(cart: readonly CartLine[]): CartLine[];
+/** One line's total in cents. Null when its quantity or price cannot be counted. */
+declare function lineTotalCents(line: CartLine): number | null;
+/** The basket's total in cents. Null when any line cannot be counted: the sale cannot be paid yet. An empty basket is 0. */
+declare function cartCents(cart: readonly CartLine[]): number | null;
+interface LineWords {
+    /** "3", or "1.25 kg". */
+    quantity: string;
+    /** "65.00", or "450.00 per kg". */
+    price: string;
+    /** The line total: "195.00". A dash when it cannot be counted. */
+    total: string;
+    /** The shelf price, while the line is not at it: "500.00". */
+    was?: string;
+}
+/** What one basket line says on the screen. */
+declare function lineWords(line: CartLine): LineWords;
+
+/**
+ * How a sale is paid, worked out in whole cents and turned into what the server takes (see `money.ts`).
+ *
+ * Two server rules shape it (SaleService, read 2026-11-23):
+ *  - The payments must add up to exactly what is due. More than that and, when a customer is linked to the sale, the
+ *    extra is credited to that customer's wallet, not handed back as change. So each payment is sent at its exact
+ *    share, and the notes the customer actually handed over travel separately as `cashReceived`.
+ *  - An M-Pesa payment is the tender `mpesa_manual`, with the M-Pesa receipt code as its reference. The server checks
+ *    the amount (within a shilling) only when it knows the code, from a paid prompt of this shop or a till payment; a
+ *    code it does not know is accepted. A prompt charges whole shillings, so an M-Pesa share is whole shillings.
+ */
+type Tender = 
+/** `handedCents`: the notes the customer put down. It may be more than `cents`; the difference is the change. */
+{
+    kind: 'cash';
+    cents: number;
+    handedCents?: number;
+} | {
+    kind: 'mpesa';
+    cents: number;
+    code: string;
+} | {
+    kind: 'credit';
+    cents: number;
+};
+type TenderKind = Tender['kind'];
+/** One payment as the server takes it. `amount` is in shillings. */
+interface SalePayment {
+    method: 'cash' | 'mpesa_manual' | 'customer_credit';
+    amount: number;
+    reference?: string;
+}
+type PlanProblem = 'no_total' | 'no_tender' | 'bad_amount' | 'repeated' | 'mpesa_whole' | 'mpesa_code' | 'credit_customer' | 'short' | 'over' | 'cash_handed_short';
+type Plan = {
+    ok: true;
+    payments: SalePayment[];
+    cashReceived?: number;
+    changeCents: number;
+}
+/** `cents` is how far off the payments are, for `short` and `over`. */
+ | {
+    ok: false;
+    problem: PlanProblem;
+    cents?: number;
+};
+interface PlanRequest {
+    totalCents: number;
+    tenders: Tender[];
+    /** The customer linked to the sale. Credit needs one. */
+    customerId?: string | null;
+}
+/** The server looks a sale up by M-Pesa code when it is 6 to 20 letters and digits. */
+declare const MPESA_CODE_MIN = 6;
+declare const MPESA_CODE_MAX = 20;
+/** What a real M-Pesa receipt code is. Another length is allowed (the server allows it) but worth a second look. */
+declare const MPESA_CODE_USUAL = 10;
+/** The code as the server keeps it: upper case, letters and digits only. */
+declare function normalizeMpesaCode(raw: string): string;
+/** True when the server will take this as an M-Pesa code. */
+declare function isMpesaCode(raw: string): boolean;
+/** True when the code is acceptable but not the usual length, so the cashier should check what they typed. */
+declare function mpesaCodeLooksOdd(raw: string): boolean;
+/** Cents cut down to whole shillings. What an M-Pesa prompt can charge of an amount with cents in it. */
+declare function wholeShillings(cents: number): number;
+/** Checks how the customer is paying against what is due, and builds exactly what the server is sent. */
+declare function planPayments({ totalCents, tenders, customerId }: PlanRequest): Plan;
+/** What to tell the cashier when a plan cannot be made. */
+declare function describePlanProblem(plan: Extract<Plan, {
+    ok: false;
+}>): string;
+/**
+ * Amounts a customer is likely to hand over for a cash payment: the exact amount first, then what rounds it up to the
+ * next 50, 100, 500 and 1,000 shillings. Always in ascending order, never repeating an amount.
+ */
+declare function cashSuggestions(dueCents: number): number[];
+
+/**
+ * Who may do which stock job on a phone. The server is the authority and refuses what a person may not do; this only
+ * decides which buttons to show, so nobody is offered a job that is certain to be turned down. It follows the web
+ * grocery counter's rules (`grocery-counter-access`) so a shop's switches mean the same on both.
+ *
+ * One thing the phone cannot see: `GET /api/v1/me` lists only the permissions of a person's role. The server also hands
+ * `inventory.write` to a stock manager, and to a grocery clerk when the shop allows the clerk to edit stock or write
+ * off spoils, without putting it on the role. So a role is read here as well as the permission list.
+ */
+type AccessUser = {
+    roleKey: string | null | undefined;
+    permissions: readonly string[];
+};
+type StockSettings = {
+    /** A grocery counter may write off spoiled stock. */
+    spoils: boolean;
+    /** A grocery counter may set how much is on the shelf. */
+    stockEdit: boolean;
+    /** A grocery counter may place Path A supplier orders. */
+    orderPad: boolean;
+};
+/** What a shop that has changed nothing allows: jobs on. Used until the shop's own answer is in, and when it cannot be read. */
+declare const DEFAULT_STOCK_SETTINGS: StockSettings;
+declare function parseStockSettings(body: unknown): StockSettings;
+/**
+ * Whether a stock manager may change stock. The server delegates `inventory.write` through
+ * `allowStockEditForStockManager`, and only a switch that is plainly `false` turns it off. A missing answer leaves it
+ * on, the same way the grocery switches do.
+ */
+declare function stockManagerMayEdit(body: unknown): boolean;
+declare const INVENTORY_WRITE = "inventory.write";
+declare const STOCK_TAKE_RUN = "stocktake.run";
+declare const STOCK_TAKE_APPROVE = "stocktake.approve";
+declare const INVENTORY_TRANSFER = "inventory.transfer";
+declare const CATALOG_ITEMS_READ = "catalog.items.read";
+declare const INVENTORY_READ = "inventory.read";
+declare const GROCERY_INVOICES_CREATE = "grocery.invoices.create";
+declare const GROCERY_INVOICES_PAY = "grocery.invoices.pay";
+declare const GROCERY_INVOICES_CANCEL = "grocery.invoices.cancel";
+declare const PURCHASING_PATH_A_WRITE = "purchasing.path_a.write";
+/** The jobs the grocery counter can be switched to. */
+type CounterMode = 'sell' | 'spoils' | 'stockEdit';
+/**
+ * Whether this person may sell at the grocery counter — that is, build a basket and forward it to the till as an
+ * invoice. It needs the permission to create an invoice (`grocery.invoices.create`); a grocery-counter role has it by
+ * default, the way the server delegates it. Someone in the app only to edit stock or write off spoils does not sell,
+ * and is not shown the counter.
+ */
+declare function maySellAtCounter(user: AccessUser): boolean;
+/**
+ * Whether this person may place Path A supplier orders from the grocery app
+ * (web `canGroceryOrderPad`).
+ */
+declare function mayOrderAtCounter(user: AccessUser, settings: StockSettings): boolean;
+/**
+ * The modes this person is offered at the grocery counter. Selling is there only for someone who may create an
+ * invoice; someone who may write stock, or who works the grocery counter, also sees Spoils and Edit stock unless the
+ * shop has switched the job off.
+ */
+declare function counterModes(user: AccessUser, settings: StockSettings): CounterMode[];
+/**
+ * In the Stock app: whether this person may set stock and write it off. The grocery counter's switches are about
+ * grocery clerks and do not apply here. A stock manager has the right when the shop allows it
+ * (`stockManagerMayEdit`); someone who holds `inventory.write` on the role has it either way.
+ */
+declare function stockAppMayWrite(user: AccessUser, managerMayEdit?: boolean): boolean;
+/** Whether this person may start and count a stock take. */
+declare function mayCountStock(user: AccessUser): boolean;
+/** Whether this person may close a stock take (the server needs `stocktake.approve`). */
+declare function mayCloseStockTake(user: AccessUser): boolean;
+/** Whether this person may send, receive and cancel transfers between branches. */
+declare function mayMoveStock(user: AccessUser): boolean;
+
+/**
+ * The invoices a grocery clerk has sent to the till, as the server lists them. A clerk sees only their own; a manager
+ * sees the branch's. Only an invoice still waiting for payment can be cancelled, and the server wants a reason.
+ */
+type InvoiceState = 'pending_payment' | 'paid' | 'cancelled' | 'expired' | 'other';
+type GroceryInvoice = {
+    id: string;
+    /** The code on the invoice, which the cashier scans or types. */
+    code: string | null;
+    state: InvoiceState;
+    totalCents: number | null;
+    lineCount: number;
+    createdBy: string | null;
+    createdByName: string | null;
+    createdAt: number | null;
+    expiresAt: number | null;
+    /** The cashier who has it open at the till right now. */
+    lockedByName: string | null;
+    remote: boolean;
+    customerPhone: string | null;
+};
+/** A moment as the server writes it: an ISO date, or seconds or milliseconds since 1970. Milliseconds since 1970, or null. */
+declare function readInstant(value: unknown): number | null;
+/** The server's list (`{invoices: [...]}`). Null when it is not a list, so a wrong answer is never shown as "no invoices". */
+declare function readInvoices(raw: unknown): GroceryInvoice[] | null;
+/** One invoice, as `GET /grocery/invoices/{id}` answers. */
+declare function readOneInvoice(raw: unknown): GroceryInvoice | null;
+declare const INVOICES_PATH = "/api/v1/grocery/invoices";
+declare function invoicesPath(branchId: string, state?: InvoiceState): string;
+declare function invoicePath(id: string): string;
+declare function cancelPath(id: string): string;
+declare const stateWords: Record<InvoiceState, string>;
+/** Newest first. Invoices with no time go last. */
+declare function sortInvoices(invoices: readonly GroceryInvoice[]): GroceryInvoice[];
+/** "Expires in 12 min", "Expires in 2 h", "Expired", or null when the server gave no time or the invoice is closed. */
+declare function expiryWords(invoice: GroceryInvoice, now: number): string | null;
+declare const CANCEL_REASONS: readonly [{
+    readonly key: "changed_mind";
+    readonly words: "Customer changed their mind";
+}, {
+    readonly key: "wrong_items";
+    readonly words: "Wrong items on it";
+}, {
+    readonly key: "sent_twice";
+    readonly words: "Sent twice by mistake";
+}, {
+    readonly key: "price";
+    readonly words: "Price problem";
+}, {
+    readonly key: "other";
+    readonly words: "Other";
+}];
+type CancelReasonKey = (typeof CANCEL_REASONS)[number]['key'];
+declare const MAX_CANCEL_REASON = 200;
+/** A cancellation is for an invoice still waiting for payment, by someone who may cancel. The server has the last word. */
+declare function canCancel(invoice: GroceryInvoice, user: AccessUser): boolean;
+/** The reason as the server wants it. A preset is its words; "Other" is what was typed. Null when there is nothing to send. */
+declare function cancelBody(reason: CancelReasonKey, typed: string): {
+    reason: string;
+} | null;
+type CancelFailure = 'doubt' | 'moved_on' | 'gone' | 'not_allowed' | 'refused';
+/**
+ * What a failed cancel means. No answer, a session that ended or a busy server: nobody knows whether it went through, so
+ * the invoice is read again. A 409 is "it is not waiting for payment any more", a 404 is "no such invoice for you" (the
+ * server answers a clerk that way for another clerk's invoice). The status is read, never the words.
+ */
+declare function classifyCancel(error: unknown): CancelFailure;
+declare const cancelFailureWords: Record<Exclude<CancelFailure, 'doubt'>, string>;
+type CancelOutcome = 'cancelled' | 'open' | 'closed' | 'unknown';
+/** After a cancel whose answer was lost: what the invoice is now. `open` means it is still waiting and can be cancelled again. */
+declare function cancelOutcome(raw: unknown): CancelOutcome;
+/** The same, for an invoice that has already been read. */
+declare function cancelOutcomeOf(invoice: GroceryInvoice | null): CancelOutcome;
+
+/**
+ * Who a phone number belongs to, when it is used to decide whose account a sale goes on. A number that more than one
+ * customer has is never guessed at: putting a debt on the wrong person is worse than asking for it to be sorted out.
+ */
+type CustomerMatch<C> = {
+    kind: 'none';
+} | {
+    kind: 'one';
+    customer: C;
+} | {
+    kind: 'several';
+};
+declare function matchCustomers<C extends {
+    id: string;
+}>(rows: readonly C[]): CustomerMatch<C>;
+
+/**
+ * A Kenyan mobile number as the M-Pesa prompt needs it: 254 and nine digits. Reads the ways people write one
+ * (0712 345 678, +254 712 345 678, 254712345678, 712345678) the same way the server does, and is stricter than it:
+ * only 07xx and 01xx numbers are mobiles, so a landline or a short number is refused here instead of sending a
+ * prompt that goes nowhere. Null when it is not one.
+ */
+declare function normalizeKenyanPhone(raw: string): string | null;
+
+/** What the server says about a customer, as far as a sale needs it. */
+type CustomerHit = {
+    id: string;
+    name?: string;
+    phone?: string;
+    [key: string]: unknown;
+};
+/** One page of customers with this number. The server keeps numbers as digits, and shops store them two ways. */
+declare function customersWithPhone(api: ApiClient, phone: string): Promise<CustomerHit[]>;
+/**
+ * Who a number belongs to, when the number decides whose account a sale goes on.
+ *
+ * Both ways of writing a Kenyan mobile are asked, because a shop's records may hold either. A number more than one
+ * customer has is never guessed at: putting a debt on the wrong person is worse than asking for it to be sorted out.
+ */
+declare function findCustomerByPhone<C extends {
+    id: string;
+} = CustomerHit>(api: ApiClient, raw: string): Promise<CustomerMatch<C> | null>;
+/**
+ * Adds a customer from the counter or the back office, with the number the sale was for.
+ *
+ * The phone is normalised here the way the rest of the app normalises it, so the record the shop keeps matches the
+ * number the lookup will search for next time. Needs `credits.customers.write`; the server says so in words.
+ */
+declare function createCustomer(api: ApiClient, input: {
+    name: string;
+    phone: string;
+}): Promise<{
+    id: string;
+    name: string;
+}>;
+/** One of a customer's numbers, as the server lists it: the badge reads `verifiedAt`. */
+type CustomerPhone = {
+    id: string;
+    phone: string | null;
+    primary: boolean;
+    verifiedAt: number | null;
+};
+type CustomerCard = {
+    id: string;
+    name: string;
+    phones: CustomerPhone[];
+    verified: boolean;
+};
+declare function readCustomerCard(raw: unknown): CustomerCard | null;
+/**
+ * Marks one of a customer's numbers as verified by a person, or takes the mark away (Option A).
+ *
+ * The same status the customer earns by entering their own code, given by someone trusted instead. The server records
+ * when it happened and who did it in the customer's audit trail; the answer is the customer as it now stands.
+ */
+declare function setCustomerPhoneVerified(api: ApiClient, input: {
+    customerId: string;
+    phoneId: string;
+    verified: boolean;
+}): Promise<CustomerCard | null>;
+
+/** The shop's credit rules, as the business record holds them. */
+type CreditTabsSettings = {
+    /** A customer must prove their number before the shop will open a tab for them. Off unless the owner says so. */
+    requirePhoneVerificationForNewTabCustomers: boolean;
+    allowCashierTabClearance: boolean;
+    allowCashierSearchCustomersByName: boolean;
+};
+/** The credit settings inside a business record, with the server's own defaults where a field is missing. */
+declare function readCreditTabsSettings(business: unknown): CreditTabsSettings;
+declare function fetchCreditTabsSettings(api: ApiClient): Promise<CreditTabsSettings>;
+/**
+ * Sets whether a customer must prove their number before a tab opens for them.
+ *
+ * The patch is nested the way the business record holds it (`inventory.creditTabs`), and only this one field is sent, so a
+ * setting someone else is changing at the same time is left alone. Answers with the settings as the server now holds them.
+ */
+declare function setRequirePhoneVerification(api: ApiClient, required: boolean): Promise<CreditTabsSettings>;
 
 type SetOnHandProblem = 'current_unknown' | 'pack_variant';
 type SetOnHandPlan = {
@@ -1386,76 +1942,6 @@ type WriteFailure = {
  * read, never the English.
  */
 declare function classifyWrite(error: unknown): WriteFailure;
-
-/**
- * Who may do which stock job on a phone. The server is the authority and refuses what a person may not do; this only
- * decides which buttons to show, so nobody is offered a job that is certain to be turned down. It follows the web
- * grocery counter's rules (`grocery-counter-access`) so a shop's switches mean the same on both.
- *
- * One thing the phone cannot see: `GET /api/v1/me` lists only the permissions of a person's role. The server also hands
- * `inventory.write` to a stock manager, and to a grocery clerk when the shop allows the clerk to edit stock or write
- * off spoils, without putting it on the role. So a role is read here as well as the permission list.
- */
-type AccessUser = {
-    roleKey: string | null | undefined;
-    permissions: readonly string[];
-};
-type StockSettings = {
-    /** A grocery counter may write off spoiled stock. */
-    spoils: boolean;
-    /** A grocery counter may set how much is on the shelf. */
-    stockEdit: boolean;
-    /** A grocery counter may place Path A supplier orders. */
-    orderPad: boolean;
-};
-/** What a shop that has changed nothing allows: jobs on. Used until the shop's own answer is in, and when it cannot be read. */
-declare const DEFAULT_STOCK_SETTINGS: StockSettings;
-/**
- * The switches from `GET /api/v1/businesses/me` (`inventory.stockLevels`). Only a switch that is plainly `false` turns a
- * job off; a missing one, or one of the wrong type, leaves it on, as the web does.
- */
-declare function parseStockSettings(body: unknown): StockSettings;
-declare const INVENTORY_WRITE = "inventory.write";
-declare const STOCK_TAKE_RUN = "stocktake.run";
-declare const STOCK_TAKE_APPROVE = "stocktake.approve";
-declare const INVENTORY_TRANSFER = "inventory.transfer";
-declare const CATALOG_ITEMS_READ = "catalog.items.read";
-declare const INVENTORY_READ = "inventory.read";
-declare const GROCERY_INVOICES_CREATE = "grocery.invoices.create";
-declare const GROCERY_INVOICES_PAY = "grocery.invoices.pay";
-declare const GROCERY_INVOICES_CANCEL = "grocery.invoices.cancel";
-declare const PURCHASING_PATH_A_WRITE = "purchasing.path_a.write";
-/** The jobs the grocery counter can be switched to. */
-type CounterMode = 'sell' | 'spoils' | 'stockEdit';
-/**
- * Whether this person may sell at the grocery counter — that is, build a basket and forward it to the till as an
- * invoice. It needs the permission to create an invoice (`grocery.invoices.create`); a grocery-counter role has it by
- * default, the way the server delegates it. Someone in the app only to edit stock or write off spoils does not sell,
- * and is not shown the counter.
- */
-declare function maySellAtCounter(user: AccessUser): boolean;
-/**
- * Whether this person may place Path A supplier orders from the grocery app
- * (web `canGroceryOrderPad`).
- */
-declare function mayOrderAtCounter(user: AccessUser, settings: StockSettings): boolean;
-/**
- * The modes this person is offered at the grocery counter. Selling is there only for someone who may create an
- * invoice; someone who may write stock, or who works the grocery counter, also sees Spoils and Edit stock unless the
- * shop has switched the job off.
- */
-declare function counterModes(user: AccessUser, settings: StockSettings): CounterMode[];
-/**
- * In the Stock app: whether this person may set stock and write it off. The grocery counter's switches are about
- * grocery clerks and do not apply here. A stock manager has the right by default (the server delegates it).
- */
-declare function stockAppMayWrite(user: AccessUser): boolean;
-/** Whether this person may start and count a stock take. */
-declare function mayCountStock(user: AccessUser): boolean;
-/** Whether this person may close a stock take (the server needs `stocktake.approve`). */
-declare function mayCloseStockTake(user: AccessUser): boolean;
-/** Whether this person may send, receive and cancel transfers between branches. */
-declare function mayMoveStock(user: AccessUser): boolean;
 
 /** Who may see which departments — enough of the signed-in person for the rail. */
 type DepartmentScopeUser = {
@@ -1658,4 +2144,4 @@ declare const TILL_DEVICE_HEADER = "X-Till-Device-Id";
  */
 declare function getOrCreateTillDeviceId(tenantId?: string): Promise<string>;
 
-export { APP_ENTRY_PERMISSIONS, APP_JOBS, APP_NAMES, type AccessUser, type ApiClient, type ApiClientConfig, ApiError, type AuthTokenPayload, type AuthTokens, BRANCH_LOCKED_ROLE_KEYS, type BootResult, type BranchOption, CATALOG_ITEMS_READ, type CategoryOption, type CounterMode, type CreateApiClientOptions, DEFAULT_PLATFORM_CONFIG, DEFAULT_PLATFORM_HOST_SUFFIX, DEFAULT_STOCK_SETTINGS, type DecreaseCall, type DepartmentOption, type DepartmentScopeUser, type FailureNotice, GROCERY_INVOICES_CANCEL, GROCERY_INVOICES_CREATE, GROCERY_INVOICES_PAY, HISTORY_SLACK_MS, type HistoryEntry, INVENTORY_READ, INVENTORY_TRANSFER, INVENTORY_WRITE, ITEM_PAGE_SIZE, type IdempotencyOptions, type InFlight, type ItemHistory, type ItemsPage, type ItemsQuery, type Keeper, type KeeperCodec, type KeeperStorage, type KnownStaff, type LoginResponse, type LoginResult, MAX_BASELINE, MAX_DISPLAY_NAME_LENGTH, MAX_KNOWN_STAFF, MAX_QTY_UNITS, MAX_SPOIL_LINES, MIN_SEARCH_LENGTH, NATIVE_KIOSK_CLIENT_HEADER, NATIVE_KIOSK_CLIENT_VALUE, type OpenStoreResult, PAIRING_CODE_MAX_LENGTH, PAIRING_CODE_MIN_LENGTH, PURCHASING_PATH_A_WRITE, type PairingCodeParse, type PairingLookup, type PairingPreview, type PairingProblem, type PairingResult, type ParsedTenantDeepLink, type PlatformConfig, type PlatformSupport, type PreviewOptions, type ProblemResponse, type PublicMobileApp, type PublicMobileBranding, type PublicMobileConfig, type PublicMobileDeepLinks, type PublicMobileStoreLinks, QTY_SCALE, type QtyEntry, type QtyProblem, READ_TIMEOUT_MS, type RefreshOutcome, type RegisterResponse, SHOP_CODE_ALPHABET, SHOP_CODE_MAX_LENGTH, SHOP_CODE_MIN_LENGTH, SPOIL_LIST_LIFETIME_MS, SPOIL_REASONS, SPOIL_SETTLE_MS, STAFF_APPS, STOCK_TAKE_APPROVE, STOCK_TAKE_RUN, type ScanTarget, type SearchResult, type SetOnHandPlan, type SetOnHandProblem, type SetupAction, type SetupContext, type SetupRequired, type SetupRequirement, type SetupStep, type ShopCodeParse, type SignedInUser, type SpoilKeeper, type SpoilLine, type SpoilList, type SpoilReason, type SpoilVerdict, type StaffApp, type StaffUser, type StockItem, type StockSettings, type StoreAudience, type StoreHit, StoreLookupError, type StoreQuery, type StoreResult, type StoreSnapshot, StoreSwitchBlockedError, type SwitchResult, TILL_DEVICE_HEADER, type TenantContext, type TenantDeepLinkIntent, type TillAccessAsk, type TillAnswer, type TillCheck, TimeoutError, UNOWNED_ID, type UnavailableReason, type UnsentProbe, type UnsentSummary, type UpdateState, WRITE_TIMEOUT_MS, type WhiteLabelThemeColors, type WriteFailure, activateStore, addKnownStaff, addSpoil, allocationPreviewPath, apiRequest, appsThatFit, asSetupRequired, batchDecreaseBody, beginSending, beginSpoil, bootstrapStore, bootstrapTenant, checkTillRegistration, claimSpoils, classifyStore, classifyWrite, cleanDisplayText, cleanSearchText, clearActiveStore, clearKnownStaff, clearSpoils, clearTenant, clearTokens, compareVersions, counterModes, createApiClient, createKeeper, decodeSpoils, describeFailure, describeSetup, describeShopCodeProblem, describeStoreResult, dropTenantKeepers, emptySpoils, encodeSpoils, endSession, ensureStorageReady, fetchBranches, fetchCategories, fetchDepartments, fetchMe, fetchPlatformConfig, fetchPublicMobileConfig, fetchShiftsDisabled, findNewSpoil, firstName, fitsApp, forgetKnownStaff, forgetStore, forgetTillRegistered, formatApiProblemMessage, formatCents, formatKes, formatQty, generateIdempotencyKey, getAccessToken, getActiveTenantId, getAppVersion, getEmbeddedTenantSlug, getOrCreateTillDeviceId, getRefreshToken, getTenantDisplayName, getTenantHeaders, getUnsentSummary, getWhiteLabelExtra, interpretTillAnswer, isApiError, isBranchLockedRole, isProvisionalId, isShopperDeepLinkIntent, isSpoilReason, isStaffDeepLinkIntent, isWhiteLabelApp, itemLabel, itemsPath, listRememberedStores, loadActiveStore, loadKnownStaff, loadStoreById, loadTenant, loginWithPassword, loginWithPin, logout, markSessionEnded, mayCloseStockTake, mayCountStock, mayMoveStock, mayOrderAtCounter, maySellAtCounter, nextSpoil, openRememberedStore, openStore, outboxKey, parseKnownStaff, parseMe, parsePairingCode, parsePairingPreview, parsePairingScan, parsePlatformConfig, parseProblem, parseQty, parseScan, parseShopCode, parseShopCodeLink, parseSignedInUser, parseStockSettings, parseStoreInput, parseTenantDeepLink, parseVersion, pinLoginBranchId, pinnedTo, plainHost, planDecreaseCalls, planSetOnHand, previewDeepLink, previewPairing, previewStore, previewStoreByCode, priceToCents, provisionalId, publicApiRequest, qtyProblemWords, qtyToUnits, readApiError, readApiErrorMessage, readAuthTokens, readCategories, readCookieFromSetCookie, readDepartments, readFailureWords, readHistory, readItemHistory, readItemsPage, readSetCookieLines, readShiftsDisabled, readStockItem, readTenantSecret, readTenantValue, redeemPairing, refreshAccessToken, registerAccount, registerUnsentProbe, rememberStaff, rememberTillRegistered, removeKnownStaff, removeSpoil, removeTenantSecret, removeTenantValue, requestTillAccess, resendVerificationEmail, resolveIdempotencyKey, resolveMobileApiBaseUrl, resolveShopperStore, resolveTenant, resolveTenantByEmail, resolveTenantFromDeepLink, revalidateActive, searchStores, searchTerms, serializeKnownStaff, sessionWasEnded, setReason, setSpoilUnits, shiftsAreDisabled, spoilDone, spoilNotDone, spoilOperations, spoilSkipped, spoilUnitCostCents, spoilVerdict, stockAppMayWrite, stockIncreaseBody, storeTokens, subscribeActiveStore, subscribeActiveStoreId, supplierItemTypeScope, switchStore, tenantHost, tenantHostSuffix, tenantKeeper, unitsToQty, unreadableOutboxKey, unwrapOpened, updateStateFor, useTenantDeepLink, visibleDepartments, wastageBody, webHomeForRole, withOutboxLock, withTimeout, writeTenantSecret, writeTenantValue };
+export { APP_ENTRY_PERMISSIONS, APP_JOBS, APP_NAMES, type AccessUser, type ApiClient, type ApiClientConfig, ApiError, type AuthTokenPayload, type AuthTokens, BRANCH_LOCKED_ROLE_KEYS, type BootResult, type BranchOption, CANCEL_REASONS, CATALOG_ITEMS_READ, type CancelFailure, type CancelOutcome, type CancelReasonKey, type CartItem, type CartLine, type CategoryOption, type CounterMode, type CreateApiClientOptions, type CreditTabsSettings, type CustomerCard, type CustomerHit, type CustomerMatch, type CustomerPhone, DEFAULT_PLATFORM_CONFIG, DEFAULT_PLATFORM_HOST_SUFFIX, DEFAULT_STOCK_SETTINGS, type DecreaseCall, type DepartmentOption, type DepartmentScopeUser, type FailureNotice, GROCERY_INVOICES_CANCEL, GROCERY_INVOICES_CREATE, GROCERY_INVOICES_PAY, type GroceryInvoice, HISTORY_SLACK_MS, type HistoryEntry, INVENTORY_READ, INVENTORY_TRANSFER, INVENTORY_WRITE, INVOICES_PATH, ITEM_PAGE_SIZE, type IdempotencyOptions, type InFlight, type InvoiceState, type ItemHistory, type ItemsPage, type ItemsQuery, type Keeper, type KeeperCodec, type KeeperStorage, type KnownStaff, type LineWords, type LoginResponse, type LoginResult, MAX_BASELINE, MAX_CANCEL_REASON, MAX_DISPLAY_NAME_LENGTH, MAX_KNOWN_STAFF, MAX_QTY_UNITS, MAX_SPOIL_LINES, MAX_TYPED_CENTS, MAX_UNITS, MAX_WEIGHT_THOUSANDTHS, MIN_SEARCH_LENGTH, MPESA_CODE_MAX, MPESA_CODE_MIN, MPESA_CODE_USUAL, NATIVE_KIOSK_CLIENT_HEADER, NATIVE_KIOSK_CLIENT_VALUE, type OpenStoreResult, PAIRING_CODE_MAX_LENGTH, PAIRING_CODE_MIN_LENGTH, PURCHASING_PATH_A_WRITE, type PairingCodeParse, type PairingLookup, type PairingPreview, type PairingProblem, type PairingResult, type ParsedTenantDeepLink, type Plan, type PlanProblem, type PlanRequest, type PlatformConfig, type PlatformSupport, type PreviewOptions, type ProblemResponse, type PublicMobileApp, type PublicMobileBranding, type PublicMobileConfig, type PublicMobileDeepLinks, type PublicMobileStoreLinks, QTY_SCALE, type QtyEntry, type QtyProblem, READ_TIMEOUT_MS, type RefreshOutcome, type RegisterResponse, SERVICE_ID_PREFIX, SHOP_CODE_ALPHABET, SHOP_CODE_MAX_LENGTH, SHOP_CODE_MIN_LENGTH, SPOIL_LIST_LIFETIME_MS, SPOIL_REASONS, SPOIL_SETTLE_MS, STAFF_APPS, STOCK_TAKE_APPROVE, STOCK_TAKE_RUN, type SaleMode, type SalePayment, type ScanTarget, type SearchResult, type Sellable, type ServiceTag, type SetOnHandPlan, type SetOnHandProblem, type SetupAction, type SetupContext, type SetupRequired, type SetupRequirement, type SetupStep, type ShopCodeParse, type SignedInUser, type SpendPreview, type SpoilKeeper, type SpoilLine, type SpoilList, type SpoilReason, type SpoilVerdict, type StaffApp, type StaffUser, type StockItem, type StockSettings, type StoreAudience, type StoreHit, StoreLookupError, type StoreQuery, type StoreResult, type StoreSnapshot, StoreSwitchBlockedError, type SwitchResult, TILL_DEVICE_HEADER, type TenantContext, type TenantDeepLinkIntent, type Tender, type TenderKind, type TillAccessAsk, type TillAnswer, type TillCheck, TimeoutError, UNOWNED_ID, type UnavailableReason, type UnsentProbe, type UnsentSummary, type UpdateState, WRITE_TIMEOUT_MS, type WeighToggle, type WeighedPreview, type WeightEntry, type WeightProblem, type WhiteLabelThemeColors, type WriteFailure, activateStore, addKnownStaff, addSpoil, addUnit, addWeight, allocationPreviewPath, apiRequest, appsThatFit, asSetupRequired, backToShelf, batchDecreaseBody, beginSending, beginSpoil, bootstrapStore, bootstrapTenant, canCancel, cancelBody, cancelFailureWords, cancelOutcome, cancelOutcomeOf, cancelPath, cannotAdd, cartCents, cashSuggestions, checkTillRegistration, claimSpoils, classifyCancel, classifyStore, classifyWrite, cleanDisplayText, cleanSearchText, clearActiveStore, clearKnownStaff, clearSpoils, clearTenant, clearTokens, compareVersions, counterModes, createApiClient, createCustomer, createKeeper, customersWithPhone, decodeSpoils, describeFailure, describePlanProblem, describeSetup, describeShopCodeProblem, describeStoreResult, dropTenantKeepers, emptySpoils, encodeSpoils, endSession, ensureStorageReady, expiryWords, fetchBranches, fetchCategories, fetchCreditTabsSettings, fetchDepartments, fetchMe, fetchPlatformConfig, fetchPublicMobileConfig, fetchShiftsDisabled, findCustomerByPhone, findNewSpoil, firstName, fitsApp, forgetKnownStaff, forgetStore, forgetTillRegistered, formatApiProblemMessage, formatCents, formatKes, formatKg, formatMoney, formatQty, fromCents, generateIdempotencyKey, getAccessToken, getActiveTenantId, getAppVersion, getEmbeddedTenantSlug, getOrCreateTillDeviceId, getRefreshToken, getTenantDisplayName, getTenantHeaders, getUnsentSummary, getWhiteLabelExtra, handPriced, howToSell, interpretTillAnswer, invoicePath, invoicesPath, isApiError, isBranchLockedRole, isMpesaCode, isProvisionalId, isShopperDeepLinkIntent, isSpoilReason, isStaffDeepLinkIntent, isWhiteLabelApp, itemLabel, itemsPath, kgToThousandths, lineCents, lineThousandths, lineTotalCents, lineWords, listRememberedStores, loadActiveStore, loadKnownStaff, loadStoreById, loadTenant, loginWithPassword, loginWithPin, logout, markSessionEnded, matchCustomers, mayCloseStockTake, mayCountStock, mayMoveStock, mayOrderAtCounter, maySellAtCounter, mpesaCodeLooksOdd, nextSpoil, normalizeKenyanPhone, normalizeMpesaCode, onShelfPrice, openRememberedStore, openStore, outboxKey, parseKnownStaff, parseMe, parseMoney, parsePairingCode, parsePairingPreview, parsePairingScan, parsePlatformConfig, parseProblem, parseQty, parseScan, parseShopCode, parseShopCodeLink, parseSignedInUser, parseStockSettings, parseStoreInput, parseTenantDeepLink, parseVersion, parseWeightKg, pinLoginBranchId, pinnedTo, plainHost, planDecreaseCalls, planPayments, planSetOnHand, previewDeepLink, previewPairing, previewStore, previewStoreByCode, previewWeighedLine, priceChanged, priceToCents, provisionalId, publicApiRequest, qtyProblemWords, qtyToUnits, readApiError, readApiErrorMessage, readAuthTokens, readCategories, readCookieFromSetCookie, readCreditTabsSettings, readCustomerCard, readDepartments, readFailureWords, readHistory, readInstant, readInvoices, readItemHistory, readItemsPage, readOneInvoice, readSetCookieLines, readShiftsDisabled, readStockItem, readTenantSecret, readTenantValue, redeemPairing, refreshAccessToken, registerAccount, registerUnsentProbe, rememberStaff, rememberTillRegistered, removeKnownStaff, removeLine, removeSpoil, removeTenantSecret, removeTenantValue, requestTillAccess, resendVerificationEmail, resolveIdempotencyKey, resolveMobileApiBaseUrl, resolveShopperStore, resolveTenant, resolveTenantByEmail, resolveTenantFromDeepLink, revalidateActive, searchStores, searchTerms, serializeKnownStaff, sessionWasEnded, setCustomerPhoneVerified, setItemWeighed, setLinePrice, setLineWeighed, setReason, setRequirePhoneVerification, setSpoilUnits, setUnits, setWeight, shiftsAreDisabled, sortInvoices, spoilDone, spoilNotDone, spoilOperations, spoilSkipped, spoilUnitCostCents, spoilVerdict, stateWords, stockAppMayWrite, stockIncreaseBody, stockManagerMayEdit, storeTokens, subscribeActiveStore, subscribeActiveStoreId, supplierItemTypeScope, switchStore, tenantHost, tenantHostSuffix, tenantKeeper, thousandthsToKg, toCents, totalCents, unitsToQty, unreadableOutboxKey, unwrapOpened, updateStateFor, useTenantDeepLink, visibleDepartments, wastageBody, webHomeForRole, weighedItemOf, weightForSpend, weightProblemWords, wholeShillings, withOutboxLock, withTimeout, writeTenantSecret, writeTenantValue };

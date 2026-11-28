@@ -9,9 +9,11 @@ import {
   customerKey,
   describeKeptRefusal,
   describeSaleRefusal,
+  SERVICE_CHANGED_WORDS,
   describeTotalMismatch,
   isSaleRefusal,
   leaveGuard,
+  saleLineOf,
   saveThenSend,
   totalMismatch,
 } from '../src/lib/sale-flow';
@@ -328,6 +330,41 @@ test('a refusal after the customer paid by M-Pesa never says to send another pro
   assert.doesNotMatch(text, /try again/i);
 });
 
+test('a refusal of a sale paid with a typed M-Pesa code says the money is the shop\'s and what to do', () => {
+  const text = describeSaleRefusal(server(400, 'Sale total does not match verified M-Pesa amount of 500.00'), { typedCode: true });
+  assert.match(text, /Sale total does not match verified M-Pesa amount of 500\.00/);
+  assert.match(text, /Nothing was recorded/);
+  assert.match(text, /paid by M-Pesa with the code you typed/);
+  assert.match(text, /ask your manager before the customer leaves/);
+  // A paid prompt is the stronger fact: the sale is parked for a manager and nobody is told to try again.
+  const both = describeSaleRefusal(server(400, 'No'), { mpesaPaid: true, typedCode: true });
+  assert.match(both, /do not send another prompt/);
+  assert.doesNotMatch(both, /code you typed/);
+  // A sale with no M-Pesa in it says nothing about M-Pesa.
+  assert.doesNotMatch(describeSaleRefusal(server(400, 'No'), { typedCode: false }), /M-Pesa/);
+});
+
+test('a refused sale with a service in it says what to do if the service was changed in the shop', () => {
+  const plain = describeSaleRefusal(server(400, 'Line 1: Haircut is 300.00; refresh the till or ask a manager to change the price'));
+  const withService = describeSaleRefusal(server(400, 'Line 1: Haircut is 300.00; refresh the till or ask a manager to change the price'), { hasService: true });
+  assert.ok(withService.endsWith(SERVICE_CHANGED_WORDS), withService);
+  assert.equal(withService, `${plain} ${SERVICE_CHANGED_WORDS}`);
+  assert.match(SERVICE_CHANGED_WORDS, /take it out of the basket and add it again from Services/);
+  // A code the cashier typed: the advice about the code comes first, the one about the service after it.
+  const typed = describeSaleRefusal(server(400, 'No'), { typedCode: true, hasService: true });
+  assert.match(typed, /Check the code and the amount and try again/);
+  assert.ok(typed.endsWith(SERVICE_CHANGED_WORDS), typed);
+  // A basket with nothing that was sold as a service says nothing of it.
+  assert.doesNotMatch(describeSaleRefusal(server(400, 'No'), { hasService: false }), /Services/);
+  assert.doesNotMatch(describeSaleRefusal(server(400, 'No')), /Services/);
+});
+
+test('a refused sale that the customer has paid for by M-Pesa goes to the manager, with no talk of putting a service in again', () => {
+  const text = describeSaleRefusal(server(400, 'No'), { mpesaPaid: true, hasService: true });
+  assert.match(text, /Ask your manager/);
+  assert.doesNotMatch(text, /Services/);
+});
+
 test('who a sale is for is looked up again when what decided it changes, and only then', () => {
   const cash = customerKey({ mode: 'cash', phone: '254712345678', creditCustomerId: 'c-1' });
   assert.equal(customerKey({ mode: 'cash', phone: null, creditCustomerId: null }), cash, 'a cash sale has no customer, whatever was typed');
@@ -465,4 +502,58 @@ test('a refusal with no reason of its own, or a reason that is a page, is told i
     'The server did not accept this sale: Out of stock: Milk. Nothing was recorded. Check the payment and try again.'
   );
   assert.match(describeSaleRefusal(server(400, 'No credit left'), { mpesaPaid: true }), /already paid by M-Pesa, so do not send another prompt/);
+});
+
+const BRAIDS_TAG = { serviceId: 's-braids', performerId: 'p-1', performerName: 'Wanjiku', optionIds: ['long', 'packs'] };
+const BRAIDS_LINE = {
+  itemId: 'svc:s-braids:p-1:long,packs:220050',
+  name: 'Braids (Long, Extra packs)',
+  quantity: 2,
+  unitPrice: 2200.5,
+  service: BRAIDS_TAG,
+};
+
+test('a service goes to the server as a service: no product, who did it, and what was chosen', () => {
+  const body = buildSaleBody({
+    branchId: 'b-1',
+    cart: [CART[0] as never, BRAIDS_LINE],
+    payments: [{ method: 'cash', amount: 4521 }],
+    soldAt: SOLD_AT,
+  });
+  assert.deepEqual(body.lines, [
+    { itemId: 'i-1', quantity: 2, unitPrice: 120 },
+    { kind: 'SERVICE', serviceId: 's-braids', performerStaffProfileId: 'p-1', quantity: 2, unitPrice: 2200.5, modifierOptionIds: ['long', 'packs'] },
+  ]);
+  assert.equal('itemId' in (body.lines[1] as object), false, 'the made-up id the basket keeps it under is never sent');
+  assert.equal(JSON.stringify(body).includes('svc:'), false);
+});
+
+test('a service with nothing chosen on it sends no list of choices', () => {
+  const line = saleLineOf({ ...BRAIDS_LINE, service: { ...BRAIDS_TAG, optionIds: [] } });
+  assert.deepEqual(line, { kind: 'SERVICE', serviceId: 's-braids', performerStaffProfileId: 'p-1', quantity: 2, unitPrice: 2200.5 });
+  assert.equal('modifierOptionIds' in line, false);
+});
+
+test('the line sent is a copy: changing the basket afterwards does not change it', () => {
+  const tag = { ...BRAIDS_TAG, optionIds: ['long'] };
+  const line = saleLineOf({ ...BRAIDS_LINE, service: tag });
+  tag.optionIds.push('packs');
+  assert.deepEqual('modifierOptionIds' in line ? line.modifierOptionIds : null, ['long']);
+});
+
+test('a service by someone else is another sale for the key, and the same one again is the same sale', () => {
+  let minted = 0;
+  const keyFor = createKeyKeeper(() => `key-${(minted += 1)}`);
+  const sale = (performerId: string, optionIds: string[] = ['long']) =>
+    buildSaleBody({
+      branchId: 'b-1',
+      cart: [{ ...BRAIDS_LINE, service: { ...BRAIDS_TAG, performerId, optionIds } }],
+      payments: [{ method: 'cash', amount: 4401 }],
+      soldAt: SOLD_AT,
+    });
+  const first = keyFor(sale('p-1'));
+  assert.equal(keyFor(sale('p-1')), first, 'the same sale tried again');
+  const other = keyFor(sale('p-2'));
+  assert.notEqual(other, first, 'another person did it');
+  assert.notEqual(keyFor(sale('p-2', ['short'])), other, 'another length');
 });

@@ -1,56 +1,80 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MART, ON_BRAND, RADIUS, SPACE, TYPE } from '../theme/mart';
+import { stepFeel } from '../lib/haptics';
+import { ELEVATION, FONT, GUTTER, MART, onFill, RADIUS, SPACE, SPRING } from '../theme/mart';
 import type { MainTabParamList } from './types';
 
 type TabName = keyof MainTabParamList;
+type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
-export const TAB_BAR_BODY = 62;
+const BAR = 64;
+const INSET = 5;
+/** Height the bar takes above the bottom safe area. Floating things sit clear of this. */
+export const TAB_BAR_BODY = BAR + SPACE.sm;
 
-/**
- * Grocery-world marks, not the same four outlines every retail app ships.
- * Aisles is a shelf grid, Find is a barcode, Basket is a crate, Pass is the
- * store card you flash at the till.
- */
-const MARK: Record<
-  TabName,
-  { label: string; glyph: React.ComponentProps<typeof Ionicons>['name'] }
-> = {
-  Home: { label: 'Aisles', glyph: 'grid' },
-  Search: { label: 'Find', glyph: 'barcode' },
-  Cart: { label: 'Basket', glyph: 'file-tray' },
-  Account: { label: 'Pass', glyph: 'id-card' },
+const MARK: Record<TabName, { label: string; rest: IconName; live: IconName }> = {
+  Home: { label: 'Home', rest: 'home-outline', live: 'home' },
+  Search: { label: 'Search', rest: 'search-outline', live: 'search' },
+  Cart: { label: 'Basket', rest: 'basket-outline', live: 'basket' },
+  Account: { label: 'Account', rest: 'person-outline', live: 'person' },
 };
 
-export function MartTabBar({ state, descriptors, navigation, primary }: BottomTabBarProps & { primary: string }) {
+/**
+ * One capsule holding the four places. The place you are in is a filled lobe in the shop's colour, and
+ * it slides to the next place when you move.
+ */
+export function MartTabBar({
+  state,
+  descriptors,
+  navigation,
+  primary,
+  accent,
+}: BottomTabBarProps & { primary: string; accent: string }) {
   const insets = useSafeAreaInsets();
+  const [width, setWidth] = useState(0);
+  const slot = width > 0 ? (width - INSET * 2) / state.routes.length : 0;
+  const at = useSharedValue(state.index);
+  const on = onFill(primary);
+  const onAccent = onFill(accent);
+
+  useEffect(() => {
+    at.value = withSpring(state.index, SPRING);
+  }, [at, state.index]);
+
+  const slide = useAnimatedStyle(() => ({
+    transform: [{ translateX: at.value * slot }],
+  }));
 
   return (
-    <View
-      style={[styles.shelf, { paddingBottom: Math.max(insets.bottom, SPACE.sm) }]}
-      accessibilityRole="tablist"
-    >
-      <View style={[styles.rule, { backgroundColor: primary }]} />
-      <View style={styles.row}>
+    <View style={[styles.strip, { paddingBottom: Math.max(insets.bottom, SPACE.sm) }]}>
+      <View
+        style={styles.bar}
+        accessibilityRole="tablist"
+        onLayout={(event) => setWidth(event.nativeEvent.layout.width - 3)}
+      >
+        {slot > 0 ? (
+          <Animated.View
+            pointerEvents="none"
+            style={[styles.here, { width: slot, backgroundColor: primary }, slide]}
+          />
+        ) : null}
         {state.routes.map((route, index) => {
           const focused = state.index === index;
           const { options } = descriptors[route.key];
-          const name = route.name as TabName;
-          const mark = MARK[name];
+          const mark = MARK[route.name as TabName];
           const badge = options.tabBarBadge;
-          const label = options.tabBarLabel ?? mark.label;
-          const title = typeof label === 'string' ? label : mark.label;
+          const color = focused ? on.primary : MART.ink;
 
           return (
             <Pressable
               key={route.key}
               accessibilityRole="tab"
               accessibilityState={{ selected: focused }}
-              accessibilityLabel={options.tabBarAccessibilityLabel ?? title}
-              hitSlop={4}
+              accessibilityLabel={options.tabBarAccessibilityLabel ?? mark.label}
               onPress={() => {
                 const event = navigation.emit({
                   type: 'tabPress',
@@ -58,28 +82,27 @@ export function MartTabBar({ state, descriptors, navigation, primary }: BottomTa
                   canPreventDefault: true,
                 });
                 if (!event.defaultPrevented) {
+                  if (!focused) stepFeel();
                   navigation.navigate(route.name, route.params);
                 }
               }}
               onLongPress={() => {
                 navigation.emit({ type: 'tabLongPress', target: route.key });
               }}
-              style={({ pressed }) => [styles.slot, pressed && styles.pressed]}
+              style={styles.slot}
             >
-              <View style={[styles.glyphWell, focused && { backgroundColor: primary }]}>
-                <Ionicons
-                  name={mark.glyph}
-                  size={20}
-                  color={focused ? ON_BRAND.primary : MART.inkMuted}
-                />
+              <View>
+                <Ionicons name={focused ? mark.live : mark.rest} size={22} color={color} />
                 {typeof badge === 'number' && badge > 0 ? (
-                  <View style={styles.badge} pointerEvents="none">
-                    <Text style={styles.badgeText}>{badge > 99 ? '99+' : String(badge)}</Text>
+                  <View style={[styles.badge, { backgroundColor: accent }]} pointerEvents="none">
+                    <Text style={[styles.badgeText, { color: onAccent.primary }]}>
+                      {badge > 99 ? '99+' : String(badge)}
+                    </Text>
                   </View>
                 ) : null}
               </View>
-              <Text style={[styles.caption, focused && { color: MART.ink }]} numberOfLines={1}>
-                {title}
+              <Text style={[styles.caption, { color }]} numberOfLines={1}>
+                {mark.label}
               </Text>
             </Pressable>
           );
@@ -90,62 +113,51 @@ export function MartTabBar({ state, descriptors, navigation, primary }: BottomTa
 }
 
 const styles = StyleSheet.create({
-  shelf: {
-    backgroundColor: MART.paperElevated,
-    borderTopWidth: 1,
-    borderTopColor: MART.border,
+  strip: {
+    paddingTop: SPACE.sm,
+    paddingHorizontal: GUTTER,
+    backgroundColor: MART.paper,
   },
-  rule: {
-    height: 2,
-    width: '100%',
-  },
-  row: {
+  bar: {
+    height: BAR,
     flexDirection: 'row',
     alignItems: 'stretch',
-    minHeight: 56,
-    paddingHorizontal: SPACE.xs,
-    paddingTop: SPACE.xs,
+    padding: INSET - 1.5,
+    borderRadius: RADIUS.pill,
+    ...ELEVATION.lifted,
+  },
+  here: {
+    position: 'absolute',
+    top: INSET - 1.5,
+    bottom: INSET - 1.5,
+    left: INSET - 1.5,
+    borderRadius: RADIUS.pill,
   },
   slot: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: SPACE.xxs,
-    minHeight: 52,
-    zIndex: 1,
-  },
-  pressed: {
-    opacity: 0.72,
-  },
-  glyphWell: {
-    width: 36,
-    height: 28,
-    borderRadius: RADIUS.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: MART.paper,
+    gap: 2,
   },
   caption: {
-    ...TYPE.shelf,
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-    color: MART.inkQuiet,
+    fontFamily: FONT.semibold,
+    fontSize: 11,
+    lineHeight: 14,
   },
   badge: {
     position: 'absolute',
-    top: -5,
-    right: -6,
-    minWidth: 16,
-    height: 16,
-    paddingHorizontal: 3,
+    top: -6,
+    right: -12,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
     borderRadius: RADIUS.pill,
-    backgroundColor: MART.fallbackAccent,
     alignItems: 'center',
     justifyContent: 'center',
   },
   badgeText: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: '#1a1204',
+    fontFamily: FONT.bold,
+    fontSize: 10,
+    lineHeight: 13,
   },
 });

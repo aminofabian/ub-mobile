@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, View, FlatList, Alert } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Button, Card, FONT, Text, theme } from '@kiosk/ui';
+import { FONT, MART, MartText, RADIUS, SPACE } from '@kiosk/staff';
+import { CARD_SURFACE, CashierButton } from '../components/CashierPrimitives';
 import type { ApiClient } from '@kiosk/core';
 import {
   holdWhileSending,
@@ -158,23 +159,23 @@ export function ConflictResolutionScreen({ api, tenantId, person }: Props) {
 
   return (
     <View style={styles.container}>
-      <Text variant="h1">Unsent sales</Text>
+      <MartText variant="display">Unsent sales</MartText>
       {items.length > 0 ? (
-        <Text variant="muted" style={styles.summary}>
+        <MartText variant="meta" color={MART.inkQuiet} style={styles.summary}>
           {items.length} {items.length === 1 ? 'sale is' : 'sales are'} still on this phone
           {stuck > 0 ? `, ${stuck} ${stuck === 1 ? 'needs' : 'need'} attention` : ''}. They are sent on their own when
           there is a connection.
-        </Text>
+        </MartText>
       ) : null}
       {items.length > 0 && offline ? (
-        <Text variant="caption" style={styles.summary}>
+        <MartText variant="meta" style={styles.summary}>
           {UNSENT_OFFLINE_NOTE}
-        </Text>
+        </MartText>
       ) : null}
       {items.length > 0 ? (
         <View style={styles.tools}>
-          {stuck > 0 ? <Button title="Try all again" variant="secondary" onPress={() => void tryAllAgain()} style={styles.tool} /> : null}
-          <Button title="Share a copy" variant="secondary" onPress={() => void shareCopy()} style={styles.tool} />
+          {stuck > 0 ? <CashierButton title="Try all again" variant="secondary" onPress={() => void tryAllAgain()} style={styles.tool} /> : null}
+          <CashierButton title="Share a copy" variant="secondary" onPress={() => void shareCopy()} style={styles.tool} />
         </View>
       ) : null}
       <FlatList
@@ -184,48 +185,48 @@ export function ConflictResolutionScreen({ api, tenantId, person }: Props) {
           const needsAPerson = needsAttention(item);
           const what = describeQueuedItem(item);
           return (
-            <Card style={styles.card}>
-              <Text variant="body">{what.title}</Text>
-              {what.detail ? <Text variant="caption">{what.detail}</Text> : null}
-              <Text variant="caption">{formatWhen(item.createdAt)}</Text>
+            <View style={[CARD_SURFACE, styles.card]}>
+              <MartText variant="body">{what.title}</MartText>
+              {what.detail ? <MartText variant="meta">{what.detail}</MartText> : null}
+              <MartText variant="meta">{formatWhen(item.createdAt)}</MartText>
               {describeFacts(item, { now: Date.now(), stuck: needsAPerson }).map((line) => (
-                <Text key={line} variant="caption">
+                <MartText key={line} variant="meta">
                   {line}
-                </Text>
+                </MartText>
               ))}
-              <Text variant="caption" style={needsAPerson ? styles.needsAttention : undefined}>
+              <MartText variant="meta" style={needsAPerson ? styles.needsAttention : undefined}>
                 {needsAPerson
                   ? 'Needs attention'
                   : item.retries > 0
                     ? `Waiting to send, tried ${item.retries} ${item.retries === 1 ? 'time' : 'times'}`
                     : 'Waiting to send'}
-              </Text>
-              {needsAPerson && serverWords(item.lastError) ? <Text variant="muted">{serverWords(item.lastError)}</Text> : null}
+              </MartText>
+              {needsAPerson && serverWords(item.lastError) ? <MartText variant="meta" color={MART.inkQuiet}>{serverWords(item.lastError)}</MartText> : null}
               <View style={styles.actions}>
-                <Button title="Send now" onPress={() => void sendOne(item)} />
-                {needsAPerson ? <Button title="Discard" variant="danger" onPress={() => discard(item)} /> : null}
+                <CashierButton title="Send now" onPress={() => void sendOne(item)} />
+                {needsAPerson ? <CashierButton title="Discard" variant="danger" onPress={() => discard(item)} /> : null}
               </View>
-            </Card>
+            </View>
           );
         }}
-        ListEmptyComponent={<Text variant="muted">Nothing is waiting. Every sale has reached the server.</Text>}
+        ListEmptyComponent={<MartText variant="meta" color={MART.inkQuiet}>Nothing is waiting. Every sale has reached the server.</MartText>}
         ListFooterComponent={
           log.length > 0 ? (
             <View style={styles.log}>
-              <Text variant="h2">Noted by the till</Text>
-              <Text variant="muted" style={styles.summary}>
+              <MartText variant="title">Noted by the till</MartText>
+              <MartText variant="meta" color={MART.inkQuiet} style={styles.summary}>
                 Things the till could not put right by itself, for a manager to see.{canClear ? '' : ' A manager clears them.'}
-              </Text>
+              </MartText>
               {log.map((entry) => (
-                <Card key={entry.id} style={styles.card}>
-                  <Text variant="body">{entry.text}</Text>
-                  <Text variant="caption">{formatWhen(entry.at)}</Text>
+                <View key={entry.id} style={[CARD_SURFACE, styles.card]}>
+                  <MartText variant="body">{entry.text}</MartText>
+                  <MartText variant="meta">{formatWhen(entry.at)}</MartText>
                   {canClear ? (
                     <View style={styles.actions}>
-                      <Button title="Clear" variant="secondary" onPress={() => clearNote(entry)} />
+                      <CashierButton title="Clear" variant="secondary" onPress={() => clearNote(entry)} />
                     </View>
                   ) : null}
-                </Card>
+                </View>
               ))}
             </View>
           ) : null
@@ -238,14 +239,14 @@ export function ConflictResolutionScreen({ api, tenantId, person }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: theme.spacing.lg,
-    backgroundColor: theme.colors.background,
+    padding: SPACE.lg,
+    backgroundColor: MART.paper,
   },
-  summary: { marginBottom: theme.spacing.md },
-  tools: { flexDirection: 'row', gap: theme.spacing.sm, marginBottom: theme.spacing.md },
+  summary: { marginBottom: SPACE.md },
+  tools: { flexDirection: 'row', gap: SPACE.sm, marginBottom: SPACE.md },
   tool: { flex: 1 },
-  card: { marginBottom: theme.spacing.md },
-  needsAttention: { color: theme.colors.danger, fontFamily: FONT.semibold },
-  actions: { flexDirection: 'row', gap: 8, marginTop: theme.spacing.sm },
-  log: { marginTop: theme.spacing.lg },
+  card: { marginBottom: SPACE.md, padding: SPACE.md, gap: SPACE.xs },
+  needsAttention: { color: MART.danger, fontFamily: FONT.semibold },
+  actions: { flexDirection: 'row', gap: 8, marginTop: SPACE.sm },
+  log: { marginTop: SPACE.lg },
 });

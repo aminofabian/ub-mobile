@@ -12,7 +12,46 @@ import {
   type ViewProps,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { MART, onFill, RADIUS, SPACE, TILE, tint, TYPE, zoneFor } from './mart';
+import { MART, MOTION, onFill, RADIUS, SPACE, TILE, tint, TYPE, zoneFor } from './mart';
+
+/**
+ * A tappable that dips a touch when pressed — scale 0.97, a fast spring down and an eased spring back — so every
+ * button, tile and row feels like it heard the finger. One micro-interaction, applied everywhere; a drop-in for
+ * Pressable.
+ */
+export function PressableScale({
+  children,
+  style,
+  onPressIn,
+  onPressOut,
+  disabled,
+  scaleTo = 0.97,
+  ...rest
+}: PressableProps & { scaleTo?: number }) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const to = (value: number, duration: number) =>
+    Animated.timing(scale, { toValue: value, duration, easing: MOTION.easeOut, useNativeDriver: true }).start();
+  return (
+    <Pressable
+      {...rest}
+      disabled={disabled}
+      onPressIn={(e) => {
+        if (!disabled) to(scaleTo, MOTION.feedback);
+        onPressIn?.(e);
+      }}
+      onPressOut={(e) => {
+        to(1, MOTION.state);
+        onPressOut?.(e);
+      }}
+    >
+      {(state) => (
+        <Animated.View style={[{ transform: [{ scale }] }, typeof style === 'function' ? style(state) : style]}>
+          {typeof children === 'function' ? children(state) : children}
+        </Animated.View>
+      )}
+    </Pressable>
+  );
+}
 
 /**
  * Admin's slice of the shopper "mart" look: cream paper ground, tiles that sit on the water with a

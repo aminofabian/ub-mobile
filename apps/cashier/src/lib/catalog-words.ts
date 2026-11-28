@@ -93,6 +93,55 @@ export function copyLine(state: CopyState, now: number): string {
 }
 
 /**
+ * The one short line the till shows about its price list — or nothing at all.
+ *
+ * The old line was a paragraph ("Price list on this phone: 7 products, as of 17:55 today. The shop has more products
+ * than the phone keeps…"). A cashier does not read paragraphs between customers: they need the fact at a glance, with
+ * the Update button beside it. This says only what is true and worth acting on, and says nothing when all is well.
+ */
+export function priceListLine(state: CopyState, now: number): { text: string; warn: boolean } | null {
+  if (state.making) {
+    const { scanned, total } = state.making;
+    return {
+      text:
+        total !== null && total > 0
+          ? `Saving the list… ${Math.min(scanned, total).toLocaleString('en-US')}/${total.toLocaleString('en-US')}`
+          : 'Saving the list…',
+      warn: false,
+    };
+  }
+  if (state.failure) {
+    const why = shortFailure(state.failure.why);
+    return {
+      text: state.open ? `${why} · showing ${clock(new Date(state.open.at))}` : why,
+      warn: true,
+    };
+  }
+  if (!state.loaded) return null;
+  if (!state.open) return { text: 'No price list on this phone yet', warn: true };
+  const count = state.open.items.length.toLocaleString('en-US');
+  const at = clock(new Date(state.open.at));
+  if (state.open.cut) return { text: `${count} products · some not on this phone`, warn: true };
+  if (!state.saved) return { text: `${count} products · ${at} · kept until the app closes`, warn: true };
+  // Everything is in order: the pull-to-refresh gesture is the affordance, not a line of text.
+  return null;
+}
+
+/** A failure in three or four words, for the line beside the Update button. */
+function shortFailure(why: CopyFailure): string {
+  switch (why) {
+    case 'no_answer':
+      return 'No connection';
+    case 'refused':
+      return 'The shop refused the list';
+    case 'nothing':
+      return 'The shop sent no products';
+    case 'other':
+      return 'Could not save the list';
+  }
+}
+
+/**
  * The compact form for the top of the till on a normal day: "7 items · 08:36", with nothing to
  * explain. When the list is doing something a cashier should read — saving, failing, cut short,
  * kept only in memory, or not there at all — this returns null and the caller falls back to the full

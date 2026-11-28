@@ -1,15 +1,6 @@
-import { Ionicons } from '@expo/vector-icons';
 import React, { useMemo, useState } from 'react';
-import {
-  Alert,
-  Image,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Image } from 'expo-image';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   loginWithPassword,
   loginWithPin,
@@ -21,7 +12,10 @@ import {
 } from '@kiosk/core';
 import { API_BASE_URL } from '../lib/config';
 import { brandName } from '../lib/brand';
-import { MART, ON_BRAND, RADIUS, SPACE, TYPE } from '../theme/mart';
+import { doneFeel, failFeel } from '../lib/haptics';
+import { FONT, MART, onFill, RADIUS, SPACE, TYPE } from '../theme/mart';
+import { Capsule, ChipButton, Tag } from './Capsule';
+import { Field } from './Field';
 
 type AuthMode = 'login' | 'register';
 
@@ -34,22 +28,9 @@ function PinSlots({ value, accent }: { value: string; accent: string }) {
   const digits = value.replace(/\D/g, '').slice(0, 6);
   return (
     <View style={styles.slots} accessibilityElementsHidden>
-      {Array.from({ length: 6 }, (_, i) => {
-        const filled = Boolean(digits[i]);
-        return (
-          <View
-            key={i}
-            style={[
-              styles.slot,
-              filled && { borderColor: accent, backgroundColor: `${accent}14` },
-            ]}
-          >
-            <Text style={[styles.slotDot, filled && { color: accent }]}>
-              {filled ? '•' : ''}
-            </Text>
-          </View>
-        );
-      })}
+      {Array.from({ length: 6 }, (_, i) => (
+        <View key={i} style={[styles.slot, Boolean(digits[i]) && { backgroundColor: accent }]} />
+      ))}
     </View>
   );
 }
@@ -111,12 +92,15 @@ export function AccountAuthPanel({
         setSecret('');
       } else if (looksLikeStaffPin(secret)) {
         await loginWithPin(API_BASE_URL, email.trim(), secret.trim(), '');
+        doneFeel();
         onAuthChange();
       } else {
         await loginWithPassword(API_BASE_URL, email.trim(), secret);
+        doneFeel();
         onAuthChange();
       }
     } catch (e) {
+      failFeel();
       const message = e instanceof Error ? e.message : 'Something went wrong';
       const needsVerification = /email not verified|verify/i.test(message);
       if (needsVerification && email.trim()) {
@@ -162,48 +146,51 @@ export function AccountAuthPanel({
 
   if (signedIn) {
     return (
-      <Pressable
-        onPress={signOut}
-        accessibilityRole="button"
-        accessibilityLabel="Sign out"
-        style={styles.quickSignOut}
-      >
-        <Ionicons name="log-out-outline" size={18} color={MART.inkMuted} />
-        <Text style={styles.signOutText}>Sign out</Text>
-      </Pressable>
+      <Capsule
+        label="Sign out"
+        kind="quiet"
+        size="md"
+        chip="log-out-outline"
+        onPress={() => void signOut()}
+      />
     );
   }
+
+  const on = onFill(primary);
 
   return (
     <View style={styles.gate}>
       <View style={[styles.pass, { backgroundColor: primary }]}>
         <View style={styles.passTop}>
-          <View style={styles.passMark}>
+          <View style={[styles.passMark, { backgroundColor: on.primary }]}>
             {logoUrl ? (
-              <Image source={{ uri: logoUrl }} style={styles.passLogo} resizeMode="contain" />
+              <Image source={{ uri: logoUrl }} style={styles.passLogo} contentFit="contain" />
             ) : (
-              <Text style={styles.passMonogram}>{initials}</Text>
+              <Text style={[styles.passMonogram, { color: primary }]}>{initials}</Text>
             )}
           </View>
-          <Text style={styles.passStore}>{storeName}</Text>
+          <Text numberOfLines={1} style={[styles.passStore, { color: on.secondary }]}>
+            {storeName}
+          </Text>
         </View>
-        <Text style={styles.passTitle}>
-          {mode === 'login' ? 'Your store card' : 'Get a store card'}
+        <Text style={[styles.passTitle, { color: on.primary }]}>
+          {mode === 'login' ? 'Your account' : 'Create an account'}
         </Text>
-        <Text style={styles.passHint}>
+        <Text style={[styles.passHint, { color: on.secondary }]}>
           {mode === 'login'
-            ? 'Same account as the website — PIN or password.'
+            ? 'Same account as the website. PIN or password.'
             : 'Wallet, loyalty, and pickup in one place.'}
         </Text>
-        <View style={styles.passChip}>
-          <Ionicons name="shield-checkmark-outline" size={12} color="#fff" />
-          <Text style={styles.passChipText}>{brandName(getTenantDisplayName() ?? storeName)} member</Text>
-        </View>
+        <Tag
+          label={`${brandName(getTenantDisplayName() ?? storeName)} member`}
+          color={on.primary}
+          style={styles.passChip}
+        />
       </View>
 
       <View style={styles.form}>
-        <Text style={styles.formTitle}>
-          {mode === 'login' ? 'Come in' : 'Join the shop'}
+        <Text accessibilityRole="header" style={styles.formTitle}>
+          {mode === 'login' ? 'Sign in' : 'Join the shop'}
         </Text>
         <Text style={styles.formHint}>
           {mode === 'login'
@@ -211,27 +198,23 @@ export function AccountAuthPanel({
             : 'We’ll send a verification note to this email.'}
         </Text>
 
-        {mode === 'register' ? (
-          <View style={styles.field}>
-            <Ionicons name="person-outline" size={18} color={MART.inkQuiet} style={styles.fieldIcon} />
-            <TextInput
-              style={styles.input}
+        <View style={styles.fields}>
+          {mode === 'register' ? (
+            <Field
+              on="tile"
+              icon="person-outline"
               placeholder="Full name"
-              placeholderTextColor={MART.inkQuiet}
               value={name}
               onChangeText={setName}
               accessibilityLabel="Full name"
               autoComplete="name"
             />
-          </View>
-        ) : null}
+          ) : null}
 
-        <View style={styles.field}>
-          <Ionicons name="mail-outline" size={18} color={MART.inkQuiet} style={styles.fieldIcon} />
-          <TextInput
-            style={styles.input}
+          <Field
+            on="tile"
+            icon="mail-outline"
             placeholder="Email"
-            placeholderTextColor={MART.inkQuiet}
             value={email}
             onChangeText={setEmail}
             autoCapitalize="none"
@@ -240,65 +223,41 @@ export function AccountAuthPanel({
             textContentType="username"
             accessibilityLabel="Email"
           />
-        </View>
 
-        <View style={styles.secretWrap}>
-          <View style={styles.field}>
-            <Ionicons
-              name={pinMode ? 'keypad-outline' : 'lock-closed-outline'}
-              size={18}
-              color={pinMode ? primary : MART.inkQuiet}
-              style={styles.fieldIcon}
-            />
-            <TextInput
-              style={[styles.input, styles.secretInput, pinMode && styles.pinInput]}
-              placeholder={mode === 'login' ? (pinMode ? '' : 'PIN or password') : 'Password'}
-              placeholderTextColor={MART.inkQuiet}
-              value={secret}
-              onChangeText={setSecret}
-              secureTextEntry={!showSecret && !pinMode}
-              keyboardType={pinMode ? 'number-pad' : 'default'}
-              autoComplete={mode === 'login' ? 'password' : 'new-password'}
-              textContentType="password"
-              accessibilityLabel={mode === 'login' ? 'PIN or password' : 'Password'}
-            />
-            <Pressable
-              onPress={() => setShowSecret((open) => !open)}
-              accessibilityRole="button"
-              accessibilityLabel={showSecret ? 'Hide secret' : 'Show secret'}
-              hitSlop={8}
-              style={styles.eye}
-            >
-              <Ionicons
-                name={showSecret ? 'eye-off-outline' : 'eye-outline'}
-                size={20}
-                color={MART.inkMuted}
+          <Field
+            on="tile"
+            icon={pinMode ? 'keypad-outline' : 'lock-closed-outline'}
+            placeholder={mode === 'login' ? (pinMode ? '' : 'PIN or password') : 'Password'}
+            value={secret}
+            onChangeText={setSecret}
+            secureTextEntry={!showSecret && !pinMode}
+            keyboardType={pinMode ? 'number-pad' : 'default'}
+            autoComplete={mode === 'login' ? 'password' : 'new-password'}
+            textContentType="password"
+            accessibilityLabel={mode === 'login' ? 'PIN or password' : 'Password'}
+            style={pinMode ? styles.pinInput : undefined}
+            hint={pinMode ? 'That looks like a PIN. We’ll sign you in with it.' : null}
+            trailing={
+              <ChipButton
+                icon={showSecret ? 'eye-off-outline' : 'eye-outline'}
+                label={showSecret ? 'Hide what you typed' : 'Show what you typed'}
+                onPress={() => setShowSecret((open) => !open)}
+                outline
+                size={36}
               />
-            </Pressable>
-          </View>
+            }
+          />
+
+          {pinMode ? <PinSlots value={secret} accent={primary} /> : null}
         </View>
 
-        {pinMode ? <PinSlots value={secret} accent={primary} /> : null}
-        {pinMode ? (
-          <Text style={[styles.pinHint, { color: primary }]}>PIN recognized — signing in like the till.</Text>
-        ) : null}
-
-        <Pressable
-          onPress={submit}
-          disabled={loading}
-          accessibilityRole="button"
-          style={({ pressed }) => [
-            styles.primaryBtn,
-            { backgroundColor: primary },
-            pressed && styles.pressed,
-            loading && styles.disabled,
-          ]}
-        >
-          <Text style={styles.primaryBtnText}>
-            {loading ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}
-          </Text>
-          {!loading ? <Ionicons name="arrow-forward" size={16} color="#fff" /> : null}
-        </Pressable>
+        <Capsule
+          label={mode === 'login' ? 'Sign in' : 'Create account'}
+          chip="arrow-forward"
+          fill={primary}
+          busy={loading}
+          onPress={() => void submit()}
+        />
 
         <Pressable
           onPress={() => {
@@ -307,10 +266,10 @@ export function AccountAuthPanel({
             setShowSecret(false);
           }}
           accessibilityRole="button"
-          style={styles.switchBtn}
+          style={({ pressed }) => [styles.switchBtn, pressed && styles.pressed]}
         >
-          <Text style={[styles.switchText, { color: primary }]}>
-            {mode === 'login' ? 'Need a card? Create an account' : 'Already have a card? Sign in'}
+          <Text style={styles.switchText}>
+            {mode === 'login' ? 'New here? Create an account' : 'Already have an account? Sign in'}
           </Text>
         </Pressable>
       </View>
@@ -322,9 +281,7 @@ const styles = StyleSheet.create({
   gate: {
     overflow: 'hidden',
     backgroundColor: MART.paperElevated,
-    borderWidth: 1,
-    borderColor: MART.border,
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.lg,
   },
   pass: {
     padding: SPACE.xl,
@@ -335,173 +292,82 @@ const styles = StyleSheet.create({
     gap: SPACE.md,
   },
   passMark: {
-    width: 36,
-    height: 36,
-    borderRadius: RADIUS.sm,
-    backgroundColor: ON_BRAND.wash,
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.pill,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   passMonogram: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '800',
+    ...TYPE.label,
+    fontFamily: FONT.black,
   },
   passLogo: {
-    width: 28,
-    height: 28,
+    width: 32,
+    height: 32,
   },
   passStore: {
     ...TYPE.label,
     flex: 1,
-    fontWeight: '700',
-    color: ON_BRAND.secondary,
   },
   passTitle: {
-    ...TYPE.title,
+    ...TYPE.display,
     marginTop: SPACE.xl,
-    color: ON_BRAND.primary,
   },
   passHint: {
-    ...TYPE.label,
+    ...TYPE.body,
     marginTop: SPACE.sm,
-    fontWeight: '400',
-    color: ON_BRAND.secondary,
   },
   passChip: {
-    alignSelf: 'flex-start',
     marginTop: SPACE.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACE.xs,
-    paddingHorizontal: SPACE.md,
-    paddingVertical: SPACE.xs,
-    borderRadius: RADIUS.pill,
-    backgroundColor: ON_BRAND.wash,
-  },
-  passChipText: {
-    ...TYPE.shelf,
-    letterSpacing: 0.2,
-    color: ON_BRAND.primary,
   },
   form: {
     padding: SPACE.lg,
+    paddingTop: SPACE.xl,
   },
   formTitle: {
     ...TYPE.title,
     color: MART.ink,
   },
   formHint: {
-    ...TYPE.label,
+    ...TYPE.body,
     marginTop: SPACE.xs,
-    marginBottom: SPACE.lg,
-    fontWeight: '400',
     color: MART.inkMuted,
   },
-  field: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: 52,
-    marginBottom: SPACE.sm,
-    paddingHorizontal: SPACE.md,
-    borderWidth: 1,
-    borderColor: MART.border,
-    borderRadius: RADIUS.md,
-    backgroundColor: MART.paper,
-  },
-  fieldIcon: {
-    marginRight: SPACE.sm,
-  },
-  input: {
-    flex: 1,
-    minHeight: 52,
-    ...TYPE.body,
-    fontSize: 16,
-    color: MART.ink,
-  },
-  secretWrap: {},
-  secretInput: {
-    paddingRight: SPACE.sm,
+  fields: {
+    marginTop: SPACE.lg,
+    marginBottom: SPACE.lg,
+    gap: SPACE.md,
   },
   pinInput: {
+    fontFamily: FONT.black,
+    fontSize: 22,
     letterSpacing: 8,
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  eye: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   slots: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: SPACE.xs,
-    marginBottom: SPACE.sm,
-  },
-  slot: {
-    flex: 1,
-    height: 44,
-    borderRadius: RADIUS.sm,
-    borderWidth: 1,
-    borderColor: MART.border,
-    backgroundColor: MART.paper,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  slotDot: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: MART.inkQuiet,
-  },
-  pinHint: {
-    ...TYPE.meta,
-    marginBottom: SPACE.md,
-  },
-  primaryBtn: {
-    minHeight: 52,
-    marginTop: SPACE.xs,
-    paddingHorizontal: SPACE.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'center',
     gap: SPACE.sm,
-    borderRadius: RADIUS.md,
   },
-  primaryBtnText: {
-    ...TYPE.heading,
-    color: ON_BRAND.primary,
+  slot: {
+    width: 14,
+    height: 14,
+    borderRadius: RADIUS.pill,
+    backgroundColor: MART.paperSunken,
   },
   switchBtn: {
-    minHeight: 44,
+    minHeight: 48,
+    marginTop: SPACE.xs,
     alignItems: 'center',
     justifyContent: 'center',
   },
   switchText: {
     ...TYPE.label,
+    color: MART.ink,
+    textDecorationLine: 'underline',
   },
   pressed: {
-    opacity: 0.92,
-  },
-  disabled: {
-    opacity: 0.7,
-  },
-  quickSignOut: {
-    flex: 1,
-    minHeight: 48,
-    borderWidth: 1,
-    borderColor: MART.border,
-    backgroundColor: MART.paperElevated,
-    borderRadius: RADIUS.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: SPACE.xs,
-  },
-  signOutText: {
-    ...TYPE.label,
-    fontSize: 14,
-    color: MART.inkMuted,
+    opacity: 0.6,
   },
 });

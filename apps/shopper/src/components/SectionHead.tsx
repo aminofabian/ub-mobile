@@ -1,11 +1,10 @@
-import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { GUTTER, MART, SPACE, TYPE } from '../theme/mart';
 
 /**
- * One heading treatment for every list and rail, so stacked sections read as
- * an ordered page instead of a pile. More air above the title than below it.
+ * One heading treatment for every list and rail, so stacked sections read as an ordered page. More air
+ * above the title than below it.
  */
 export function SectionHead({
   title,
@@ -21,7 +20,9 @@ export function SectionHead({
   return (
     <View style={styles.row}>
       <View style={styles.copy}>
-        <Text style={styles.title}>{title}</Text>
+        <Text accessibilityRole="header" style={styles.title}>
+          {title}
+        </Text>
         {hint ? (
           <Text numberOfLines={1} style={styles.hint}>
             {hint}
@@ -32,11 +33,10 @@ export function SectionHead({
         <Pressable
           onPress={onAction}
           accessibilityRole="button"
-          hitSlop={8}
+          hitSlop={10}
           style={({ pressed }) => [styles.action, pressed && styles.pressed]}
         >
           <Text style={styles.actionLabel}>{actionLabel}</Text>
-          <Ionicons name="chevron-forward" size={14} color={MART.inkMuted} />
         </Pressable>
       ) : null}
     </View>
@@ -45,7 +45,7 @@ export function SectionHead({
 
 const styles = StyleSheet.create({
   row: {
-    marginTop: SPACE.xxl,
+    marginTop: SPACE.xxl + SPACE.xs,
     marginBottom: SPACE.md,
     paddingHorizontal: GUTTER,
     flexDirection: 'row',
@@ -57,7 +57,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   title: {
-    ...TYPE.heading,
+    ...TYPE.title,
     color: MART.ink,
   },
   hint: {
@@ -66,16 +66,15 @@ const styles = StyleSheet.create({
     color: MART.inkQuiet,
   },
   action: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACE.xxs,
     minHeight: 32,
+    justifyContent: 'flex-end',
   },
   actionLabel: {
     ...TYPE.label,
-    color: MART.inkMuted,
+    color: MART.ink,
+    textDecorationLine: 'underline',
   },
   pressed: {
-    opacity: 0.6,
+    opacity: 0.55,
   },
 });

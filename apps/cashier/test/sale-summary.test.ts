@@ -1,6 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSaleSummary, describeQueuedItem, discardWarning, maskCode, methodLabel, quantityText, saleLabel } from '../src/lib/sale-summary';
+import {
+  buildSaleSummary,
+  describeQueuedItem,
+  discardWarning,
+  maskCode,
+  methodLabel,
+  objectsIn,
+  paidByMpesa,
+  quantityText,
+  saleLabel,
+} from '../src/lib/sale-summary';
 
 const SALE = {
   id: 'sale-uuid-1',
@@ -138,6 +148,17 @@ test('what was in a sale is a line a manager can find it by', () => {
   assert.ok(long.endsWith('…'));
 });
 
+test('a service in a sale says who did it, in the label a manager reads for an unsent sale', () => {
+  const braids = { name: 'Braids (Long)', quantity: 1, service: { performerName: 'Wanjiku' } };
+  assert.equal(saleLabel([braids]), '1 x Braids (Long) by Wanjiku');
+  // Next to a product, which has nobody to name.
+  assert.equal(saleLabel([{ name: 'Shampoo', quantity: 2 }, { ...braids, quantity: 2 }]), '2 x Shampoo, 2 x Braids (Long) by Wanjiku');
+  // A name that is blank is not said: "by" with nobody after it is worse than saying nothing.
+  assert.equal(saleLabel([{ ...braids, service: { performerName: '   ' } }]), '1 x Braids (Long)');
+  // A name from the shop's list is cleaned, like any other, before it is put in a sentence.
+  assert.equal(saleLabel([{ ...braids, service: { performerName: 'Wan\u202Ejiku' } }]), saleLabel([{ ...braids, service: { performerName: 'Wanjiku' } }]));
+});
+
 const queued = (over: Record<string, unknown> = {}) => ({
   method: 'POST',
   path: '/api/v1/sales',
@@ -254,4 +275,64 @@ test('an item label with a line break in it stays on the line of its item', () =
   const summary = buildSaleSummary(sale);
   assert.equal(summary.items[0]?.name, 'Bread (Fresh Total: 9.99)');
   assert.equal(summary.text.split('\n').filter((line) => line.startsWith('Total:')).length, 1, summary.text);
+});
+
+test('a queued sale is paid by M-Pesa when any of its payments is, however it was written', () => {
+  assert.equal(paidByMpesa({ body: { payments: [{ method: 'cash' }, { method: 'mpesa_manual' }] } }), true);
+  assert.equal(paidByMpesa({ body: { payments: [{ method: 'mpesa' }] } }), true);
+  assert.equal(paidByMpesa({ body: { payments: [{ method: 'cash' }, { method: 'customer_credit' }] } }), false);
+  for (const odd of [{}, { body: null }, { body: { payments: 'mpesa_manual' } }, { body: { payments: [] } }, { body: { payments: [null] } }]) {
+    assert.equal(paidByMpesa(odd as never), false, JSON.stringify(odd));
+  }
+});
+
+test('a queued sale read back from the phone with rubbish in its lines or payments is still described, not a crash', () => {
+  assert.deepEqual(objectsIn([1, null, 'x', { a: 1 }, undefined]), [{ a: 1 }]);
+  assert.deepEqual(objectsIn('nope'), []);
+  assert.deepEqual(objectsIn(undefined), []);
+  const damaged = {
+    method: 'POST',
+    path: '/api/v1/sales',
+    label: '1 x Bread',
+    body: { lines: [null, { quantity: 2, unitPrice: 50 }, 'x'], payments: [null, { method: 'cash', amount: 100 }, 7] },
+  };
+  assert.deepEqual(describeQueuedItem(damaged), { title: 'Sale of 100.00', detail: '1 x Bread · Cash' });
+  assert.equal(discardWarning({ body: { payments: [null, 3, { method: 'mpesa_manual' }] } }).includes('M-Pesa payment'), true);
+});
+
+test('a service line reads as the label the server made, which already has the service name in it', () => {
+  const summary = buildSaleSummary({
+    items: [
+      { lineKind: 'SERVICE', displayName: 'Braids', lineLabel: 'Braids (Long, Extra packs)', quantity: 1, unitPrice: 2700.5, lineTotal: 2700.5 },
+      { lineKind: 'SERVICE', displayName: 'Haircut', lineLabel: 'Haircut', quantity: 2, unitPrice: 300, lineTotal: 600 },
+      { lineKind: 'SERVICE', displayName: 'Colour', lineLabel: null, quantity: 1, unitPrice: 1000, lineTotal: 1000 },
+      { lineKind: 'SERVICE', displayName: null, lineLabel: 'Wash (Short)', quantity: 1, unitPrice: 100, lineTotal: 100 },
+    ],
+  });
+  assert.deepEqual(summary.items.map((item) => item.name), ['Braids (Long, Extra packs)', 'Haircut', 'Colour', 'Wash (Short)']);
+  assert.ok(!summary.text.includes('Braids (Braids'), summary.text);
+  assert.ok(summary.text.includes('Braids (Long, Extra packs): 1 x 2,700.50 = 2,700.50'), summary.text);
+});
+
+test('a service label of the longest the server keeps is read whole, and one longer is cut where the server cuts', () => {
+  const choices = Array.from({ length: 10 }, (_, n) => `Choice number ${n + 1} of ten`).join(', ');
+  const label = `Braids (${choices})`;
+  assert.ok(label.length > 80 && label.length <= 255, String(label.length));
+  const summary = buildSaleSummary({ items: [{ lineKind: 'SERVICE', displayName: 'Braids', lineLabel: label, quantity: 1, unitPrice: 100, lineTotal: 100 }] });
+  assert.equal(summary.items[0]?.name, label);
+  const longest = buildSaleSummary({ items: [{ lineKind: 'SERVICE', displayName: 'Braids', lineLabel: 'x'.repeat(400), quantity: 1, unitPrice: 100, lineTotal: 100 }] });
+  assert.equal(longest.items[0]?.name, 'x'.repeat(255));
+  const product = buildSaleSummary({ items: [{ lineKind: 'ITEM', displayName: 'Chips', lineLabel: 'y'.repeat(400), quantity: 1, unitPrice: 100, lineTotal: 100 }] });
+  assert.equal(product.items[0]?.name, `Chips (${'y'.repeat(80)})`, 'a product label is still cut at 80');
+});
+
+test('only a service line reads its label whole: a product or a dish still reads its name, then what was chosen', () => {
+  const summary = buildSaleSummary({
+    items: [
+      { lineKind: 'ITEM', displayName: 'Chips', lineLabel: 'Large, extra salt', quantity: 1, unitPrice: 200, lineTotal: 200 },
+      { lineKind: 'DISH', displayName: 'Chips', lineLabel: 'Small', quantity: 1, unitPrice: 100, lineTotal: 100 },
+      { lineKind: null, displayName: 'Milk', lineLabel: 'Milk 500ml', quantity: 1, unitPrice: 50, lineTotal: 50 },
+    ],
+  });
+  assert.deepEqual(summary.items.map((item) => item.name), ['Chips (Large, extra salt)', 'Chips (Small)', 'Milk (Milk 500ml)']);
 });

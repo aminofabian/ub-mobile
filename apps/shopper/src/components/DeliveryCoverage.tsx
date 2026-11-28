@@ -2,22 +2,16 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCart } from '../hooks/useCart';
 import { useOrderHistory } from '../hooks/useOrderHistory';
 import { useSession } from '../hooks/useSession';
 import { useStorefront } from '../hooks/useStorefront';
 import { useTenant } from '../lib/TenantContext';
 import { deliveryAreasKey } from '../lib/shop-storage';
-import {
-  ELEVATION,
-  MART,
-  martFromTenant,
-  ON_BRAND,
-  RADIUS,
-  SPACE,
-  TYPE,
-} from '../theme/mart';
+import { MART, martFromTenant, SPACE, TILE, TYPE, ZONE } from '../theme/mart';
+import { Capsule } from './Capsule';
+import { Lobe } from './Coast';
+import { SHEET_SCRIM, SheetPanel } from './SheetPanel';
 
 /** First-time shoppers: no local till slips and no Pass pickup history. */
 function neverPurchased(opts: {
@@ -36,7 +30,6 @@ function neverPurchased(opts: {
 
 export function DeliveryCoverage() {
   const tenant = useTenant();
-  const insets = useSafeAreaInsets();
   const mart = martFromTenant(tenant);
   const { itemCount } = useCart(tenant.slug);
   const { signedIn, hub, hubLoading } = useSession();
@@ -95,52 +88,46 @@ export function DeliveryCoverage() {
     <Modal visible animationType="slide" transparent onRequestClose={() => void dismiss()}>
       <View style={styles.overlay}>
         <Pressable style={styles.dim} onPress={() => void dismiss()} accessibilityLabel="Close" />
-        <View
-          style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, SPACE.lg) }]}
-          accessibilityViewIsModal
-        >
-          <View style={styles.handle} />
-          <View style={[styles.masthead, { backgroundColor: mart.primary }]}>
-            <View style={styles.pin}>
-              <Ionicons name="navigate" size={18} color={ON_BRAND.primary} />
-            </View>
-            <Text style={styles.kicker}>We deliver here</Text>
-            <Text style={styles.title}>Areas {mart.displayName} serves</Text>
-            <Text style={styles.lede}>
-              First drop? Check your estate is on the list before you fill the basket.
-            </Text>
-          </View>
-          <ScrollView
-            style={styles.list}
-            contentContainerStyle={styles.listInner}
-            keyboardShouldPersistTaps="handled"
+        <View style={styles.sheet} accessibilityViewIsModal>
+          <SheetPanel
+            title={`Areas ${mart.displayName} delivers to`}
+            hint="First order? Check your area is on the list before you fill your basket."
+            onClose={() => void dismiss()}
+            footer={
+              <>
+                <Capsule
+                  label="Got it, keep shopping"
+                  chip="checkmark"
+                  fill={mart.primary}
+                  onPress={() => void dismiss()}
+                />
+                <Pressable
+                  onPress={() => void dismiss()}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [styles.skip, pressed && styles.pressed]}
+                >
+                  <Text style={styles.skipLabel}>Not my area, I’ll still browse</Text>
+                </Pressable>
+              </>
+            }
           >
-            {areas.map((area) => (
-              <View key={area.id} style={styles.area}>
-                <Ionicons name="location-outline" size={16} color={mart.primary} />
-                <Text style={styles.areaName}>{area.name.trim()}</Text>
+            <ScrollView
+              style={styles.list}
+              contentContainerStyle={styles.listInner}
+              keyboardShouldPersistTaps="handled"
+            >
+              <View style={styles.tile}>
+                {areas.map((area, index) => (
+                  <View key={area.id} style={[styles.area, index > 0 && styles.areaRule]}>
+                    <Lobe color={ZONE.leaf} size={32} shape={index}>
+                      <Ionicons name="location" size={15} color={MART.ink} />
+                    </Lobe>
+                    <Text style={styles.areaName}>{area.name.trim()}</Text>
+                  </View>
+                ))}
               </View>
-            ))}
-          </ScrollView>
-          <Pressable
-            onPress={() => void dismiss()}
-            accessibilityRole="button"
-            accessibilityLabel="Got it, keep shopping"
-            style={({ pressed }) => [
-              styles.cta,
-              { backgroundColor: mart.accent },
-              pressed && styles.pressed,
-            ]}
-          >
-            <Text style={styles.ctaLabel}>Got it — keep shopping</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => void dismiss()}
-            accessibilityRole="button"
-            style={({ pressed }) => [styles.skip, pressed && styles.pressed]}
-          >
-            <Text style={styles.skipLabel}>Not my area — I’ll still browse</Text>
-          </Pressable>
+            </ScrollView>
+          </SheetPanel>
         </View>
       </View>
     </Modal>
@@ -149,96 +136,44 @@ export function DeliveryCoverage() {
 
 const styles = StyleSheet.create({
   overlay: { flex: 1, justifyContent: 'flex-end' },
-  dim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(15,20,18,0.45)' },
+  dim: { ...StyleSheet.absoluteFillObject, backgroundColor: SHEET_SCRIM },
   sheet: {
-    borderTopLeftRadius: RADIUS.lg,
-    borderTopRightRadius: RADIUS.lg,
     maxHeight: '88%',
-    ...ELEVATION.lifted,
   },
-  handle: {
-    alignSelf: 'center',
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: MART.borderStrong,
-    marginTop: SPACE.sm,
-  },
-  masthead: {
-    marginTop: SPACE.sm,
-    paddingHorizontal: SPACE.lg,
-    paddingTop: SPACE.lg,
-    paddingBottom: SPACE.xl,
-  },
-  pin: {
-    width: 32,
-    height: 32,
-    borderRadius: RADIUS.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: ON_BRAND.wash,
-    marginBottom: SPACE.md,
-  },
-  kicker: {
-    ...TYPE.shelf,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    color: ON_BRAND.secondary,
-  },
-  title: {
-    ...TYPE.title,
-    marginTop: SPACE.xs,
-    color: ON_BRAND.primary,
-  },
-  lede: {
-    ...TYPE.body,
-    marginTop: SPACE.sm,
-    color: ON_BRAND.secondary,
-  },
-  list: { maxHeight: 280 },
+  list: { maxHeight: 300 },
   listInner: {
-    paddingHorizontal: SPACE.lg,
-    paddingVertical: SPACE.md,
-    gap: SPACE.xs,
+    paddingHorizontal: SPACE.xl,
+    paddingBottom: SPACE.sm,
+  },
+  tile: {
+    ...TILE,
+    paddingVertical: SPACE.xs,
   },
   area: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACE.sm,
-    minHeight: 44,
-    paddingHorizontal: SPACE.md,
-    borderRadius: RADIUS.md,
-    backgroundColor: MART.paper,
-    borderWidth: 1,
-    borderColor: MART.border,
+    gap: SPACE.md,
+    minHeight: 52,
+  },
+  areaRule: {
+    borderTopWidth: 1,
+    borderTopColor: MART.border,
   },
   areaName: {
     ...TYPE.body,
-    fontWeight: '600',
     color: MART.ink,
     flex: 1,
   },
-  cta: {
-    marginHorizontal: SPACE.lg,
-    minHeight: 48,
+  skip: {
+    minHeight: 44,
+    marginTop: SPACE.xs,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: RADIUS.md,
-  },
-  ctaLabel: {
-    ...TYPE.label,
-    fontWeight: '800',
-    color: '#1a1204',
-  },
-  skip: {
-    marginTop: SPACE.sm,
-    marginBottom: SPACE.xs,
-    alignItems: 'center',
-    paddingVertical: SPACE.sm,
   },
   skipLabel: {
-    ...TYPE.meta,
-    color: MART.inkMuted,
+    ...TYPE.label,
+    color: MART.ink,
+    textDecorationLine: 'underline',
   },
-  pressed: { opacity: 0.84 },
+  pressed: { opacity: 0.6 },
 });

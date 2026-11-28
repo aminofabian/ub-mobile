@@ -1,8 +1,9 @@
 {
   "expo": {
-    "name": "Kiosk Ke Admin",
+    "name": "Kiosk Admin",
     "slug": "kiosk-admin",
     "version": "0.0.1",
+    "runtimeVersion": "0.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -26,7 +27,15 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": ["expo-secure-store"],
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "color": "#28a745"
+        }
+      ]
+    ],
     "extra": {
       "apiBaseURL": "https://api.kiosk.ke"
     }

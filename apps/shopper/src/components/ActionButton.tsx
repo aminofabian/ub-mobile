@@ -1,6 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text } from 'react-native';
-import { MART, ON_BRAND, RADIUS, TYPE } from '../theme/mart';
+import { Capsule } from './Capsule';
 
 /** The two buttons the shop picker and its sheets use: one main action, and a quieter alternative. */
 export function ActionButton({
@@ -18,61 +17,15 @@ export function ActionButton({
   disabled?: boolean;
   accessibilityHint?: string;
 }) {
-  const inactive = disabled || busy;
-  const primary = kind === 'primary';
   return (
-    <Pressable
+    <Capsule
+      label={label}
       onPress={onPress}
-      disabled={inactive}
-      accessibilityRole="button"
-      accessibilityLabel={label}
+      kind={kind}
+      busy={busy}
+      disabled={disabled}
+      chip={kind === 'primary' ? 'arrow-forward' : undefined}
       accessibilityHint={accessibilityHint}
-      accessibilityState={{ disabled: inactive, busy }}
-      style={({ pressed }) => [
-        styles.base,
-        primary ? styles.primary : styles.quiet,
-        disabled && styles.disabled,
-        pressed && !inactive && styles.pressed,
-      ]}
-    >
-      {busy ? (
-        <ActivityIndicator size="small" color={primary ? ON_BRAND.primary : MART.fallbackPrimary} />
-      ) : (
-        <Text style={[styles.label, primary ? styles.primaryLabel : styles.quietLabel]}>{label}</Text>
-      )}
-    </Pressable>
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  base: {
-    minHeight: 52,
-    borderRadius: RADIUS.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-  },
-  primary: {
-    backgroundColor: MART.fallbackPrimary,
-  },
-  quiet: {
-    borderWidth: 1,
-    borderColor: MART.borderStrong,
-    backgroundColor: MART.paperElevated,
-  },
-  disabled: {
-    opacity: 0.4,
-  },
-  pressed: {
-    opacity: 0.88,
-  },
-  label: {
-    ...TYPE.heading,
-  },
-  primaryLabel: {
-    color: ON_BRAND.primary,
-  },
-  quietLabel: {
-    color: MART.ink,
-  },
-});

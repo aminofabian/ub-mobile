@@ -16,6 +16,7 @@ import {
   serializeHoldBook,
   type HoldBook,
   type Holder,
+  withoutExpired,
 } from '../src/lib/holds';
 
 const MILK: CartItem = { id: 'i-milk', name: 'Milk 500ml', sellingPrice: 65 };
@@ -70,7 +71,7 @@ test('baskets are named by the lowest number free, and a freed number is used ag
   book = held(book, basket(), WANJIKU, 'h-1');
   book = held(book, basket(), WANJIKU, 'h-2');
   book = held(book, basket(), WANJIKU, 'h-3');
-  assert.deepEqual(basketsOf(book, WANJIKU).map((b) => b.label).sort(), ['Basket 1', 'Basket 2', 'Basket 3']);
+  assert.deepEqual(basketsOf(book, WANJIKU, NOON).map((b) => b.label).sort(), ['Basket 1', 'Basket 2', 'Basket 3']);
   book = dropBasket(book, 'h-2', WANJIKU);
   book = held(book, basket(), WANJIKU, 'h-4');
   assert.equal(book.baskets.find((b) => b.id === 'h-4')?.label, 'Basket 2');
@@ -86,9 +87,9 @@ test('one person holds no more than the limit at a branch, and the limit is thei
 
 test('a basket belongs to the person who held it, at the branch where they held it', () => {
   const book = held(emptyBook(), basket(), WANJIKU, 'h-1');
-  assert.equal(basketsOf(book, WANJIKU).length, 1);
-  assert.equal(basketsOf(book, OTIENO).length, 0, 'the next cashier does not see it');
-  assert.equal(basketsOf(book, WANJIKU_ELSEWHERE).length, 0, 'nor does the same person at another branch');
+  assert.equal(basketsOf(book, WANJIKU, NOON).length, 1);
+  assert.equal(basketsOf(book, OTIENO, NOON).length, 0, 'the next cashier does not see it');
+  assert.equal(basketsOf(book, WANJIKU_ELSEWHERE, NOON).length, 0, 'nor does the same person at another branch');
   assert.equal(recallBasket(book, [], 'h-1', OTIENO, NOON, 'h-2'), null, 'and cannot pick it up');
   assert.equal(recallBasket(book, [], 'h-1', WANJIKU_ELSEWHERE, NOON, 'h-2'), null);
   assert.equal(dropBasket(book, 'h-1', OTIENO).baskets.length, 1, 'nor throw it away');
@@ -100,7 +101,7 @@ test('baskets are listed most recent first', () => {
   book = held(book, basket(), WANJIKU, 'h-old', NOON - 60_000);
   book = held(book, basket(), WANJIKU, 'h-new', NOON);
   book = held(book, basket(), WANJIKU, 'h-mid', NOON - 30_000);
-  assert.deepEqual(basketsOf(book, WANJIKU).map((b) => b.id), ['h-new', 'h-mid', 'h-old']);
+  assert.deepEqual(basketsOf(book, WANJIKU, NOON).map((b) => b.id), ['h-new', 'h-mid', 'h-old']);
 });
 
 test('picking a basket up while one is being rung puts the one being rung aside, so no sale is thrown away', () => {
@@ -229,7 +230,7 @@ test('a shelf price that equals the price on the line is not kept as a change', 
 test('what the list says about a basket', () => {
   const book = held(emptyBook(), basket(), WANJIKU, 'h-1', NOON - 5 * 60_000);
   const [only] = book.baskets;
-  assert.deepEqual(describeBasket(only!, NOON), { title: 'Basket 1', detail: '2 items · 692.50 · 5 min ago' });
+  assert.deepEqual(describeBasket(only!, NOON), { title: 'Basket 1', detail: '2 items · KES 692.50 · 5 min ago' });
   assert.equal(describeBasket(only!, NOON - 5 * 60_000).detail.endsWith('just now'), true);
   assert.equal(describeBasket(only!, NOON + 125 * 60_000).detail.endsWith('2 h ago'), true);
   const single = held(emptyBook(), addUnit([], MILK) ?? [], WANJIKU, 'h-2');
@@ -342,7 +343,7 @@ test('a basket cannot be picked up when the one in front of the cashier cannot b
   const book = held(emptyBook(), basket(), WANJIKU, 'h-1');
   const big: CartLine[] = Array.from({ length: 101 }, (_, i) => ({ itemId: `i-${i}`, name: `Item ${i}`, quantity: 1, unitPrice: 10 }));
   assert.equal(recallBasket(book, big, 'h-1', WANJIKU, NOON, 'h-2'), null);
-  assert.equal(basketsOf(book, WANJIKU).length, 1, 'the held basket is still held');
+  assert.equal(basketsOf(book, WANJIKU, NOON).length, 1, 'the held basket is still held');
 });
 
 test('stored text that is blank or too long makes the basket damaged, and it is dropped whole', () => {
@@ -361,10 +362,147 @@ test('stored text that is blank or too long makes the basket damaged, and it is 
     { id: 'x'.repeat(65) },
     { label: 'x'.repeat(41) },
     { lines: [{ itemId: 'i-1', name: '  ', quantity: 1, unitPrice: 65 }] },
-    { lines: [{ itemId: 'i-1', name: 'x'.repeat(201), quantity: 1, unitPrice: 65 }] },
+    { lines: [{ itemId: 'i-1', name: 'x'.repeat(601), quantity: 1, unitPrice: 65 }] },
   ]) {
     const result = read(change);
     assert.equal(result.book.baskets.length, 0, JSON.stringify(change).slice(0, 60));
     assert.equal(result.damaged, 1);
   }
+});
+
+test('a product name as long as the server allows is held and read back whole', () => {
+  const name = 'N'.repeat(500);
+  const result = holdCart(emptyBook(), [{ itemId: 'i-long', name, quantity: 1, unitPrice: 65 }], WANJIKU, NOON, 'h-1');
+  assert.equal(result.ok, true);
+  const back = parseHoldBook(result.ok ? serializeHoldBook(result.book) : null, NOON);
+  assert.equal(back.damaged, 0);
+  assert.equal(back.book.baskets[0]?.lines[0]?.name, name);
+});
+
+test('a basket the phone could not read back is refused when it is held, and nothing changes', () => {
+  const book = held(emptyBook(), basket(), WANJIKU, 'h-1');
+  const before = JSON.stringify(book);
+  for (const odd of [
+    { itemId: 'i-1', name: 'N'.repeat(601), quantity: 1, unitPrice: 65 },
+    { itemId: 'i-1', name: 'Gold', quantity: 1, unitPrice: 20_000_000 },
+    { itemId: 'i-1', name: 'Half', quantity: 1.5, unitPrice: 65 },
+    { itemId: 'i-1', name: 'Nothing', quantity: 1, unitPrice: Number.NaN },
+    { itemId: '', name: 'No id', quantity: 1, unitPrice: 65 },
+  ] as CartLine[]) {
+    assert.deepEqual(holdCart(book, [odd], WANJIKU, NOON, 'h-2'), { ok: false, reason: 'unreadable' }, JSON.stringify(odd).slice(0, 50));
+  }
+  assert.equal(JSON.stringify(book), before, 'the book it was given is untouched');
+  assert.equal(basketsOf(book, WANJIKU, NOON).length, 1);
+});
+
+test('a basket cannot be picked up when the sale in front of the cashier cannot be read back, and nothing is lost', () => {
+  const book = held(emptyBook(), basket(), WANJIKU, 'h-1');
+  const odd: CartLine[] = [{ itemId: 'i-1', name: 'N'.repeat(601), quantity: 1, unitPrice: 65 }];
+  assert.equal(recallBasket(book, odd, 'h-1', WANJIKU, NOON, 'h-2'), null);
+  assert.equal(basketsOf(book, WANJIKU, NOON).length, 1, 'the held basket is still held');
+});
+
+test('a basket that has run out is not listed, not counted, and cannot be picked up, even in a till that stays open', () => {
+  const book = held(emptyBook(), basket(), WANJIKU, 'h-1');
+  const next = NOON + HOLD_LIFETIME_MS + 1;
+  assert.equal(basketsOf(book, WANJIKU, NOON + HOLD_LIFETIME_MS).length, 1, 'on the last moment of its day it is still there');
+  assert.deepEqual(basketsOf(book, WANJIKU, next), []);
+  assert.equal(recallBasket(book, [], 'h-1', WANJIKU, next, 'h-2'), null);
+  assert.equal(recallBasket(book, [], 'h-1', WANJIKU, next - 1, 'h-2')?.basket.id, 'h-1');
+});
+
+test('holding again drops what has run out instead of saving it, and it does not count against the limit', () => {
+  let book = emptyBook();
+  for (let n = 1; n <= MAX_HELD; n += 1) book = held(book, basket(), WANJIKU, `h-${n}`);
+  const next = NOON + HOLD_LIFETIME_MS + 1;
+  assert.deepEqual(holdCart(book, basket(), WANJIKU, NOON, 'h-x'), { ok: false, reason: 'full' }, 'full while they are young');
+  const again = holdCart(book, basket(), WANJIKU, next, 'h-new');
+  assert.equal(again.ok, true, 'a day later the old ones are not in the way');
+  if (!again.ok) return;
+  assert.deepEqual(again.book.baskets.map((b) => b.id), ['h-new'], 'and are not saved again');
+});
+
+test('another person\'s expired basket is dropped when anyone holds, and the live ones stay', () => {
+  let book = held(emptyBook(), basket(), OTIENO, 'h-old', NOON - HOLD_LIFETIME_MS);
+  book = held(book, basket(), OTIENO, 'h-young', NOON - 1000);
+  const result = holdCart(book, basket(), WANJIKU, NOON + 5, 'h-mine');
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(result.book.baskets.map((b) => b.id).sort(), ['h-mine', 'h-young']);
+});
+
+test('a time ahead of the clock cannot make a basket last for ever: it counts from now', () => {
+  const stored = storedWith((b) => (b.heldAt = '2999-01-01T00:00:00.000Z'));
+  const parsed = parseHoldBook(stored, NOON);
+  assert.equal(parsed.book.baskets.length, 1, 'the basket is kept');
+  assert.equal(parsed.book.baskets[0]?.heldAt, '2026-11-23T12:00:00.000Z');
+  assert.equal(parsed.expired, 0);
+  assert.equal(parsed.damaged, 0);
+  const later = parseHoldBook(serializeHoldBook(parsed.book), NOON + HOLD_LIFETIME_MS + 1);
+  assert.deepEqual(later.book.baskets, [], 'and it runs out a day after that');
+});
+
+test('a time only a little ahead is also counted from now', () => {
+  const parsed = parseHoldBook(storedWith((b) => (b.heldAt = '2026-11-23T12:00:01.000Z')), NOON);
+  assert.equal(parsed.book.baskets[0]?.heldAt, '2026-11-23T12:00:00.000Z');
+});
+
+test('a time at or before now is left as it was written', () => {
+  const parsed = parseHoldBook(storedWith((b) => (b.heldAt = '2026-11-23T11:00:00.000Z')), NOON);
+  assert.equal(parsed.book.baskets[0]?.heldAt, '2026-11-23T11:00:00.000Z');
+  const exactly = parseHoldBook(storedWith((b) => (b.heldAt = '2026-11-23T12:00:00.000Z')), NOON);
+  assert.equal(exactly.book.baskets[0]?.heldAt, '2026-11-23T12:00:00.000Z');
+});
+
+test('a clock that cannot be read never makes a basket run out', () => {
+  const book = held(emptyBook(), basket(), WANJIKU, 'h-1');
+  assert.equal(basketsOf(book, WANJIKU, Number.NaN).length, 1);
+  assert.equal(withoutExpired(book, Number.NaN), book);
+});
+
+test('nothing is copied when nothing has run out', () => {
+  const book = held(emptyBook(), basket(), WANJIKU, 'h-1');
+  assert.equal(withoutExpired(book, NOON + 1), book);
+});
+
+const SERVICE_LINE: CartLine = {
+  itemId: 'svc:s-cut:p-1::30000',
+  name: 'Haircut',
+  quantity: 1,
+  unitPrice: 300,
+  service: { serviceId: 's-cut', performerId: 'p-1', performerName: 'Wanjiku', optionIds: [] },
+};
+
+test('a basket with a service in it is not put on hold, alone or among products', () => {
+  for (const cart of [[SERVICE_LINE], [...basket(), SERVICE_LINE]]) {
+    assert.deepEqual(holdCart(emptyBook(), cart, WANJIKU, NOON, 'h-1'), { ok: false, reason: 'service' });
+  }
+  assert.equal(holdCart(emptyBook(), basket(), WANJIKU, NOON, 'h-1').ok, true, 'products alone still can be');
+});
+
+test('a service line is never read back from what is stored, even if something wrote one', () => {
+  const withService = storedWith((b) => {
+    (b.lines as unknown[]).push(SERVICE_LINE);
+  });
+  const parsed = parseHoldBook(withService, NOON);
+  assert.deepEqual(parsed.book.baskets, []);
+  assert.equal(parsed.damaged, 1);
+  // The made-up id alone is enough to refuse it: read back, it would be a product nobody sells.
+  const idOnly = storedWith((b) => {
+    (b.lines as Record<string, unknown>[])[0] = { itemId: 'svc:x', name: 'Odd', quantity: 1, unitPrice: 10 };
+  });
+  assert.equal(parseHoldBook(idOnly, NOON).book.baskets.length, 0);
+});
+
+test('picking a basket up while a service is being rung is refused, and nothing is lost', () => {
+  const book = held(emptyBook(), basket(), WANJIKU, 'h-1');
+  assert.equal(recallBasket(book, [SERVICE_LINE], 'h-1', WANJIKU, NOON, 'h-2'), null);
+  assert.equal(book.baskets.length, 1);
+});
+
+test('a line that says it is a service is not read back, whatever its id', () => {
+  const stored = storedWith((b) => {
+    (b.lines as Record<string, unknown>[])[0] = { itemId: 'i-9', name: 'Odd', quantity: 1, unitPrice: 10, service: SERVICE_LINE.service };
+  });
+  assert.equal(parseHoldBook(stored, NOON).book.baskets.length, 0);
 });

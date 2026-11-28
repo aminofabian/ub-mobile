@@ -250,3 +250,40 @@ export async function postGrnSupplierInvoice(
     { idempotent: true, ...(opts?.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : {}) }
   );
 }
+
+
+/**
+ * Says the delivery has arrived, before anything is unpacked.
+ *
+ * The shop runs on two steps: marking arrived records that the lorry came, and the goods receipt afterwards says what
+ * was actually in it and moves the stock. A shop with two-step delivery off does the same in one call (`overrideArrival`
+ * on the receipt), which is why this is a separate, optional step rather than part of the count.
+ */
+export async function markPurchaseOrderArrived(
+  api: ApiClient,
+  purchaseOrderId: string
+): Promise<PurchaseOrderDetail | null> {
+  const answer = await api.post<PurchaseOrderDetail>(
+    `${PURCHASE_ORDERS}/${enc(purchaseOrderId)}/mark-arrived`,
+    {}
+  );
+  return answer ?? null;
+}
+
+
+/**
+ * Puts part of a delivery into the **store room** instead of the shelf.
+ *
+ * The web counter offers the same two put-away choices at unpacking: *Sellable stock* — "Ready to sell, the till rises"
+ * — and *Store room* — "Back room, the till does not rise". Stock lines go through the goods receipt; store lines go
+ * here, and the shelf count is deliberately left alone.
+ */
+export async function postStoreRoomInheritOrder(
+  api: ApiClient,
+  body: {
+    purchaseOrderId: string;
+    lines: { purchaseOrderLineId: string; quantity: number }[];
+  }
+): Promise<unknown> {
+  return api.post<unknown>('/api/v1/store-room/inherit-order', body);
+}

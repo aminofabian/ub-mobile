@@ -26,8 +26,8 @@ const SHEET_HEADER = {
   headerShadowVisible: false,
   headerStyle: { backgroundColor: MART.paper },
   headerTintColor: MART.ink,
-  headerTitleStyle: { ...TYPE.heading, color: MART.ink },
-  headerBackTitle: 'Back',
+  headerTitleStyle: { fontFamily: TYPE.heading.fontFamily, fontSize: TYPE.heading.fontSize, color: MART.ink },
+  headerBackButtonDisplayMode: 'minimal',
 } as const;
 
 function NavigatorShell({ children }: { children: React.ReactNode }) {

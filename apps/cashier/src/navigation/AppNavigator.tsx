@@ -7,7 +7,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import type { ApiClient, SetupContext, TenantContext } from '@kiosk/core';
 import { BarcodeScanner } from '@kiosk/barcode';
-import { MART, FONT } from '@kiosk/staff';
+import { MART, FONT, WEIGHT } from '@kiosk/staff';
+import { feel } from '../lib/feel';
 import { SuppliesScreen } from '../screens/SuppliesScreen';
 import { SupplyEntryScreen } from '../screens/SupplyEntryScreen';
 import { PrinterSettingsScreen } from '../screens/PrinterSettingsScreen';
@@ -43,8 +44,11 @@ export type CashierStackParamList = {
    * at once (a product that may have been added). `reload`: start a fresh sale (clear the search, read the list again).
    */
   Pos: { notice?: string; search?: string; reload?: boolean } | undefined;
-  /** `barcode`: the code the person just scanned, which no product has. */
-  NewProduct: { barcode?: string } | undefined;
+  /**
+   * `barcode`: the code the person just scanned, which no product has. `name`: what they typed in the search and the
+   * shelf did not have, so the form opens with it already written.
+   */
+  NewProduct: { barcode?: string; name?: string } | undefined;
   WebOrders: undefined;
   /** The shop's services, to put in the basket. */
   Services: undefined;
@@ -104,6 +108,7 @@ function CashierTabs({ shared }: { shared: Shared }) {
   const bottomPad = Math.max(insets.bottom, 8);
   return (
     <Tab.Navigator
+      screenListeners={{ tabPress: () => feel.select() }}
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarActiveTintColor: MART.fallbackPrimary,
@@ -115,7 +120,8 @@ function CashierTabs({ shared }: { shared: Shared }) {
           paddingBottom: bottomPad,
           paddingTop: 6,
         },
-        tabBarLabelStyle: { fontFamily: FONT.medium, fontSize: 11 },
+        tabBarLabelStyle: { fontFamily: FONT.medium,
+ fontWeight: WEIGHT.medium, fontSize: 11 },
         tabBarIcon: ({ color, size, focused }) => {
           const base = TAB_ICON[route.name as keyof TabsParamList];
           const name = (focused ? base : `${base}-outline`) as keyof typeof Ionicons.glyphMap;
@@ -139,9 +145,12 @@ function CashierTabs({ shared }: { shared: Shared }) {
         )}
       </Tab.Screen>
       <Tab.Screen name="InvoicesTab" options={{ title: 'Invoices' }}>
-        {() => (
+        {({ navigation }) => (
           <TabScreen>
-            <GroceryInvoicesScreen api={api} />
+            <GroceryInvoicesScreen
+              api={api}
+              navigation={navigation.getParent() as never}
+            />
           </TabScreen>
         )}
       </Tab.Screen>
@@ -219,7 +228,14 @@ export function AppNavigator({
         screenOptions={{
           headerStyle: { backgroundColor: MART.paper },
           headerTintColor: MART.ink,
-          headerTitleStyle: { fontFamily: FONT.semibold, fontSize: 17, color: MART.ink },
+          headerTitleStyle: { fontFamily: FONT.semibold,
+ fontWeight: WEIGHT.semibold, fontSize: 17, color: MART.ink },
+          // The iOS large title: it leads at 34pt and collapses into the bar as the screen scrolls,
+          // which is the single strongest native cue a pushed screen can wear.
+          headerLargeTitle: true,
+          headerLargeTitleStyle: { fontFamily: FONT.bold,
+ fontWeight: WEIGHT.bold, color: MART.ink },
+          headerLargeTitleShadowVisible: false,
           headerShadowVisible: false,
           headerBackTitle: 'Back',
           contentStyle: { backgroundColor: MART.paper },
@@ -247,13 +263,17 @@ export function AppNavigator({
         <Stack.Screen name="WebOrders" options={{ title: titleAt('Web orders', branchName) }}>
           {(props) => <WebOrdersScreen {...props} api={api} branchId={branchId} person={person} />}
         </Stack.Screen>
-        <Stack.Screen name="Services" options={{ title: titleAt('Services', branchName) }}>
+        <Stack.Screen name="Services" options={{ title: titleAt('Services', branchName), headerLargeTitle: false }}>
           {(props) => <ServicesScreen {...props} api={api} tenantId={tenant.businessId} />}
         </Stack.Screen>
-        <Stack.Screen name="Payment" options={{ title: 'Payment' }}>
+        <Stack.Screen name="Payment" options={{ title: 'Payment', headerLargeTitle: false }}>
           {(props) => <PaymentScreen {...props} api={api} branchId={branchId} setupContext={setupContext} person={person} />}
         </Stack.Screen>
-        <Stack.Screen name="Receipt" options={{ title: 'Receipt' }}>
+        {/* The money moment: Payment fades into the receipt rather than sliding it away. */}
+        <Stack.Screen
+          name="Receipt"
+          options={{ title: 'Receipt', headerLargeTitle: false, animation: 'fade', animationDuration: 220 }}
+        >
           {(props) => (
             <ReceiptScreen
               {...props}
@@ -266,9 +286,9 @@ export function AppNavigator({
           )}
         </Stack.Screen>
         <Stack.Screen name="GroceryInvoices" options={{ title: 'Grocery Invoices' }}>
-          {(props) => <GroceryInvoicesScreen {...props} api={api} />}
+          {(props) => <GroceryInvoicesScreen {...props} api={api} navigation={props.navigation} />}
         </Stack.Screen>
-        <Stack.Screen name="Conflicts" options={{ title: 'Unsent sales', headerRight: () => null }}>
+        <Stack.Screen name="Conflicts" options={{ title: 'Unsent sales', headerRight: () => null, headerLargeTitle: false }}>
           {(props) => <ConflictResolutionScreen {...props} api={api} tenantId={tenant.businessId} person={person} />}
         </Stack.Screen>
         <Stack.Screen name="SupplyEntry" options={{ title: 'Enter supply' }}>

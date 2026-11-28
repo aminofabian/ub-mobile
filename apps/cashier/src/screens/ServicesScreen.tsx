@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Button, Text, theme } from '@kiosk/ui';
+import { MART, MartText, RADIUS, SPACE } from '@kiosk/staff';
+import { CashierButton, EmptyOrErrorState } from '../components/CashierPrimitives';
 import type { ApiClient } from '@kiosk/core';
 import { fetchServiceBook } from '../api/service-api';
 import { ServiceSheet } from '../components/ServiceSheet';
@@ -89,13 +90,17 @@ export function ServicesScreen({ navigation, api, tenantId }: Props) {
   const empty =
     view.instead === null ? null : view.instead.kind === 'failed' ? (
       <View style={styles.failed}>
-        <Text variant="caption" style={styles.problem}>
+        <MartText variant="meta" style={styles.problem}>
           {view.instead.words}
-        </Text>
-        <Button title="Try again" variant="secondary" onPress={() => void load()} />
+        </MartText>
+        <CashierButton title="Try again" variant="secondary" onPress={() => void load()} />
       </View>
     ) : (
-      <Text variant="muted">{view.instead.words}</Text>
+      <EmptyOrErrorState
+        icon="cut-outline"
+        title="No services on sale"
+        message={view.instead.words}
+      />
     );
 
   return (
@@ -114,28 +119,28 @@ export function ServicesScreen({ navigation, api, tenantId }: Props) {
 
       {view.above ? (
         <View style={styles.stale} accessibilityRole="alert">
-          <Text variant="caption" style={view.above.kind === 'problem' ? styles.problem : undefined}>
+          <MartText variant="meta" style={view.above.kind === 'problem' ? styles.problem : undefined}>
             {view.above.words}
-          </Text>
-          <Button title="Try again" variant="secondary" onPress={() => void load()} disabled={loading} style={styles.again} />
+          </MartText>
+          <CashierButton title="Try again" variant="secondary" onPress={() => void load()} disabled={loading} style={styles.again} />
         </View>
       ) : null}
       {view.noPerformers ? (
-        <Text variant="caption" style={styles.problem}>
+        <MartText variant="meta" style={styles.problem}>
           {NO_PERFORMERS_WORDS}
-        </Text>
+        </MartText>
       ) : null}
       {added ? (
-        <Text variant="caption" style={styles.added} accessibilityRole="alert">
+        <MartText variant="meta" style={styles.added} accessibilityRole="alert">
           {added}
-        </Text>
+        </MartText>
       ) : null}
 
       <FlatList
         data={shown}
         keyExtractor={(service) => service.id}
         keyboardShouldPersistTaps="handled"
-        ListHeaderComponent={<Text variant="h2">Services</Text>}
+        ListHeaderComponent={<MartText variant="title">Services</MartText>}
         renderItem={({ item }) => {
           const duration = durationWords(item.durationMinutes);
           const price = priceWords(item);
@@ -150,10 +155,10 @@ export function ServicesScreen({ navigation, api, tenantId }: Props) {
               accessibilityLabel={[item.name, duration, price].filter(Boolean).join(', ')}
             >
               <View style={styles.rowName}>
-                <Text variant="body">{item.name}</Text>
-                {duration ? <Text variant="muted">{duration}</Text> : null}
+                <MartText variant="body">{item.name}</MartText>
+                {duration ? <MartText variant="meta" color={MART.inkQuiet}>{duration}</MartText> : null}
               </View>
-              <Text variant="caption">{price}</Text>
+              <MartText variant="meta">{price}</MartText>
             </TouchableOpacity>
           );
         }}
@@ -161,10 +166,10 @@ export function ServicesScreen({ navigation, api, tenantId }: Props) {
       />
 
       <View style={styles.footer}>
-        <Text variant="body" style={styles.basket}>
+        <MartText variant="body" style={styles.basket}>
           {basketWords(cart.length, total === null ? null : formatMoney(total))}
-        </Text>
-        <Button title="Back to basket" onPress={() => navigation.goBack()} />
+        </MartText>
+        <CashierButton title="Back to basket" onPress={() => navigation.goBack()} />
       </View>
 
       <ServiceSheet service={picked} performers={mine?.performers ?? []} onCancel={() => setPicking(null)} onAdd={onAdd} />
@@ -173,31 +178,31 @@ export function ServicesScreen({ navigation, api, tenantId }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: theme.spacing.md, gap: theme.spacing.sm },
+  container: { flex: 1, padding: SPACE.md, gap: SPACE.sm },
   search: {
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.md,
-    padding: theme.spacing.md,
+    borderColor: MART.border,
+    borderRadius: RADIUS.md,
+    padding: SPACE.md,
     minHeight: 48,
-    backgroundColor: theme.colors.background,
+    backgroundColor: MART.paper,
   },
-  stale: { backgroundColor: theme.colors.surface, borderRadius: theme.borderRadius.md, padding: theme.spacing.sm, gap: theme.spacing.sm },
+  stale: { backgroundColor: MART.paperElevated, borderRadius: RADIUS.md, padding: SPACE.sm, gap: SPACE.sm },
   again: { alignSelf: 'flex-start' },
-  problem: { color: theme.colors.danger },
-  added: { color: theme.colors.primaryDark },
-  failed: { gap: theme.spacing.sm },
+  problem: { color: MART.danger },
+  added: { color: MART.ink },
+  failed: { gap: SPACE.sm },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    gap: theme.spacing.sm,
+    gap: SPACE.sm,
     minHeight: 56,
-    paddingVertical: theme.spacing.sm,
+    paddingVertical: SPACE.sm,
     borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    borderBottomColor: MART.border,
   },
   rowName: { flex: 1 },
-  footer: { gap: theme.spacing.sm, paddingTop: theme.spacing.sm },
+  footer: { gap: SPACE.sm, paddingTop: SPACE.sm },
   basket: { textAlign: 'center' },
 });

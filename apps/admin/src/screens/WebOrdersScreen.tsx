@@ -1,11 +1,29 @@
 import React, { useCallback, useState } from 'react';
 import { StyleSheet, View, FlatList, Alert } from 'react-native';
-import { Button, Card, Text, theme } from '@kiosk/ui';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ApiClient } from '@kiosk/core';
 import { fetchWebOrders, updateOrderStatus, type WebOrder } from '../api/admin-api';
+import { MART, GUTTER, RADIUS, SPACE, TYPE, tint, zoneFor } from '../theme/mart';
+import { MartButton, MartText, Screen, Tile } from '../theme/mart-ui';
+
+const money = (value: number | null | undefined) =>
+  value == null ? '—' : `KSh ${value.toLocaleString('en-KE', { maximumFractionDigits: 2 })}`;
+
+function StatusChip({ status }: { status: string }) {
+  const accent = zoneFor(status);
+  return (
+    <View style={[styles.chip, { backgroundColor: tint(accent, 0.18) }]}>
+      <View style={[styles.chipDot, { backgroundColor: accent }]} />
+      <MartText variant="shelf" color={MART.inkMuted}>
+        {status.toUpperCase()}
+      </MartText>
+    </View>
+  );
+}
 
 export function WebOrdersScreen({ api }: { api: ApiClient }) {
   const [orders, setOrders] = useState<WebOrder[]>([]);
+  const insets = useSafeAreaInsets();
 
   const load = useCallback(async () => {
     try {
@@ -29,32 +47,107 @@ export function WebOrdersScreen({ api }: { api: ApiClient }) {
   };
 
   return (
-    <View style={styles.container}>
+    <Screen>
       <FlatList
         data={orders}
         keyExtractor={(o) => o.id}
         onRefresh={load}
         refreshing={false}
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + SPACE.xxl }]}
         renderItem={({ item }) => (
-          <Card style={styles.card}>
-            <Text variant="body">{item.customerName ?? item.id}</Text>
-            <Text variant="caption">Status: {item.status}</Text>
-            <Text variant="h2">{item.grandTotal?.toFixed(2)}</Text>
-            <View style={styles.actions}>
-              <Button title="Preparing" variant="secondary" onPress={() => setStatus(item.id, 'PREPARING')} />
-              <Button title="Ready" onPress={() => setStatus(item.id, 'READY')} />
-              <Button title="Delivered" variant="secondary" onPress={() => setStatus(item.id, 'DELIVERED')} />
+          <Tile style={styles.card}>
+            <View style={styles.cardTop}>
+              <MartText variant="heading" style={styles.name}>
+                {item.customerName ?? item.id}
+              </MartText>
+              <StatusChip status={item.status ?? 'NEW'} />
             </View>
-          </Card>
+            <MartText variant="price" style={styles.total}>
+              {money(item.grandTotal)}
+            </MartText>
+            <View style={styles.actions}>
+              <MartButton
+                label="Preparing"
+                kind="quiet"
+                style={[styles.action, styles.actionSoft]}
+                onPress={() => setStatus(item.id, 'PREPARING')}
+              />
+              <MartButton
+                label="Ready"
+                style={styles.action}
+                onPress={() => setStatus(item.id, 'READY')}
+              />
+              <MartButton
+                label="Delivered"
+                kind="quiet"
+                style={[styles.action, styles.actionSoft]}
+                onPress={() => setStatus(item.id, 'DELIVERED')}
+              />
+            </View>
+          </Tile>
         )}
-        ListEmptyComponent={<Text variant="muted">No web orders</Text>}
+        ListEmptyComponent={
+          <MartText variant="body" color={MART.inkQuiet} style={styles.empty}>
+            No web orders yet.
+          </MartText>
+        }
       />
-    </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16, backgroundColor: theme.colors.background },
-  card: { marginBottom: 12 },
-  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  content: {
+    paddingHorizontal: GUTTER,
+    paddingTop: SPACE.xl,
+    gap: SPACE.sm,
+  },
+  card: {
+    gap: SPACE.sm,
+  },
+  cardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: SPACE.sm,
+  },
+  name: {
+    flex: 1,
+  },
+  total: {
+    ...TYPE.title,
+    color: MART.ink,
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACE.xs,
+    paddingHorizontal: SPACE.md,
+    paddingVertical: SPACE.xs,
+    borderRadius: RADIUS.pill,
+  },
+  chipDot: {
+    width: 6,
+    height: 6,
+    borderRadius: RADIUS.pill,
+  },
+  actions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACE.sm,
+    marginTop: SPACE.xs,
+  },
+  action: {
+    flexGrow: 1,
+    flexBasis: '28%',
+    minHeight: 44,
+    paddingHorizontal: SPACE.md,
+  },
+  actionSoft: {
+    backgroundColor: MART.paperSunken,
+  },
+  empty: {
+    marginTop: SPACE.xxl,
+    textAlign: 'center',
+  },
 });

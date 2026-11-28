@@ -1,16 +1,8 @@
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useRef, useState } from 'react';
-import {
-  Keyboard,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Keyboard, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTenant } from '../lib/TenantContext';
 import { useAirtimeConfig } from '../hooks/useAirtimeConfig';
@@ -26,19 +18,65 @@ import {
   type KenyanNetwork,
 } from '../lib/phone';
 import { loadAirtimePhones, loadTabPhone, saveAirtimePhones } from '../lib/remembered-phone';
+import { doneFeel, failFeel, stepFeel } from '../lib/haptics';
 import { formatMoney } from '../lib/media';
+import { Capsule } from '../components/Capsule';
+import { Coast, COAST_SWELL, Lobe } from '../components/Coast';
+import { Field } from '../components/Field';
 import { Bone, SkeletonScope } from '../components/Skeleton';
-import {
-  ELEVATION,
-  GUTTER,
-  MART,
-  martFromTenant,
-  ON_BRAND,
-  RADIUS,
-  SPACE,
-  TYPE,
-} from '../theme/mart';
+import { StateBlock } from '../components/StateBlock';
+import { FONT, GUTTER, MART, martFromTenant, RADIUS, SPACE, TILE, TYPE, ZONE } from '../theme/mart';
 import { RootStackParamList } from '../navigation/types';
+
+const LAND = ZONE.pond;
+
+/**
+ * The top of the errand: its zone colour running down from the navigation bar to a curved coast, with
+ * the heading on it. The coast sits wherever the words end, so a long heading or large text still fits.
+ */
+function ZoneHead({ title, body }: { title: string; body: string }) {
+  const [height, setHeight] = useState(0);
+  return (
+    <View style={styles.head}>
+      <View style={styles.headOverscroll} />
+      {height > 0 ? <Coast color={LAND} height={height} /> : null}
+      <View style={styles.headCopy} onLayout={(event) => setHeight(event.nativeEvent.layout.height)}>
+        <Text accessibilityRole="header" style={styles.headTitle}>
+          {title}
+        </Text>
+        <Text style={styles.headBody}>{body}</Text>
+      </View>
+    </View>
+  );
+}
+
+/** One choice in a wrap of capsules. The chosen one fills with ink. */
+function Choice({
+  label,
+  selected,
+  onPress,
+  accessibilityLabel,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+  accessibilityLabel?: string;
+}) {
+  return (
+    <Pressable
+      onPress={() => {
+        if (!selected) stepFeel();
+        onPress();
+      }}
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      accessibilityLabel={accessibilityLabel}
+      style={({ pressed }) => [styles.choice, selected && styles.choiceOn, pressed && styles.pressed]}
+    >
+      <Text style={[styles.choiceText, selected && styles.choiceTextOn]}>{label}</Text>
+    </Pressable>
+  );
+}
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -154,6 +192,19 @@ export function AirtimeScreen() {
     }
   }
 
+  useLayoutEffect(() => {
+    navigation.setOptions({ headerStyle: { backgroundColor: LAND } });
+  }, [navigation]);
+
+  // One tick of the haptic engine for each outcome, not one per poll.
+  const delivered = Boolean(order?.delivered);
+  useEffect(() => {
+    if (delivered) doneFeel();
+  }, [delivered]);
+  useEffect(() => {
+    if (error) failFeel();
+  }, [error]);
+
   function revealLowerField() {
     requestAnimationFrame(() => {
       scrollRef.current?.scrollToEnd({ animated: true });
@@ -164,10 +215,10 @@ export function AirtimeScreen() {
     return (
       <View style={styles.shell}>
         <SkeletonScope label="Loading airtime" style={styles.loading}>
-          <Bone h={132} />
-          <Bone h={44} />
-          <Bone h={112} />
-          <Bone h={52} />
+          <Bone h={34} w="56%" r={RADIUS.sm} />
+          <Bone h={54} r={RADIUS.pill} />
+          <Bone h={132} r={RADIUS.lg} />
+          <Bone h={54} r={RADIUS.pill} />
         </SkeletonScope>
       </View>
     );
@@ -175,64 +226,83 @@ export function AirtimeScreen() {
 
   if (config && config.available === false) {
     return (
-      <View style={[styles.shell, styles.centered, { paddingBottom: insets.bottom + 24 }]}>
-        <Ionicons name="cellular-outline" size={32} color={MART.inkQuiet} />
-        <Text style={styles.emptyTitle}>Airtime isn’t on this shop yet</Text>
-        <Text style={styles.emptyBody}>{config.reason || 'Ask the till — they can switch it on.'}</Text>
+      <View style={[styles.shell, { paddingBottom: insets.bottom + SPACE.xl }]}>
+        <StateBlock
+          tone="note"
+          icon="cellular"
+          title="Airtime isn’t on this shop yet"
+          body={config.reason || 'Ask at the till. They can switch it on.'}
+        />
       </View>
     );
   }
+
+  const showForm = !(order?.delivered || (order && !order.failed));
 
   return (
     <View style={styles.shell}>
       <ScrollView
         ref={scrollRef}
         style={styles.scroll}
-        contentContainerStyle={[styles.page, { paddingBottom: SPACE.xl }]}
+        contentContainerStyle={{ paddingBottom: SPACE.xl }}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         automaticallyAdjustKeyboardInsets={false}
       >
-        <Text style={styles.lede}>Any Kenyan line. Pay with M-Pesa on this phone.</Text>
+        <ZoneHead title="Buy airtime" body="Any Kenyan line. Pay with M-Pesa on this phone." />
 
-        {order?.delivered ? (
-          <View style={styles.success}>
-            <Ionicons name="checkmark-circle" size={28} color="#067647" />
-            <Text style={styles.successTitle}>Airtime sent</Text>
-            <Text style={styles.successBody}>
-              {formatMoney(order.currency || currency, Number(order.amount))} landed on{' '}
-              {formatPhoneDisplay(order.phoneNumber)}.
-            </Text>
-            <Pressable
-              onPress={() => navigation.goBack()}
-              style={[styles.primary, { backgroundColor: mart.primary }]}
+        <View style={styles.page}>
+          {order?.delivered ? (
+            <View style={[styles.state, { backgroundColor: MART.successSurface }]}>
+              <Lobe color={ZONE.leaf} size={64} shape={3} style={styles.stateLobe}>
+                <Ionicons name="checkmark" size={30} color={MART.ink} />
+              </Lobe>
+              <Text style={styles.stateTitle}>Airtime sent</Text>
+              <Text style={styles.stateBody}>
+                {formatMoney(order.currency || currency, Number(order.amount))} landed on{' '}
+                {formatPhoneDisplay(order.phoneNumber)}.
+              </Text>
+              <Capsule
+                label="Done"
+                chip="checkmark"
+                fill={mart.primary}
+                onPress={() => navigation.goBack()}
+                style={styles.stateAction}
+              />
+            </View>
+          ) : order && !order.failed ? (
+            <View
+              style={[styles.state, { backgroundColor: MART.infoSurface }]}
+              accessibilityLiveRegion="polite"
             >
-              <Text style={styles.primaryText}>Done</Text>
-            </Pressable>
-          </View>
-        ) : order && !order.failed ? (
-          <View style={styles.wait}>
-            <Ionicons
-              name={order.awaitingPayment ? 'phone-portrait-outline' : 'sync-outline'}
-              size={28}
-              color={mart.primary}
-            />
-            <Text style={styles.waitTitle}>
-              {formatMoney(order.currency || currency, Number(order.amount))} to{' '}
-              {formatPhoneDisplay(order.phoneNumber)}
-            </Text>
-            <Text style={styles.waitBody}>
-              {order.awaitingPayment
-                ? `Check ${formatPhoneDisplay(payer)} and enter your M-Pesa PIN.`
-                : 'Payment received — sending now.'}
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.form}>
-            <View style={styles.field}>
-              <Text style={styles.label}>Airtime goes to</Text>
-              <TextInput
-                style={styles.input}
+              <Lobe color={LAND} size={64} shape={1} style={styles.stateLobe}>
+                <Ionicons
+                  name={order.awaitingPayment ? 'phone-portrait' : 'sync'}
+                  size={28}
+                  color={MART.ink}
+                />
+              </Lobe>
+              <Text style={styles.stateTitle}>
+                {formatMoney(order.currency || currency, Number(order.amount))} to{' '}
+                {formatPhoneDisplay(order.phoneNumber)}
+              </Text>
+              <Text style={styles.stateBody}>
+                {order.awaitingPayment
+                  ? `Check ${formatPhoneDisplay(payer)} and enter your M-Pesa PIN.`
+                  : 'Payment received. Sending the airtime now.'}
+              </Text>
+              <View style={styles.waiting}>
+                <ActivityIndicator size="small" color={MART.ink} />
+                <Text style={styles.waitingText}>
+                  {order.awaitingPayment ? 'Waiting for M-Pesa' : 'Sending'}
+                </Text>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.form}>
+              <Field
+                label="Airtime goes to"
+                icon="call-outline"
                 keyboardType="phone-pad"
                 value={recipient}
                 onChangeText={(v) => {
@@ -241,100 +311,78 @@ export function AirtimeScreen() {
                   setError(null);
                 }}
                 placeholder="07…"
-                placeholderTextColor={MART.inkQuiet}
                 accessibilityLabel="Phone that receives airtime"
+                style={styles.number}
               />
-            </View>
 
-            <View style={styles.field}>
-              <Text style={styles.label}>Network</Text>
-              <Text style={styles.hint}>
-                {detected
-                  ? 'Detected from the number — tap if we guessed wrong.'
-                  : 'Pick the recipient’s network.'}
-              </Text>
-              <View style={styles.networkRow}>
-                {KENYAN_NETWORKS.map((n) => {
-                  const selected = network === n.id;
-                  return (
-                    <Pressable
+              <View style={styles.group}>
+                <Text style={styles.label}>Network</Text>
+                <Text style={styles.hint}>
+                  {detected
+                    ? 'Read from the number. Tap another if we guessed wrong.'
+                    : 'Pick the recipient’s network.'}
+                </Text>
+                <View style={styles.wrap}>
+                  {KENYAN_NETWORKS.map((n) => (
+                    <Choice
                       key={n.id}
+                      label={n.short}
+                      selected={network === n.id}
                       onPress={() => {
                         setNetwork(n.id);
                         setNetworkTouched(true);
                         setError(null);
                       }}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected }}
-                      style={[
-                        styles.netChip,
-                        selected && { backgroundColor: mart.primary, borderColor: mart.primary },
-                      ]}
-                    >
-                      <Text style={[styles.netChipText, selected && styles.netChipTextOn]}>{n.short}</Text>
-                    </Pressable>
-                  );
-                })}
+                    />
+                  ))}
+                </View>
               </View>
-            </View>
 
-            <View style={styles.field}>
-              <Text style={styles.label}>Amount</Text>
-              <Text style={styles.amountDisplay}>
-                {amountValid ? formatMoney(currency, amountNum) : formatMoney(currency, 0)}
-              </Text>
-              <Text style={styles.hint}>
-                {formatMoney(currency, min)}–{formatMoney(currency, max)}
-              </Text>
-              <View style={styles.amountGrid}>
-                {quickAmounts.map((n) => {
-                  const selected = amountValid && Math.abs(amountNum - n) < 0.001;
-                  return (
-                    <Pressable
+              <View style={styles.group}>
+                <Text style={styles.label}>Amount</Text>
+                <Text style={styles.hint}>
+                  {formatMoney(currency, min)} to {formatMoney(currency, max)}
+                </Text>
+                <View style={styles.wrap}>
+                  {quickAmounts.map((n) => (
+                    <Choice
                       key={n}
+                      label={n.toLocaleString('en-KE')}
+                      accessibilityLabel={formatMoney(currency, n)}
+                      selected={amountValid && Math.abs(amountNum - n) < 0.001}
                       onPress={() => {
                         setAmount(String(n));
                         setOtherAmount(false);
                         setError(null);
                       }}
-                      style={[
-                        styles.amountChip,
-                        selected && { backgroundColor: mart.primary, borderColor: mart.primary },
-                      ]}
-                    >
-                      <Text style={[styles.amountChipText, selected && styles.netChipTextOn]}>
-                        {n.toLocaleString('en-KE')}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
+                    />
+                  ))}
+                  {otherAmount ? null : (
+                    <Choice label="Other" selected={false} onPress={() => setOtherAmount(true)} />
+                  )}
+                </View>
+                {otherAmount ? (
+                  <Field
+                    keyboardType="number-pad"
+                    value={amount}
+                    onChangeText={(v) => {
+                      setAmount(v);
+                      setError(null);
+                    }}
+                    onFocus={revealLowerField}
+                    placeholder={`${min} to ${max}`}
+                    prefix={currency === 'KES' ? 'KSh' : currency}
+                    accessibilityLabel="Custom amount"
+                    style={styles.number}
+                    containerStyle={styles.other}
+                  />
+                ) : null}
               </View>
-              {otherAmount ? (
-                <TextInput
-                  style={styles.input}
-                  keyboardType="number-pad"
-                  value={amount}
-                  onChangeText={(v) => {
-                    setAmount(v);
-                    setError(null);
-                  }}
-                  onFocus={revealLowerField}
-                  placeholder={`${min}–${max}`}
-                  placeholderTextColor={MART.inkQuiet}
-                  accessibilityLabel="Custom amount"
-                />
-              ) : (
-                <Pressable onPress={() => setOtherAmount(true)} style={styles.linkBtn}>
-                  <Text style={[styles.link, { color: mart.primary }]}>Other amount</Text>
-                </Pressable>
-              )}
-            </View>
 
-            <View style={styles.field}>
-              <Text style={styles.label}>Pay from</Text>
-              <Text style={styles.hint}>This line gets the M-Pesa PIN prompt.</Text>
-              <TextInput
-                style={styles.input}
+              <Field
+                label="Pay from"
+                hint="This line gets the M-Pesa PIN prompt."
+                icon="wallet-outline"
                 keyboardType="phone-pad"
                 value={payer}
                 onChangeText={(v) => {
@@ -344,16 +392,25 @@ export function AirtimeScreen() {
                 }}
                 onFocus={revealLowerField}
                 placeholder="Same number, or another"
-                placeholderTextColor={MART.inkQuiet}
                 accessibilityLabel="Phone that pays with M-Pesa"
+                style={styles.number}
               />
-            </View>
 
-            {error ? <Text style={styles.error}>{error}</Text> : null}
-          </View>
-        )}
+              {error ? (
+                <View
+                  style={styles.problem}
+                  accessibilityRole="alert"
+                  accessibilityLiveRegion="assertive"
+                >
+                  <Ionicons name="alert-circle" size={22} color={MART.danger} />
+                  <Text style={styles.problemText}>{error}</Text>
+                </View>
+              ) : null}
+            </View>
+          )}
+        </View>
       </ScrollView>
-      {!(order?.delivered || (order && !order.failed)) ? (
+      {showForm ? (
         <View
           style={[
             styles.footer,
@@ -363,25 +420,26 @@ export function AirtimeScreen() {
             },
           ]}
         >
-          <Pressable
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>You pay</Text>
+            <Text style={styles.total}>
+              {amountValid ? formatMoney(currency, amountNum) : formatMoney(currency, 0)}
+            </Text>
+          </View>
+          <Capsule
+            label={busy ? 'Sending prompt…' : 'Pay with M-Pesa'}
+            accessibilityLabel={
+              amountValid ? `Pay ${formatMoney(currency, amountNum)} with M-Pesa` : 'Pay with M-Pesa'
+            }
+            chip="arrow-forward"
+            fill={mart.primary}
+            busy={busy}
+            disabled={!canSubmit}
             onPress={() => {
               Keyboard.dismiss();
               void submit();
             }}
-            disabled={!canSubmit}
-            style={[
-              styles.primary,
-              { backgroundColor: mart.primary, opacity: canSubmit ? 1 : 0.45 },
-            ]}
-          >
-            <Text style={styles.primaryText}>
-              {busy
-                ? 'Sending prompt…'
-                : amountValid
-                  ? `Pay ${formatMoney(currency, amountNum)}`
-                  : 'Pay with M-Pesa'}
-            </Text>
-          </Pressable>
+          />
         </View>
       ) : null}
     </View>
@@ -393,117 +451,100 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   loading: {
     paddingHorizontal: GUTTER,
-    paddingTop: SPACE.lg,
+    paddingTop: SPACE.xl,
     gap: SPACE.lg,
   },
-  centered: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: SPACE.xxl,
-    gap: SPACE.sm,
+  head: {
+    paddingBottom: COAST_SWELL + SPACE.sm,
   },
+  /** Keeps the land whole when the page is pulled down past its top. */
+  headOverscroll: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: -600,
+    height: 600,
+    backgroundColor: LAND,
+  },
+  headCopy: {
+    paddingHorizontal: GUTTER,
+    paddingTop: SPACE.xs,
+    paddingBottom: SPACE.lg,
+  },
+  headTitle: { ...TYPE.display, color: MART.ink },
+  headBody: { ...TYPE.body, marginTop: SPACE.sm, color: MART.ink, maxWidth: 320 },
   page: {
     paddingHorizontal: GUTTER,
     paddingTop: SPACE.md,
-    gap: SPACE.lg,
-  },
-  lede: {
-    ...TYPE.body,
-    color: MART.inkMuted,
   },
   form: {
-    gap: SPACE.xl,
+    gap: SPACE.xxl,
   },
-  field: { gap: SPACE.sm },
-  label: { ...TYPE.label, fontWeight: '700', color: MART.ink },
-  hint: { ...TYPE.meta, color: MART.inkQuiet },
-  amountDisplay: {
-    ...TYPE.heading,
-    fontVariant: ['tabular-nums'],
-    color: MART.ink,
-  },
-  networkRow: {
+  group: {},
+  label: { ...TYPE.label, marginLeft: SPACE.xs, color: MART.ink },
+  hint: { ...TYPE.meta, marginTop: SPACE.xxs, marginLeft: SPACE.xs, color: MART.inkQuiet },
+  wrap: {
+    marginTop: SPACE.md,
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: SPACE.sm,
   },
-  netChip: {
-    minWidth: 56,
-    flexGrow: 1,
-    minHeight: 40,
-    paddingHorizontal: SPACE.sm,
-    borderRadius: RADIUS.md,
+  choice: {
+    minWidth: 72,
+    minHeight: 46,
+    paddingHorizontal: SPACE.lg,
+    borderRadius: RADIUS.pill,
+    borderWidth: 1.5,
+    borderColor: MART.ink,
     alignItems: 'center',
     justifyContent: 'center',
-    ...ELEVATION.ruled,
   },
-  netChipText: { ...TYPE.label, fontWeight: '700', color: MART.ink },
-  netChipTextOn: { color: ON_BRAND.primary },
-  amountGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACE.sm,
-  },
-  amountChip: {
-    width: '31%',
-    minHeight: 44,
-    borderRadius: RADIUS.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...ELEVATION.ruled,
-  },
-  amountChipText: { ...TYPE.heading, color: MART.ink },
-  input: {
-    minHeight: 52,
-    paddingHorizontal: SPACE.md,
-    borderWidth: 1,
-    borderColor: MART.border,
-    borderRadius: RADIUS.md,
-    backgroundColor: MART.paperElevated,
-    ...TYPE.heading,
+  choiceOn: { backgroundColor: MART.ink },
+  choiceText: { ...TYPE.label, color: MART.ink },
+  choiceTextOn: { color: MART.paper },
+  pressed: { opacity: 0.7 },
+  other: { marginTop: SPACE.md },
+  number: {
+    fontFamily: FONT.semibold,
     fontSize: 18,
-    color: MART.ink,
-    letterSpacing: 0.4,
   },
-  linkBtn: {
-    minHeight: 40,
-    justifyContent: 'center',
+  problem: {
+    ...TILE,
+    flexDirection: 'row',
+    gap: SPACE.md,
+    backgroundColor: MART.dangerSurface,
   },
-  link: { ...TYPE.label, fontWeight: '700' },
-  error: {
-    ...TYPE.meta,
-    color: MART.danger,
-  },
+  problemText: { ...TYPE.body, flex: 1, color: MART.ink },
   footer: {
     paddingHorizontal: GUTTER,
     paddingTop: SPACE.md,
+    backgroundColor: MART.paper,
     borderTopWidth: 1,
     borderTopColor: MART.border,
-    backgroundColor: MART.paperElevated,
   },
-  primary: {
-    minHeight: 52,
-    borderRadius: RADIUS.md,
+  totalRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: SPACE.md,
+    marginBottom: SPACE.md,
+    paddingHorizontal: SPACE.xs,
+  },
+  totalLabel: { ...TYPE.label, color: MART.inkMuted },
+  total: { ...TYPE.price, fontSize: 22, lineHeight: 26, color: MART.ink },
+  state: {
+    ...TILE,
+    padding: SPACE.xl,
+  },
+  stateLobe: { marginLeft: -SPACE.xs },
+  stateTitle: { ...TYPE.title, marginTop: SPACE.lg, color: MART.ink },
+  stateBody: { ...TYPE.body, marginTop: SPACE.sm, color: MART.ink },
+  stateAction: { marginTop: SPACE.xl },
+  waiting: {
+    marginTop: SPACE.lg,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-  },
-  primaryText: { ...TYPE.heading, color: ON_BRAND.primary },
-  success: {
-    padding: SPACE.xl,
-    borderRadius: RADIUS.md,
-    backgroundColor: MART.successSurface,
     gap: SPACE.sm,
   },
-  successTitle: { ...TYPE.title, color: MART.success },
-  successBody: { ...TYPE.body, color: MART.ink },
-  wait: {
-    padding: SPACE.xl,
-    borderRadius: RADIUS.md,
-    gap: SPACE.sm,
-    ...ELEVATION.ruled,
-  },
-  waitTitle: { ...TYPE.heading, color: MART.ink },
-  waitBody: { ...TYPE.body, color: MART.inkMuted },
-  emptyTitle: { ...TYPE.title, color: MART.ink, textAlign: 'center' },
-  emptyBody: { ...TYPE.body, color: MART.inkMuted, textAlign: 'center' },
+  waitingText: { ...TYPE.label, color: MART.info },
 });

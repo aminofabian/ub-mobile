@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { checkCash, sharesFor, type PayInputs } from '../src/lib/pay-inputs';
+import { checkCash, creditNeedsConnection, sharesFor, type PayInputs } from '../src/lib/pay-inputs';
 import { planPayments } from '../src/lib/tender';
 
 const CODE = 'SHK7Y2ABCD';
@@ -138,4 +138,13 @@ test('cash handed over is exact, change, short or not an amount', () => {
   assert.deepEqual(checkCash(45050, '400'), { kind: 'short', cents: 5050 });
   assert.deepEqual(checkCash(45050, 'abc'), { kind: 'invalid' });
   assert.deepEqual(checkCash(45050, '12,50'), { kind: 'invalid' });
+});
+
+test('credit waits for a connection, and nothing else does', () => {
+  assert.equal(creditNeedsConnection('credit', true), true);
+  assert.equal(creditNeedsConnection('credit', false), false);
+  for (const mode of ['cash', 'mpesa', 'split'] as const) {
+    assert.equal(creditNeedsConnection(mode, true), false, `${mode} is taken with no line: it is saved and sent later`);
+    assert.equal(creditNeedsConnection(mode, false), false);
+  }
 });

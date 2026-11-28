@@ -7,18 +7,26 @@
   "module": "./dist/index.mjs",
   "react-native": "./src/index.ts",
   "types": "./dist/index.d.ts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "build": "tsup src/index.ts --format cjs,esm --dts --external react --external react-native --external expo-secure-store --external @react-navigation/native",
+    "build": "tsup src/index.ts --format cjs,esm --dts --external react --external react-native --external expo-secure-store --external @react-navigation/native --external @expo/vector-icons --external expo-constants",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@expo/vector-icons": "^15.1.1",
     "@kiosk/core": "workspace:*",
     "@kiosk/ui": "workspace:*",
+    "expo-constants": "~18.0.13",
+    "expo-font": "~14.0.12",
     "react": "^19.1.0",
     "react-native": "~0.81.5",
-    "zustand": "^5.0.2"
+    "zustand": "^5.0.2",
+    "@expo-google-fonts/plus-jakarta-sans": "^0.4.2",
+    "@expo-google-fonts/schibsted-grotesk": "^0.4.2",
+    "@expo-google-fonts/poppins": "0.4.1"
   },
   "devDependencies": {
     "@kiosk/config": "workspace:*",

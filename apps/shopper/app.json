@@ -1,8 +1,9 @@
 {
   "expo": {
-    "name": "Kiosk Ke Shopper",
+    "name": "Kiosk Shoppers",
     "slug": "kiosk-shopper",
     "version": "0.0.1",
+    "runtimeVersion": "0.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -31,7 +32,9 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow Kiosk to use your camera to scan product barcodes."
+          "cameraPermission": "Allow Kiosk to use your camera to scan a shop QR code.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
         }
       ],
       [

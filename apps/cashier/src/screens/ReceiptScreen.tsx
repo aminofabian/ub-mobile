@@ -1,21 +1,36 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, ScrollView, Share, StyleSheet, View } from 'react-native';
+import { Alert, Animated, Platform, ScrollView, Share, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Button } from '@kiosk/ui';
 import { GUTTER, MART, MOTION, PressableScale, RADIUS, SPACE, SHADOW, onFill, tint, MartText } from '@kiosk/staff';
 import type { ApiClient } from '@kiosk/core';
-import { CARD_SURFACE, EmptyOrErrorState, TABULAR_NUMS } from '../components/CashierPrimitives';
+import { CARD_SURFACE, CashierButton, EmptyOrErrorState, TABULAR_NUMS } from '../components/CashierPrimitives';
+import { MilestonePill } from '../components/Recognition';
+import { Printout } from '../components/Printout';
+import { Landed } from '../components/Landed';
 import { buildSaleSummary } from '../lib/sale-summary';
 import { buildReceipt } from '../printing/receipt';
 import { voidSale } from '../api/pos-api';
+
 import { mayVoidSale } from '../lib/shop-flags';
-import { recordCompletedSalePulse, shiftMilestoneLabel } from '../lib/shift-pulse';
+import { milestoneWords, recordCompletedSalePulse, type MilestoneKey } from '../lib/shift-pulse';
 import type { TillPerson } from '../lib/till-person';
 import { usePosStore } from '../store/pos-store';
 import { usePrinter } from '../store/printer-store';
+import { feel } from '../lib/feel';
 import type { CashierStackParamList } from '../navigation/AppNavigator';
+
+/** The torn edge of a printed slip: a row of small squares the colour of the paper, half under its edge. */
+function Teeth({ flip }: { flip?: boolean }) {
+  return (
+    <View style={[styles.teeth, flip ? styles.teethFlip : styles.teethTop]} pointerEvents="none">
+      {Array.from({ length: 26 }).map((_, i) => (
+        <View key={i} style={styles.tooth} />
+      ))}
+    </View>
+  );
+}
 
 type Props = NativeStackScreenProps<CashierStackParamList, 'Receipt'> & {
   shopName: string;
@@ -36,25 +51,26 @@ export function ReceiptScreen({ navigation, route, shopName, tenantId, branchId,
   const canVoid = mayVoidSale(person.permissions);
   const [voiding, setVoiding] = useState(false);
   const [voided, setVoided] = useState(false);
-  const [milestone, setMilestone] = useState<string | null>(null);
+  const [earned, setEarned] = useState<MilestoneKey[]>([]);
   const recordedSaleId = useRef<string | null>(null);
   const tickScale = useRef(new Animated.Value(0.82)).current;
+  const tickTurn = useRef(new Animated.Value(-8)).current;
 
   useEffect(() => {
-    Animated.timing(tickScale, {
-      toValue: 1,
-      duration: MOTION.state,
-      easing: MOTION.easeOut,
-      useNativeDriver: true,
-    }).start();
-  }, [tickScale]);
+    feel.success();
+    // A stamp, not a fade: the mark lands a little crooked, presses in, and settles square.
+    Animated.parallel([
+      Animated.spring(tickScale, { toValue: 1, friction: 5, tension: 180, useNativeDriver: true }),
+      Animated.timing(tickTurn, { toValue: 0, duration: 260, easing: MOTION.easeOut, useNativeDriver: true }),
+    ]).start();
+  }, [tickScale, tickTurn]);
 
   useEffect(() => {
     const saleId = lastSale?.id;
     if (!saleId || recordedSaleId.current === saleId) return;
     recordedSaleId.current = saleId;
-    void recordCompletedSalePulse(tenantId, branchId, person.userId, currentShift?.id ?? null).then((pulse) => {
-      setMilestone(shiftMilestoneLabel(pulse.salesInShift));
+    void recordCompletedSalePulse(tenantId, branchId, person.userId, currentShift?.id ?? null).then((result) => {
+      setEarned(result.earned);
     });
   }, [lastSale?.id, tenantId, branchId, person.userId, currentShift?.id]);
   const summary = useMemo(
@@ -141,87 +157,111 @@ export function ReceiptScreen({ navigation, route, shopName, tenantId, branchId,
       contentContainerStyle={[styles.container, { paddingBottom: Math.max(GUTTER, insets.bottom + SPACE.md) }]}
     >
       <View style={styles.head}>
-        <Animated.View style={[styles.tick, { transform: [{ scale: tickScale }] }]}>
+        <Animated.View
+          style={[
+            styles.tick,
+            {
+              transform: [
+                { scale: tickScale },
+                { rotate: tickTurn.interpolate({ inputRange: [-8, 0], outputRange: ['-8deg', '0deg'] }) },
+              ],
+            },
+          ]}
+        >
           <Ionicons name="checkmark" size={20} color={onPrimary} />
         </Animated.View>
         <MartText variant="title" style={{ flex: 1 }}>Sale complete</MartText>
-        {milestone ? (
-          <View style={styles.milestonePill}>
-            <View style={styles.milestoneDot} />
-            <MartText variant="meta" color={MART.ink} style={TABULAR_NUMS}>
-              {milestone}
-            </MartText>
-          </View>
-        ) : null}
+        {earned.length > 0 ? <MilestonePill label={milestoneWords(earned[0])} /> : null}
       </View>
 
       {summary ? (
         <>
           {summary.change ? (
             // The one figure the cashier acts on right now: the change to hand back. It leads.
-            <View style={styles.changeCard}>
+            <Landed style={styles.changeCard}>
               <MartText variant="shelf" color={tint(onPrimary, 0.8)}>
                 CHANGE DUE
               </MartText>
               <MartText variant="hero" color={onPrimary} style={TABULAR_NUMS}>
-                {summary.change}
+                KES {summary.change}
               </MartText>
-            </View>
+            </Landed>
           ) : null}
 
-          <View style={styles.card}>
-            <MartText variant="heading" style={styles.cardTitle}>
-              {summary.heading}
-            </MartText>
+          {/* The slip: the same words, laid out as the paper the customer walks away with — warm stock,
+              a torn edge, and money in a printer's figures. It comes out of the till's own printer, head first. */}
+          <Printout>
+          <View style={styles.slipWrap}>
+            <Teeth />
+            <View style={styles.slip}>
+              <View style={styles.slipHead}>
+                <MartText variant="shelf" color={MART.inkQuiet} numberOfLines={1} style={styles.grow}>
+                  {shopName.toUpperCase()}
+                </MartText>
+                <MartText variant="shelf" color={MART.inkQuiet}>
+                  {summary.heading.toUpperCase()}
+                </MartText>
+              </View>
 
-            {summary.items.map((item, index) => (
-              <View key={`${index}-${item.name}`} style={styles.row}>
-                <View style={styles.grow}>
-                  <MartText variant="body">{item.name}</MartText>
-                  {item.detail ? (
-                    <MartText variant="meta" color={MART.inkQuiet}>
-                      {item.detail}
-                    </MartText>
-                  ) : null}
+              <View style={styles.dash} />
+
+              {summary.items.map((item, index) => (
+                <View key={`${index}-${item.name}`} style={styles.row}>
+                  <View style={styles.grow}>
+                    <MartText variant="body">{item.name}</MartText>
+                    {item.detail ? (
+                      <MartText variant="meta" color={MART.inkQuiet} style={styles.mono}>
+                        {item.detail}
+                      </MartText>
+                    ) : null}
+                  </View>
+                  <MartText variant="price" style={[styles.mono, styles.money]}>
+                    {item.total}
+                  </MartText>
                 </View>
-                <MartText variant="price" style={TABULAR_NUMS}>{item.total}</MartText>
+              ))}
+
+              <View style={styles.dash} />
+
+              <View style={styles.row}>
+                <MartText variant="title">Total</MartText>
+                <MartText variant="title" style={[styles.mono, styles.money]}>{summary.total}</MartText>
               </View>
-            ))}
 
-            <View style={[styles.row, styles.totalRow]}>
-              <MartText variant="title">Total</MartText>
-              <MartText variant="title" style={TABULAR_NUMS}>{summary.total}</MartText>
-            </View>
+              {summary.payments.map((payment, index) => (
+                <View key={`${index}-${payment.label}`} style={styles.row}>
+                  <MartText variant="body" color={MART.inkMuted}>
+                    {payment.label}
+                    {payment.reference ? ` (${payment.reference})` : ''}
+                  </MartText>
+                  <MartText variant="body" color={MART.inkMuted} style={[styles.mono, styles.money]}>
+                    {payment.amount}
+                  </MartText>
+                </View>
+              ))}
 
-            {summary.payments.map((payment, index) => (
-              <View key={`${index}-${payment.label}`} style={styles.row}>
-                <MartText variant="body" color={MART.inkMuted}>
-                  {payment.label}
-                  {payment.reference ? ` (${payment.reference})` : ''}
+              {summary.soldBy ? (
+                <MartText variant="meta" color={MART.inkQuiet} style={styles.soldBy}>
+                  Sold by {summary.soldBy}
                 </MartText>
-                <MartText variant="body" color={MART.inkMuted} style={TABULAR_NUMS}>
-                  {payment.amount}
-                </MartText>
-              </View>
-            ))}
+              ) : null}
 
-            {summary.soldBy ? (
-              <MartText variant="meta" color={MART.inkQuiet} style={styles.soldBy}>
-                Sold by {summary.soldBy}
+              <View style={styles.dash} />
+
+              <MartText variant="meta" color={MART.inkQuiet} style={styles.slipFoot}>
+                This is a summary of the sale, not the official receipt.
               </MartText>
-            ) : null}
+            </View>
           </View>
+          </Printout>
 
-          <MartText variant="meta" color={MART.inkQuiet} style={styles.note}>
-            This is a summary of the sale, not the official receipt.
-          </MartText>
-
-          <Button
+          <CashierButton
             title={printing ? 'Printing…' : saved ? 'Print receipt' : 'Set up printer'}
+            busy={printing}
             onPress={() => void printSlip()}
             disabled={printing}
           />
-          <Button title="Share summary" variant="secondary" onPress={() => void shareSummary()} style={styles.action} />
+          <CashierButton title="Share summary" variant="secondary" onPress={() => void shareSummary()} style={styles.action} />
 
           {voided ? (
             <View style={styles.voidedBar}>
@@ -253,10 +293,14 @@ export function ReceiptScreen({ navigation, route, shopName, tenantId, branchId,
         />
       )}
 
-      <Button title="New sale" onPress={() => navigation.popTo('Pos', { reload: true })} style={styles.action} />
+      <CashierButton title="New sale" variant="secondary" onPress={() => navigation.popTo('Pos', { reload: true })} style={styles.action} />
     </ScrollView>
   );
 }
+
+/** The stock a thermal slip is printed on, and the ink it prints for money. */
+const SLIP = '#fffdf6';
+const PRINTER_FONT = Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' });
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: MART.paper },
@@ -269,23 +313,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACE.sm,
-  },
-  milestonePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: SPACE.md,
-    paddingVertical: SPACE.xs,
-    borderRadius: RADIUS.pill,
-    backgroundColor: MART.paperElevated,
-    borderWidth: 1,
-    borderColor: MART.border,
-  },
-  milestoneDot: {
-    width: 7,
-    height: 7,
-    borderRadius: RADIUS.pill,
-    backgroundColor: MART.gold,
   },
   tick: {
     width: 32,
@@ -303,6 +330,50 @@ const styles = StyleSheet.create({
     gap: SPACE.xs,
     ...SHADOW.hero,
   },
+  slipWrap: { paddingVertical: SPACE.xs },
+  teeth: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    height: 5,
+    zIndex: 1,
+  },
+  teethTop: { marginBottom: -3 },
+  teethFlip: { marginTop: -3 },
+  tooth: {
+    width: 9,
+    height: 9,
+    borderRadius: 1.5,
+    backgroundColor: SLIP,
+    transform: [{ rotate: '45deg' }],
+  },
+  // The paper: warm stock, no shadow (a slip of paper does not float), straight edges the teeth cut into.
+  slip: {
+    backgroundColor: SLIP,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderColor: MART.border,
+    paddingHorizontal: SPACE.lg,
+    paddingTop: SPACE.md,
+    paddingBottom: SPACE.lg,
+    gap: SPACE.sm,
+  },
+  slipHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: SPACE.sm,
+  },
+  // A printed rule, not a UI divider.
+  dash: {
+    borderBottomWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: MART.borderStrong,
+    marginVertical: SPACE.xxs,
+  },
+  // Money set in a printer's figures, so the column reads like the slip the customer is handed.
+  mono: { fontFamily: PRINTER_FONT },
+  money: { textAlign: 'right' },
+  slipFoot: { textAlign: 'center' },
   card: {
     ...CARD_SURFACE,
     padding: SPACE.lg,

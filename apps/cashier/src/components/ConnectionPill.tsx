@@ -1,6 +1,6 @@
 import React from 'react';
 import { Alert, StyleSheet, Text } from 'react-native';
-import { FONT, MART, PressableScale, RADIUS, SPACE, tint } from '@kiosk/staff';
+import { FONT, MART, PressableScale, RADIUS, SPACE, tint, WEIGHT } from '@kiosk/staff';
 import { OFFLINE_NOTE, OFFLINE_PILL, STILL_OFFLINE, TRY_AGAIN } from '../lib/offline-words';
 import { useReach } from '../store/reach-store';
 
@@ -47,5 +47,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: tint(MART.warning, 0.3),
   },
-  text: { fontSize: 12, fontFamily: FONT.semibold, color: MART.warning },
+  text: { fontSize: 12, fontFamily: FONT.semibold,
+ fontWeight: WEIGHT.semibold, color: MART.warning },
 });

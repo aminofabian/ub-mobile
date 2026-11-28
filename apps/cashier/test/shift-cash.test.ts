@@ -91,10 +91,10 @@ test('a difference of more than a cent needs a reason, short or over', () => {
   const short = close({ countedText: '12,450' });
   assert.equal(short.step, 'reason');
   assert.equal(short.step === 'reason' ? short.varianceCents : 0, -5000);
-  assert.match(short.step === 'reason' ? short.message : '', /^Short by 50\.00\. Say why/);
+  assert.match(short.step === 'reason' ? short.message : '', /^Short by KES 50\.00\. Say why/);
   const over = close({ countedText: '12,512.50' });
   assert.equal(over.step, 'reason');
-  assert.match(over.step === 'reason' ? over.message : '', /^Over by 12\.50\. Say why/);
+  assert.match(over.step === 'reason' ? over.message : '', /^Over by KES 12\.50\. Say why/);
   for (const reasonText of ['', ' ', 'ab', '  a ']) {
     assert.equal(close({ countedText: '12,450', reasonText }).step, 'reason', JSON.stringify(reasonText));
   }
@@ -129,9 +129,9 @@ test('a difference is described in words', () => {
   assert.equal(describeVariance(0), 'The count matches');
   assert.equal(describeVariance(1), 'The count matches');
   assert.equal(describeVariance(-1), 'The count matches');
-  assert.equal(describeVariance(-5000), 'Short by 50.00');
-  assert.equal(describeVariance(1250), 'Over by 12.50');
-  assert.equal(describeVariance(-123456), 'Short by 1,234.56');
+  assert.equal(describeVariance(-5000), 'Short by KES 50.00');
+  assert.equal(describeVariance(1250), 'Over by KES 12.50');
+  assert.equal(describeVariance(-123456), 'Short by KES 1,234.56');
 });
 
 test('closing with sales still on the phone is warned about, with how many', () => {
@@ -140,7 +140,8 @@ test('closing with sales still on the phone is warned about, with how many', () 
   assert.equal(unsentAtClose(NaN), null);
   assert.match(unsentAtClose(1) ?? '', /^1 sale is still on this phone and not sent\./);
   assert.match(unsentAtClose(4) ?? '', /^4 sales are still on this phone and not sent\./);
-  assert.match(unsentAtClose(2) ?? '', /a closed shift can no longer take them/);
+  assert.match(unsentAtClose(2) ?? '', /recorded in whichever shift is open then, under whoever is signed in then/);
+  assert.doesNotMatch(unsentAtClose(2) ?? '', /can no longer take them/, 'the server does not promise that');
 });
 
 test('the expected cash is not shown before the count, unless the owner switches that on', () => {

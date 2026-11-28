@@ -10,7 +10,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
+  type TextInput,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -48,7 +48,13 @@ import {
 import { createSearchSession, type SearchSession, type SearchView } from '../lib/search-session';
 import { cardFromHit, cardFromStore } from '../lib/store-card';
 import { useOpening } from '../lib/useOpening';
-import { GUTTER, MART, ON_BRAND, RADIUS, SPACE, TYPE } from '../theme/mart';
+import { Capsule, ChipButton } from '../components/Capsule';
+import { Coast, COAST_SWELL } from '../components/Coast';
+import { Field } from '../components/Field';
+import { FONT, GUTTER, MART, onFill, RADIUS, SPACE, TYPE } from '../theme/mart';
+
+/** Before a shop is chosen there is no shop colour: the land is the app's own green. */
+const ON_LAND = onFill(MART.fallbackPrimary);
 
 /** What a link already found, to show the moment the picker opens. */
 export type PickerSeed = { store: StoreSnapshot } | { problem: Problem; input: string };
@@ -100,12 +106,13 @@ export function TenantEntryScreen({ platform, seed, onCancel, currentShopName, o
   const locked = useOpening();
 
   const [text, setText] = useState('');
-  const [focused, setFocused] = useState(false);
+  const [, setFocused] = useState(false);
+  const [land, setLand] = useState(0);
   const [search, setSearch] = useState<SearchView>({ kind: 'idle' });
   const [recents, setRecents] = useState<StoreSnapshot[] | null>(null);
   const [lookup, setLookup] = useState<Lookup>(() => lookupFromSeed(seed));
   const [code, setCode] = useState('');
-  const [codeFocused, setCodeFocused] = useState(false);
+  const [, setCodeFocused] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [openingId, setOpeningId] = useState<string | null>(null);
   const [opening, setOpening] = useState(false);
@@ -372,43 +379,46 @@ export function TenantEntryScreen({ platform, seed, onCancel, currentShopName, o
     <KeyboardAvoidingView style={styles.shell} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView
         style={locked ? styles.locked : undefined}
-        contentContainerStyle={[
-          styles.content,
-          { paddingTop: insets.top + (onCancel ? SPACE.md : SPACE.xxxl), paddingBottom: insets.bottom + SPACE.xxl },
-        ]}
+        contentContainerStyle={{ paddingBottom: insets.bottom + SPACE.xxl }}
         keyboardShouldPersistTaps="handled"
       >
-        {onCancel ? (
-          <Pressable
-            onPress={onCancel}
-            accessibilityRole="button"
-            accessibilityLabel={currentShopName ? `Back to ${currentShopName}` : 'Back'}
-            style={styles.back}
-          >
-            <Ionicons name="chevron-back" size={20} color={MART.fallbackPrimary} />
-            <Text numberOfLines={1} style={styles.backText}>
-              {currentShopName ? `Back to ${currentShopName}` : 'Back'}
+        <View
+          onLayout={(event) => setLand(Math.round(event.nativeEvent.layout.height))}
+          // Until the land has been measured it is a plain field, so the cream words are never on cream.
+          style={[
+            styles.land,
+            { paddingTop: insets.top + SPACE.md },
+            land === 0 && { backgroundColor: MART.fallbackPrimary },
+          ]}
+        >
+          {land > 0 ? <Coast color={MART.fallbackPrimary} height={land} /> : null}
+          <View style={styles.landTop}>
+            <Text numberOfLines={1} style={styles.markText}>
+              {PLATFORM_NAME}
             </Text>
-          </Pressable>
-        ) : (
-          <View style={styles.mark}>
-            <Text style={styles.markText}>{PLATFORM_NAME}</Text>
-            <View style={styles.markRule} />
+            {onCancel ? (
+              <ChipButton
+                icon="close"
+                label={currentShopName ? `Back to ${currentShopName}` : 'Back'}
+                onPress={onCancel}
+                fill={ON_LAND.primary}
+                color={MART.fallbackPrimary}
+              />
+            ) : null}
           </View>
-        )}
 
-        <Text style={styles.title}>Find your shop</Text>
-        <Text style={styles.body}>{intro}</Text>
+          <Text accessibilityRole="header" style={styles.title}>
+            Find your shop
+          </Text>
+          <Text style={styles.body}>{intro}</Text>
 
-        <View style={styles.searchRow}>
-          {directoryEnabled ? (
-            <View style={[styles.field, focused && styles.fieldFocused]}>
-              <Ionicons name="search" size={18} color={MART.inkQuiet} />
-              <TextInput
+          <View style={styles.searchRow}>
+            {directoryEnabled ? (
+              <Field
                 ref={inputRef}
-                style={styles.input}
+                icon="search"
+                containerStyle={styles.searchField}
                 placeholder="Search shops by name"
-                placeholderTextColor={MART.inkQuiet}
                 value={text}
                 onChangeText={handleChangeText}
                 onFocus={() => setFocused(true)}
@@ -418,36 +428,48 @@ export function TenantEntryScreen({ platform, seed, onCancel, currentShopName, o
                 autoCapitalize="none"
                 autoCorrect={false}
                 accessibilityLabel="Search shops by name"
+                trailing={
+                  text ? (
+                    <Pressable
+                      onPress={() => {
+                        handleChangeText('');
+                        inputRef.current?.focus();
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Clear search"
+                      hitSlop={12}
+                    >
+                      <Ionicons name="close-circle" size={20} color={MART.inkMuted} />
+                    </Pressable>
+                  ) : null
+                }
               />
-              {text ? (
-                <Pressable
-                  onPress={() => {
-                    handleChangeText('');
-                    inputRef.current?.focus();
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel="Clear search"
-                  hitSlop={8}
-                >
-                  <Ionicons name="close-circle" size={18} color={MART.inkQuiet} />
-                </Pressable>
-              ) : null}
-            </View>
-          ) : null}
-          <Pressable
-            onPress={() => setScanning(true)}
-            accessibilityRole="button"
-            accessibilityLabel="Scan a shop QR code"
-            style={({ pressed }) => [styles.scan, !directoryEnabled && styles.scanWide, pressed && styles.scanPressed]}
-          >
-            <Ionicons name="qr-code-outline" size={22} color={ON_BRAND.primary} />
-            {!directoryEnabled ? <Text style={styles.scanLabel}>Scan a QR code</Text> : null}
-          </Pressable>
+            ) : null}
+            {directoryEnabled ? (
+              <ChipButton
+                icon="qr-code-outline"
+                label="Scan a shop QR code"
+                onPress={() => setScanning(true)}
+                fill={MART.fallbackAccent}
+                size={54}
+              />
+            ) : (
+              <Capsule
+                label="Scan a QR code"
+                chip="qr-code-outline"
+                fill={MART.fallbackAccent}
+                accessibilityLabel="Scan a shop QR code"
+                onPress={() => setScanning(true)}
+                style={styles.searchField}
+              />
+            )}
+          </View>
         </View>
 
+        <View style={styles.content}>
         {lookup.kind === 'busy' ? (
           <View style={styles.busy} accessibilityLiveRegion="polite">
-            <ActivityIndicator color={MART.inkQuiet} />
+            <ActivityIndicator color={MART.ink} />
             <Text style={styles.busyText}>Looking for the shop</Text>
           </View>
         ) : null}
@@ -477,14 +499,14 @@ export function TenantEntryScreen({ platform, seed, onCancel, currentShopName, o
 
         {sectionOpen && search.kind === 'searching' && !showRows ? (
           <View style={styles.busy} accessibilityLiveRegion="polite">
-            <ActivityIndicator color={MART.inkQuiet} />
+            <ActivityIndicator color={MART.ink} />
             <Text style={styles.busyText}>Searching</Text>
           </View>
         ) : null}
 
         {sectionOpen && showRows ? (
           <View style={styles.section}>
-            <Text style={styles.sectionHead}>SHOPS</Text>
+            <Text accessibilityRole="header" style={styles.sectionHead}>Shops</Text>
             <View style={styles.list}>
               {rows.map((hit) => (
                 <StoreRow
@@ -535,7 +557,7 @@ export function TenantEntryScreen({ platform, seed, onCancel, currentShopName, o
 
         {showRecents ? (
           <View style={styles.section}>
-            <Text style={styles.sectionHead}>YOUR SHOPS</Text>
+            <Text accessibilityRole="header" style={styles.sectionHead}>Your shops</Text>
             <View style={styles.list}>
               {(recents ?? []).map((store) => (
                 <StoreRow
@@ -548,44 +570,44 @@ export function TenantEntryScreen({ platform, seed, onCancel, currentShopName, o
               ))}
             </View>
             {openError ? (
-              <Text accessibilityLiveRegion="polite" style={styles.error}>
-                {openError}
-              </Text>
+              <View style={styles.errorBox}>
+                <Text accessibilityLiveRegion="polite" style={styles.error}>
+                  {openError}
+                </Text>
+              </View>
             ) : null}
           </View>
         ) : null}
 
         {sectionOpen && !showRows && codesEnabled ? (
           <View style={styles.section}>
-            <Text style={styles.sectionHead}>HAVE A SHOP CODE?</Text>
+            <Text accessibilityRole="header" style={styles.sectionHead}>Have a shop code?</Text>
             <View style={styles.codeRow}>
-              <View style={[styles.field, styles.codeField, codeFocused && styles.fieldFocused, Boolean(codeHint) && styles.fieldError]}>
-                <TextInput
-                  ref={codeRef}
-                  style={[styles.input, styles.codeInput]}
-                  placeholder="K7M4Q"
-                  placeholderTextColor={MART.inkQuiet}
-                  value={code}
-                  onChangeText={setCode}
-                  onFocus={() => setCodeFocused(true)}
-                  onBlur={() => setCodeFocused(false)}
-                  onSubmitEditing={handleCode}
-                  returnKeyType="go"
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                  maxLength={12}
-                  accessibilityLabel="Shop code"
-                />
-              </View>
-              <View style={styles.codeButton}>
-                <ActionButton label="Find" onPress={handleCode} disabled={parsedCode.kind !== 'ok'} />
-              </View>
+              <Field
+                ref={codeRef}
+                containerStyle={styles.codeField}
+                style={styles.codeInput}
+                placeholder="K7M4Q"
+                value={code}
+                onChangeText={setCode}
+                onFocus={() => setCodeFocused(true)}
+                onBlur={() => setCodeFocused(false)}
+                onSubmitEditing={handleCode}
+                returnKeyType="go"
+                autoCapitalize="characters"
+                autoCorrect={false}
+                maxLength={12}
+                accessibilityLabel="Shop code"
+                error={codeHint}
+              />
+              <Capsule
+                label="Find"
+                onPress={handleCode}
+                disabled={parsedCode.kind !== 'ok'}
+                stretch={false}
+                style={styles.codeButton}
+              />
             </View>
-            {codeHint ? (
-              <Text accessibilityLiveRegion="polite" style={styles.error}>
-                {codeHint}
-              </Text>
-            ) : null}
           </View>
         ) : null}
 
@@ -602,6 +624,7 @@ export function TenantEntryScreen({ platform, seed, onCancel, currentShopName, o
 
         <View style={styles.section}>
           <HelpRow support={config.support} />
+        </View>
         </View>
       </ScrollView>
 
@@ -637,7 +660,7 @@ function ProblemPanel({
   const actions = copy.actions.filter((action) => action !== 'retry' || lookup.again);
   return (
     <View style={styles.section}>
-      <View style={styles.problem} accessibilityLiveRegion="polite">
+      <View style={[styles.problem, styles.problemHard]} accessibilityLiveRegion="polite">
         <Text style={styles.problemTitle}>{copy.title}</Text>
         <Text style={styles.problemBody}>{copy.body}</Text>
       </View>
@@ -694,107 +717,60 @@ const styles = StyleSheet.create({
   locked: {
     pointerEvents: 'none',
   },
-  content: {
-    paddingHorizontal: SPACE.xl,
+  land: {
+    paddingHorizontal: GUTTER,
+    paddingBottom: SPACE.xl,
+    marginBottom: COAST_SWELL,
   },
-  back: {
-    alignSelf: 'flex-start',
+  landTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACE.xs,
+    justifyContent: 'space-between',
     minHeight: 44,
-    marginBottom: SPACE.md,
-    marginLeft: -SPACE.xs,
-  },
-  backText: {
-    ...TYPE.label,
-    maxWidth: 260,
-    color: MART.fallbackPrimary,
-  },
-  mark: {
-    alignSelf: 'flex-start',
-    marginBottom: SPACE.xxl,
+    marginBottom: SPACE.xl,
   },
   markText: {
-    ...TYPE.title,
-    color: MART.fallbackPrimary,
-  },
-  markRule: {
-    marginTop: SPACE.xs,
-    height: 2,
-    backgroundColor: MART.fallbackAccent,
+    ...TYPE.heading,
+    flex: 1,
+    color: ON_LAND.primary,
   },
   title: {
     ...TYPE.display,
-    color: MART.ink,
+    fontSize: 40,
+    lineHeight: 40,
+    color: ON_LAND.primary,
   },
   body: {
     ...TYPE.body,
-    marginTop: SPACE.sm,
-    color: MART.inkMuted,
+    marginTop: SPACE.md,
+    maxWidth: 340,
+    color: ON_LAND.secondary,
   },
   searchRow: {
     marginTop: SPACE.xl,
     flexDirection: 'row',
-    gap: SPACE.sm,
-  },
-  field: {
-    flex: 1,
-    flexDirection: 'row',
     alignItems: 'center',
     gap: SPACE.sm,
-    paddingHorizontal: SPACE.md,
-    borderWidth: 1,
-    borderColor: MART.border,
-    borderRadius: RADIUS.md,
-    backgroundColor: MART.paperElevated,
   },
-  fieldFocused: {
-    borderColor: MART.fallbackPrimary,
-  },
-  fieldError: {
-    borderColor: MART.danger,
-  },
-  input: {
-    flex: 1,
-    minHeight: 52,
-    ...TYPE.heading,
-    color: MART.ink,
-  },
-  scan: {
-    width: 52,
-    minHeight: 52,
-    borderRadius: RADIUS.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: SPACE.sm,
-    backgroundColor: MART.fallbackPrimary,
-  },
-  scanWide: {
-    width: undefined,
+  searchField: {
     flex: 1,
   },
-  scanPressed: {
-    opacity: 0.88,
-  },
-  scanLabel: {
-    ...TYPE.heading,
-    color: ON_BRAND.primary,
+  content: {
+    paddingHorizontal: GUTTER,
   },
   section: {
-    marginTop: SPACE.xl,
-    gap: SPACE.sm,
+    marginTop: SPACE.xxl,
+    gap: SPACE.md,
   },
   sectionHead: {
-    ...TYPE.shelf,
-    color: MART.inkMuted,
+    ...TYPE.title,
+    color: MART.ink,
   },
   list: {
     gap: SPACE.sm,
   },
   busy: {
-    marginTop: SPACE.xl,
+    marginTop: SPACE.xxl,
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACE.md,
@@ -803,15 +779,23 @@ const styles = StyleSheet.create({
     ...TYPE.body,
     color: MART.inkMuted,
   },
+  errorBox: {
+    padding: SPACE.md,
+    borderRadius: RADIUS.md,
+    backgroundColor: MART.dangerSurface,
+  },
   error: {
-    ...TYPE.meta,
+    ...TYPE.label,
     color: MART.danger,
   },
   problem: {
-    padding: SPACE.lg,
+    padding: SPACE.xl,
     gap: SPACE.xs,
-    borderRadius: RADIUS.md,
-    backgroundColor: MART.paperSunken,
+    borderRadius: RADIUS.lg,
+    backgroundColor: MART.infoSurface,
+  },
+  problemHard: {
+    backgroundColor: MART.dangerSurface,
   },
   problemTitle: {
     ...TYPE.heading,
@@ -819,7 +803,7 @@ const styles = StyleSheet.create({
   },
   problemBody: {
     ...TYPE.body,
-    color: MART.inkMuted,
+    color: MART.ink,
   },
   problemActions: {
     gap: SPACE.sm,
@@ -833,9 +817,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   codeInput: {
+    fontFamily: FONT.bold,
     letterSpacing: 2,
   },
   codeButton: {
-    width: 96,
+    minWidth: 96,
   },
 });

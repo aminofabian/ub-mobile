@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Button, Text, theme } from '@kiosk/ui';
-import { MART } from '@kiosk/staff';
+import { FONT, MART, MartText, RADIUS, SPACE, WEIGHT } from '@kiosk/staff';
 import { priceChanged, type CartLine } from '../lib/cart';
 import { formatMoney, toCents } from '../lib/money';
 import { checkPriceEntry, describePriceChange } from '../lib/price-entry';
 import { Prompt } from './Prompt';
+import { CashierButton } from './CashierPrimitives';
 
 interface PricePromptProps {
   /** The line whose price is being changed. Null while the prompt is closed. */
@@ -46,12 +46,12 @@ export function PricePrompt({ line, canSetShelf, onCancel, onConfirm, onUseShelf
     <Prompt visible={line !== null} title="Change price" onClose={onCancel}>
       {line ? (
         <View style={styles.body}>
-          <Text variant="body">{line.name}</Text>
+          <MartText variant="heading">{line.name}</MartText>
           {shelfCents !== null ? (
-            <Text variant="muted">
-              Shelf price: {formatMoney(shelfCents)}
+            <MartText variant="meta" color={MART.inkQuiet}>
+              Shelf price: KES {formatMoney(shelfCents)}
               {per}
-            </Text>
+            </MartText>
           ) : null}
           <TextInput
             style={styles.input}
@@ -66,20 +66,20 @@ export function PricePrompt({ line, canSetShelf, onCancel, onConfirm, onUseShelf
             accessibilityLabel="New price"
           />
           {text.trim() === '' ? (
-            <Text variant="muted">Enter the price to sell this at.</Text>
+            <MartText variant="meta" color={MART.inkQuiet}>Enter the price to sell this at.</MartText>
           ) : !entry.ok ? (
-            <Text variant="caption" style={styles.problem}>
+            <MartText variant="meta" style={styles.problem}>
               {entry.words}
-            </Text>
+            </MartText>
           ) : change ? (
-            <Text variant="caption" style={change.large ? styles.problem : undefined}>
+            <MartText variant="meta" color={change.large ? MART.danger : MART.inkMuted}>
               {change.words}
-            </Text>
+            </MartText>
           ) : null}
           {refused ? (
-            <Text variant="caption" style={styles.problem}>
+            <MartText variant="meta" style={styles.problem}>
               {refused}
-            </Text>
+            </MartText>
           ) : null}
           {canSetShelf && entry.ok ? (
             <Pressable
@@ -93,16 +93,16 @@ export function PricePrompt({ line, canSetShelf, onCancel, onConfirm, onUseShelf
                 size={20}
                 color={alsoShelf ? MART.fallbackPrimary : MART.inkMuted}
               />
-              <Text variant="body" style={styles.shelfLabel}>
+              <MartText variant="label" style={styles.shelfLabel}>
                 Also update the shelf price for the whole shop
-              </Text>
+              </MartText>
             </Pressable>
           ) : null}
           <View style={styles.buttons}>
-            <Button title="Cancel" variant="secondary" onPress={onCancel} style={styles.button} />
-            <Button title="Change price" onPress={confirm} disabled={!entry.ok} style={styles.button} />
+            <CashierButton title="Cancel" variant="secondary" onPress={onCancel} style={styles.button} />
+            <CashierButton title="Change price" onPress={confirm} disabled={!entry.ok} style={styles.button} />
           </View>
-          {priceChanged(line) ? <Button title="Back to shelf price" variant="secondary" onPress={onUseShelf} /> : null}
+          {priceChanged(line) ? <CashierButton title="Back to shelf price" variant="secondary" onPress={onUseShelf} style={styles.shelfReset} /> : null}
         </View>
       ) : null}
     </Prompt>
@@ -110,18 +110,24 @@ export function PricePrompt({ line, canSetShelf, onCancel, onConfirm, onUseShelf
 }
 
 const styles = StyleSheet.create({
-  body: { gap: theme.spacing.sm },
+  body: { gap: SPACE.sm },
+  // The new price is the one thing typed here, so it is set large — and its box matches every field in the till.
   input: {
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.md,
-    padding: theme.spacing.md,
+    borderWidth: 1.5,
+    borderColor: MART.borderStrong,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACE.md,
     minHeight: 56,
+    fontFamily: FONT.semibold,
+    fontWeight: WEIGHT.semibold,
     fontSize: 24,
+    color: MART.ink,
+    backgroundColor: MART.paperElevated,
   },
-  problem: { color: theme.colors.danger },
-  shelfToggle: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, paddingVertical: theme.spacing.xs },
+  problem: { color: MART.danger },
+  shelfToggle: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, paddingVertical: SPACE.xs },
   shelfLabel: { flex: 1 },
-  buttons: { flexDirection: 'row', gap: theme.spacing.sm, marginTop: theme.spacing.sm },
-  button: { flex: 1 },
+  buttons: { flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.sm },
+  button: { flex: 1, paddingHorizontal: SPACE.md },
+  shelfReset: { marginTop: SPACE.xs },
 });

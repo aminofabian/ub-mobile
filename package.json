@@ -36,7 +36,7 @@
     "publish:tenant": "node scripts/publish-tenant-shopper.js",
     "guard:config": "node scripts/check-generic-config.js",
     "test:scripts": "node --test scripts/*.test.js packages/config/metro/*.test.js",
-    "test:ts": "node --experimental-strip-types --import ./packages/core/test/support/register.mjs --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test packages/core/test/*.test.ts packages/offline/test/*.test.ts packages/staff/test/*.test.ts apps/shopper/test/*.test.ts apps/cashier/test/*.test.ts packages/barcode/test/*.test.ts packages/payments/test/*.test.ts"
+    "test:ts": "node --experimental-strip-types --import ./packages/core/test/support/register.mjs --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test packages/core/test/*.test.ts packages/offline/test/*.test.ts packages/staff/test/*.test.ts apps/shopper/test/*.test.ts apps/cashier/test/*.test.ts packages/barcode/test/*.test.ts packages/payments/test/*.test.ts apps/grocery/test/*.test.ts apps/stock/test/*.test.ts apps/admin/test/*.test.ts packages/orders/test/*.test.ts"
   },
   "devDependencies": {
     "eas-cli": "^22.0.0",

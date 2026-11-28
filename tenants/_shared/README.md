@@ -31,7 +31,7 @@ from `frontend/lib/platform-logo-mark.ts`). It is a stand-in until the owner sup
 | `brand-mark.png` | the stamp in the Shopper's in-app splash |
 
 `pnpm assets:default` copies these into each `apps/<app>/assets/`; `pnpm guard:config` fails when a copy drifts.
-Per-app overrides live under `assets/<app>/` (e.g. Cashier’s till icon in `assets/cashier/`) and win over the
-shared files for that app only.
+Per-app overrides live under `assets/<app>/` (Cashier’s till in `assets/cashier/`, Stock’s box in
+`assets/stock/`) and win over the shared files for that app only.
 `pnpm assets:tenant _shared` needs `source/icon-source.png` and `source/splash-source.png`, which this folder
 does not hold, so it stops instead of overwriting the art above.

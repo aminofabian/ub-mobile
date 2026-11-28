@@ -1,33 +1,15 @@
-import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 import type { CatalogType } from '../api/storefront';
-import { categoryIconImageUrl, itemCountLabel } from '../lib/media';
-import { ELEVATION, GUTTER, MART, RADIUS, SPACE, TYPE, tint } from '../theme/mart';
+import { titleCase } from '../lib/aisle-icon';
+import { stepFeel } from '../lib/haptics';
+import { itemCountLabel } from '../lib/media';
+import { FONT, GUTTER, MART, onFill, RADIUS, SPACE, TYPE } from '../theme/mart';
 
-function titleCase(label: string): string {
-  return label
-    .trim()
-    .split(/\s+/)
-    .map((word) =>
-      word.length <= 2 && word === word.toUpperCase()
-        ? word
-        : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-    )
-    .join(' ');
-}
-
-function iconForLabel(label: string): React.ComponentProps<typeof Ionicons>['name'] {
-  if (/drink|beverage|water|juice|soda|dairy/i.test(label)) return 'cafe-outline';
-  if (/house|clean|essent|hygiene|home|household/i.test(label)) return 'sparkles-outline';
-  if (/station|office|paper|pen|electronic/i.test(label)) return 'create-outline';
-  if (/snack|bite|cookie|candy|bakery|cereal/i.test(label)) return 'fast-food-outline';
-  if (/liquor|wine|spirit|alcohol/i.test(label)) return 'wine-outline';
-  if (/cloth|fashion|wear|appar|beauty|care|baby/i.test(label)) return 'shirt-outline';
-  if (/grocery|general|retail/i.test(label)) return 'basket-outline';
-  return 'cube-outline';
-}
-
+/**
+ * Departments, as a row of filter capsules above the shelf they filter. The chosen one fills with the
+ * shop's colour; tapping it again clears it.
+ */
 export function TypeRail({
   types,
   primary,
@@ -40,42 +22,33 @@ export function TypeRail({
   onSelect: (type: CatalogType) => void;
 }) {
   if (types.length === 0) return null;
+  const on = onFill(primary);
 
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.row}
-    >
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
       {types.map((type) => {
         const selected = selectedId === type.id;
-        const image = categoryIconImageUrl(type.icon);
         const label = titleCase(type.label);
         return (
           <Pressable
             key={type.id}
-            onPress={() => onSelect(type)}
+            onPress={() => {
+              stepFeel();
+              onSelect(type);
+            }}
             accessibilityRole="button"
             accessibilityState={{ selected }}
             accessibilityLabel={`${label}, ${itemCountLabel(type.itemCount)}`}
-            style={[
+            style={({ pressed }) => [
               styles.chip,
-              selected && { borderColor: primary, backgroundColor: tint(primary, 0.07) },
+              selected && { backgroundColor: primary, borderColor: primary },
+              pressed && styles.pressed,
             ]}
           >
-            <View style={[styles.iconWell, { backgroundColor: tint(primary, 0.1) }]}>
-              {image ? (
-                <Image source={{ uri: image }} style={styles.iconImage} resizeMode="contain" />
-              ) : (
-                <Ionicons name={iconForLabel(label)} size={20} color={primary} />
-              )}
-            </View>
-            <View style={styles.copy}>
-              <Text numberOfLines={1} style={styles.label}>
-                {label}
-              </Text>
-              <Text style={styles.count}>{itemCountLabel(type.itemCount)}</Text>
-            </View>
+            <Text numberOfLines={1} style={[styles.label, selected && { color: on.primary }]}>
+              {label}
+            </Text>
+            <Text style={[styles.count, selected && { color: on.secondary }]}>{type.itemCount}</Text>
           </Pressable>
         );
       })}
@@ -92,37 +65,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACE.sm,
-    minHeight: 56,
-    paddingVertical: SPACE.sm,
-    paddingLeft: SPACE.sm,
-    paddingRight: SPACE.md,
-    borderRadius: RADIUS.md,
-    maxWidth: 190,
-    ...ELEVATION.ruled,
+    minHeight: 44,
+    paddingHorizontal: SPACE.lg,
+    borderRadius: RADIUS.pill,
+    borderWidth: 1.5,
+    borderColor: MART.ink,
+    maxWidth: 220,
   },
-  iconWell: {
-    width: 38,
-    height: 38,
-    borderRadius: RADIUS.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  iconImage: {
-    width: 30,
-    height: 30,
-  },
-  copy: {
-    minWidth: 0,
-    flexShrink: 1,
+  pressed: {
+    opacity: 0.7,
   },
   label: {
     ...TYPE.label,
+    flexShrink: 1,
     color: MART.ink,
   },
   count: {
     ...TYPE.meta,
-    marginTop: SPACE.xxs,
+    fontFamily: FONT.medium,
     color: MART.inkQuiet,
   },
 });

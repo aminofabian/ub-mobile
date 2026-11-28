@@ -271,7 +271,7 @@ export function describeBasket(basket: HeldBasket, now: number): { title: string
   const age = minutes < 1 ? 'just now' : minutes < 60 ? `${minutes} min ago` : `${Math.floor(minutes / 60)} h ago`;
   const things = basket.lines.length === 1 ? '1 item' : `${basket.lines.length} items`;
   const cents = cartCents(basket.lines);
-  const worth = cents === null ? '' : `${formatMoney(cents)} · `;
+  const worth = cents === null ? '' : `KES ${formatMoney(cents)} · `;
   return { title: basket.label, detail: `${things} · ${worth}${age}` };
 }
 

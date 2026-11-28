@@ -3,8 +3,10 @@ import assert from 'node:assert/strict';
 import {
   addUnit,
   addWeight,
+  backToShelf,
   cannotAdd,
   cartCents,
+  handPriced,
   lineThousandths,
   lineTotalCents,
   lineWords,
@@ -260,4 +262,41 @@ test('a price remembered as the shelf price but equal to it in cents is not a ch
 test('a weight that floating point cannot hold exactly is still read to the gram', () => {
   const line: CartLine = { itemId: 'i-beef', name: 'Beef', quantity: 1.001, unitPrice: 450, weighed: true };
   assert.equal(lineThousandths(line), 1001);
+});
+
+test('the lines priced by hand are found, and putting them back leaves the rest alone', () => {
+  let cart = addUnit([], MILK) ?? [];
+  cart = addWeight(cart, BEEF, 1250) ?? [];
+  cart = setLinePrice(cart, 'i-beef', 40000) ?? [];
+  assert.deepEqual(handPriced(cart).map((line) => line.itemId), ['i-beef']);
+  const back = backToShelf(cart);
+  assert.deepEqual(handPriced(back), []);
+  const beef = back.find((line) => line.itemId === 'i-beef');
+  assert.equal(beef?.unitPrice, 450, 'the shelf price');
+  assert.equal(beef?.shelfPrice, undefined, 'and nothing remembered of the change');
+  assert.equal(beef?.quantity, 1.25, 'the weight is kept');
+  assert.equal(beef?.weighed, true);
+  assert.deepEqual(back.find((line) => line.itemId === 'i-milk'), cart.find((line) => line.itemId === 'i-milk'));
+});
+
+test('a basket with no hand-set prices comes back the same, and an empty one is empty', () => {
+  const cart = addUnit([], MILK) ?? [];
+  assert.deepEqual(backToShelf(cart), cart);
+  assert.deepEqual(handPriced(cart), []);
+  assert.deepEqual(backToShelf([]), []);
+  assert.deepEqual(handPriced([]), []);
+});
+
+test('a price typed and then typed back to the shelf price is not a hand-set price', () => {
+  let cart = addUnit([], MILK) ?? [];
+  cart = setLinePrice(cart, 'i-milk', 5000) ?? [];
+  cart = setLinePrice(cart, 'i-milk', 6500) ?? [];
+  assert.deepEqual(handPriced(cart), []);
+});
+
+test('putting prices back does not change the basket it was given', () => {
+  const cart = frozen(setLinePrice(addUnit([], MILK) ?? [], 'i-milk', 5000) ?? []);
+  const back = backToShelf(cart);
+  assert.equal(cart[0]?.unitPrice, 50, 'the original is as it was');
+  assert.equal(back[0]?.unitPrice, 65);
 });

@@ -22,6 +22,7 @@ import { CHECK_WAIT_MS, waitFor } from '../lib/reach';
 import { mayCreateProduct, mayMarkWeighed } from '../lib/shop-flags';
 import type { TillPerson } from '../lib/till-person';
 import { PickerField } from '../components/PickerField';
+import { realSuppliers } from '../lib/supplier-words';
 import {
   checkProduct,
   EMPTY_FORM,
@@ -44,7 +45,11 @@ export function NewProductScreen({ navigation, route, api, branchId, person }: P
   const mayCreate = mayCreateProduct(flags, person.permissions);
   const mayWeigh = mayMarkWeighed(flags, person.permissions);
 
-  const [form, setForm] = useState<ProductForm>(() => ({ ...EMPTY_FORM, barcode: route.params?.barcode ?? '' }));
+  const [form, setForm] = useState<ProductForm>(() => ({
+    ...EMPTY_FORM,
+    barcode: route.params?.barcode ?? '',
+    name: route.params?.name ?? '',
+  }));
   const [types, setTypes] = useState<ItemType[] | null>(null);
   const [typesFailed, setTypesFailed] = useState(false);
   const [categories, setCategories] = useState<Category[] | null>(null);
@@ -77,7 +82,7 @@ export function NewProductScreen({ navigation, route, api, branchId, person }: P
     );
     // Categories and suppliers are a help, not a gate: a failure just leaves the list empty, and the product still saves.
     fetchCategories(api).then((read) => alive && setCategories(read), () => alive && setCategories([]));
-    fetchSuppliers(api).then((read) => alive && setSuppliers(read), () => alive && setSuppliers([]));
+    fetchSuppliers(api).then((read) => alive && setSuppliers(realSuppliers(read)), () => alive && setSuppliers([]));
     return () => {
       alive = false;
     };
@@ -257,7 +262,7 @@ export function NewProductScreen({ navigation, route, api, branchId, person }: P
             value={supplierId}
             choices={suppliers ?? []}
             loading={suppliers === null}
-            noneLabel="No supplier"
+            noneLabel="No supplier linked"
             noun="supplier"
             onChange={setSupplierId}
             onCreate={(name) => createSupplier(api, name)}

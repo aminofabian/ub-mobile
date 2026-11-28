@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { listRememberedStores, type StoreSnapshot } from '@kiosk/core';
 import { TENANT_HOST_SUFFIX } from '../lib/config';
 import { forgetShop } from '../lib/forget-shop';
@@ -9,8 +8,9 @@ import { problemCopy } from '../lib/picker-copy';
 import { useShopNavigator } from '../lib/ShopNavigator';
 import { cardFromStore } from '../lib/store-card';
 import { useOpening } from '../lib/useOpening';
-import { ELEVATION, GUTTER, MART, RADIUS, SPACE, TYPE } from '../theme/mart';
-import { ActionButton } from './ActionButton';
+import { GUTTER, MART, RADIUS, SPACE, TYPE } from '../theme/mart';
+import { Capsule } from './Capsule';
+import { SHEET_SCRIM, SheetPanel } from './SheetPanel';
 import { StoreRow } from './StoreRow';
 
 /**
@@ -29,7 +29,6 @@ export function StoreSwitcherSheet({
   activeName: string;
   onClose: () => void;
 }) {
-  const insets = useSafeAreaInsets();
   const navigator = useShopNavigator();
   const [stores, setStores] = useState<StoreSnapshot[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -107,12 +106,26 @@ export function StoreSwitcherSheet({
     <Modal visible={visible} transparent animationType="fade" onRequestClose={close}>
       <View style={styles.root}>
         <Pressable style={styles.backdrop} onPress={close} accessibilityLabel="Close" accessibilityRole="button" />
-        <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, SPACE.lg) + SPACE.sm }]}>
-          <View style={styles.handle} />
-          <Text style={styles.title}>Your shops</Text>
-
+        <SheetPanel
+          title="Your shops"
+          hint="The shops on this phone"
+          onClose={close}
+          style={styles.sheet}
+          footer={
+            <Capsule
+              label="Find another shop"
+              kind="quiet"
+              chip="search"
+              disabled={opening}
+              onPress={() => {
+                onClose();
+                navigator.findAnother();
+              }}
+            />
+          }
+        >
           {stores === null ? (
-            <ActivityIndicator color={MART.inkQuiet} style={styles.loading} />
+            <ActivityIndicator color={MART.ink} style={styles.loading} />
           ) : (
             <ScrollView style={styles.list} contentContainerStyle={styles.listContent} keyboardShouldPersistTaps="handled">
               {stores.map((store) => (
@@ -147,17 +160,7 @@ export function StoreSwitcherSheet({
           {others > 0 ? (
             <Text style={styles.note}>{`Your basket at ${activeName} stays there while you shop elsewhere.`}</Text>
           ) : null}
-
-          <ActionButton
-            label="Find another shop"
-            kind="quiet"
-            disabled={opening}
-            onPress={() => {
-              onClose();
-              navigator.findAnother();
-            }}
-          />
-        </View>
+        </SheetPanel>
       </View>
     </Modal>
   );
@@ -170,41 +173,27 @@ const styles = StyleSheet.create({
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(11,17,14,0.45)',
+    backgroundColor: SHEET_SCRIM,
   },
   sheet: {
-    maxHeight: '80%',
-    paddingHorizontal: GUTTER,
-    paddingTop: SPACE.sm,
-    gap: SPACE.md,
-    borderTopLeftRadius: RADIUS.lg,
-    borderTopRightRadius: RADIUS.lg,
-    ...ELEVATION.lifted,
-  },
-  handle: {
-    alignSelf: 'center',
-    width: 36,
-    height: 4,
-    borderRadius: RADIUS.pill,
-    backgroundColor: MART.borderStrong,
-  },
-  title: {
-    ...TYPE.title,
-    color: MART.ink,
+    maxHeight: '82%',
   },
   loading: {
-    paddingVertical: SPACE.xl,
+    paddingVertical: SPACE.xxl,
   },
   list: {
     flexGrow: 0,
   },
   listContent: {
+    paddingHorizontal: GUTTER,
     gap: SPACE.sm,
   },
   message: {
+    marginHorizontal: GUTTER,
+    marginTop: SPACE.md,
     gap: SPACE.xs,
-    padding: SPACE.md,
-    borderRadius: RADIUS.md,
+    padding: SPACE.lg,
+    borderRadius: RADIUS.lg,
     backgroundColor: MART.dangerSurface,
   },
   messageText: {
@@ -212,16 +201,18 @@ const styles = StyleSheet.create({
     color: MART.danger,
   },
   messageAction: {
-    minHeight: 36,
+    minHeight: 44,
     justifyContent: 'center',
   },
   messageActionText: {
     ...TYPE.label,
-    color: MART.fallbackPrimary,
+    color: MART.ink,
     textDecorationLine: 'underline',
   },
   note: {
     ...TYPE.meta,
+    marginHorizontal: GUTTER,
+    marginTop: SPACE.md,
     color: MART.inkMuted,
   },
 });

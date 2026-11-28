@@ -23,8 +23,10 @@ function buildRealtimeSocketUrl(httpBase, ticketWsUrl, ticket) {
   const pathPart = path.startsWith("/") ? path : `/${path}`;
   return `${origin}${pathPart}?ticket=${encodeURIComponent(ticket)}`;
 }
-function createRealtimeClient(baseURL, api) {
+var DEFAULT_REALTIME_CHANNELS = ["notifications", "pos", "storefront"];
+function createRealtimeClient(baseURL, api, options) {
   const client = api ?? createApiClient({ baseURL });
+  const channels = options?.channels ?? DEFAULT_REALTIME_CHANNELS;
   let ws = null;
   let reconnectTimer = null;
   let reconnectAttempt = 0;
@@ -40,8 +42,16 @@ function createRealtimeClient(baseURL, api) {
   }
   async function mintTicket() {
     return client.post("/api/v1/realtime/tickets", {
-      channels: ["notifications", "pos", "storefront"]
+      channels: [...channels]
     });
+  }
+  function send(frame) {
+    if (ws && ws.readyState === 1) {
+      try {
+        ws.send(JSON.stringify(frame));
+      } catch {
+      }
+    }
   }
   function scheduleReconnect() {
     if (stopped || reconnectTimer) return;
@@ -61,13 +71,20 @@ function createRealtimeClient(baseURL, api) {
       ws = new WebSocket(url);
       ws.onopen = () => {
         reconnectAttempt = 0;
+        for (const channel of channels) {
+          send({ op: "subscribe", channel });
+        }
         emitConnection("open");
       };
       ws.onmessage = (event) => {
         try {
-          const data = JSON.parse(String(event.data));
-          const type = data.type ?? data.event ?? "message";
-          emitEvent(type, data.payload ?? data);
+          const frame = JSON.parse(String(event.data));
+          const type = frame.type ?? frame.event ?? "message";
+          if (type === "ping") {
+            send({ op: "pong" });
+            return;
+          }
+          emitEvent(type, frame.data ?? frame.payload ?? frame);
         } catch {
           emitEvent("message", event.data);
         }
@@ -113,6 +130,7 @@ function createRealtimeClient(baseURL, api) {
   };
 }
 export {
+  DEFAULT_REALTIME_CHANNELS,
   buildRealtimeSocketUrl,
   createRealtimeClient
 };

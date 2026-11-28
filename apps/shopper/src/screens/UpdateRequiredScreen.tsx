@@ -1,11 +1,10 @@
-import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import React from 'react';
-import { Linking, Platform, StyleSheet, Text, View } from 'react-native';
+import { Linking, Platform, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { UpdateState } from '@kiosk/core';
-import { ActionButton } from '../components/ActionButton';
-import { MART, RADIUS, SPACE, TYPE } from '../theme/mart';
+import { StateBlock } from '../components/StateBlock';
+import { MART, SPACE } from '../theme/mart';
 
 /**
  * Shown instead of the app when the platform says this version must be updated (plan §5.12.2). The
@@ -24,22 +23,23 @@ export function UpdateRequiredScreen({
     update.reason === 'blocked'
       ? `This version of ${appName} has a problem that a newer version fixes.`
       : `This version of ${appName} is too old to keep working.`;
+  const next = update.storeUrl ? 'Update it, then open the app again.' : `Open ${store} and update ${appName}.`;
 
   return (
-    <View style={[styles.shell, { paddingTop: insets.top + SPACE.xxxl, paddingBottom: insets.bottom + SPACE.xl }]}>
-      <View style={styles.icon}>
-        <Ionicons name="arrow-up-circle-outline" size={26} color={MART.inkMuted} />
-      </View>
-      <Text style={styles.title}>Please update to continue</Text>
-      <Text style={styles.body}>{reason}</Text>
-      <Text style={styles.body}>
-        {update.storeUrl ? 'Update it, then open the app again.' : `Open ${store} and update ${appName}.`}
-      </Text>
-      {update.storeUrl ? (
-        <View style={styles.actions}>
-          <ActionButton label="Update" onPress={() => void Linking.openURL(update.storeUrl as string).catch(() => undefined)} />
-        </View>
-      ) : null}
+    <View style={[styles.shell, { paddingTop: insets.top, paddingBottom: insets.bottom + SPACE.xl }]}>
+      <StateBlock
+        tone="note"
+        icon="cloud-download"
+        title="Please update to continue"
+        body={`${reason} ${next}`}
+        actionLabel={update.storeUrl ? 'Update' : undefined}
+        onAction={
+          update.storeUrl
+            ? () => void Linking.openURL(update.storeUrl as string).catch(() => undefined)
+            : undefined
+        }
+        style={styles.block}
+      />
       <StatusBar style="dark" />
     </View>
   );
@@ -49,28 +49,9 @@ const styles = StyleSheet.create({
   shell: {
     flex: 1,
     justifyContent: 'center',
-    paddingHorizontal: SPACE.xl,
     backgroundColor: MART.paper,
   },
-  icon: {
-    width: 52,
-    height: 52,
-    borderRadius: RADIUS.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: MART.paperSunken,
-    marginBottom: SPACE.lg,
-  },
-  title: {
-    ...TYPE.display,
-    color: MART.ink,
-  },
-  body: {
-    ...TYPE.body,
-    marginTop: SPACE.sm,
-    color: MART.inkMuted,
-  },
-  actions: {
-    marginTop: SPACE.xl,
+  block: {
+    paddingTop: 0,
   },
 });

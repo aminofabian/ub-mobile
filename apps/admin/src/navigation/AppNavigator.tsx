@@ -1,5 +1,6 @@
 import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
+import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import type { ApiClient } from '@kiosk/core';
@@ -12,6 +13,34 @@ import { DashboardScreen } from '../screens/DashboardScreen';
 import { WebOrdersScreen } from '../screens/WebOrdersScreen';
 import { UsersScreen } from '../screens/UsersScreen';
 import { AnalyticsScreen } from '../screens/AnalyticsScreen';
+import { MART, FONT, TYPE } from '../theme/mart';
+
+const NAV_THEME = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    primary: MART.fallbackPrimary,
+    background: MART.paper,
+    card: MART.paper,
+    text: MART.ink,
+    border: MART.border,
+  },
+};
+
+const screenChrome = {
+  headerStyle: { backgroundColor: MART.paper },
+  headerShadowVisible: false,
+  headerTintColor: MART.ink,
+  headerTitleStyle: { fontFamily: FONT.bold, fontSize: 18, color: MART.ink },
+  contentStyle: { backgroundColor: MART.paper },
+} as const;
+
+const TAB_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+  Overview: 'pulse',
+  Orders: 'cart',
+  Users: 'people',
+  Analytics: 'bar-chart',
+};
 
 export type AdminStackParamList = {
   Main: undefined;
@@ -25,7 +54,21 @@ const Stack = createNativeStackNavigator<AdminStackParamList>();
 
 function MainTabs({ api, branchId, onLogout }: { api: ApiClient; branchId: string; onLogout: () => void }) {
   return (
-    <Tab.Navigator>
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        ...screenChrome,
+        tabBarActiveTintColor: MART.fallbackPrimary,
+        tabBarInactiveTintColor: MART.inkQuiet,
+        tabBarStyle: {
+          backgroundColor: MART.paper,
+          borderTopColor: MART.border,
+        },
+        tabBarLabelStyle: { ...TYPE.shelf },
+        tabBarIcon: ({ color, size }) => (
+          <Ionicons name={TAB_ICONS[route.name] ?? 'ellipse'} color={color} size={size} />
+        ),
+      })}
+    >
       <Tab.Screen name="Overview" options={{ title: 'Overview' }}>
         {() => <DashboardScreen api={api} branchId={branchId} onLogout={onLogout} />}
       </Tab.Screen>
@@ -52,8 +95,8 @@ export function AppNavigator({
   onLogout: () => void;
 }) {
   return (
-    <NavigationContainer>
-      <Stack.Navigator>
+    <NavigationContainer theme={NAV_THEME}>
+      <Stack.Navigator screenOptions={screenChrome}>
         <Stack.Screen name="Main" options={{ headerShown: false }}>
           {() => <MainTabs api={api} branchId={branchId} onLogout={onLogout} />}
         </Stack.Screen>

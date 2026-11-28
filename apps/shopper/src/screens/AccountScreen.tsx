@@ -1,37 +1,25 @@
+import { StatusBar } from 'expo-status-bar';
 import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useMemo, useState } from 'react';
-import {
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTenant } from '../lib/TenantContext';
 import { useSession } from '../hooks/useSession';
 import { useOrderHistory } from '../hooks/useOrderHistory';
 import { useAirtimeConfig } from '../hooks/useAirtimeConfig';
 import { AccountAuthPanel } from '../components/AccountAuthPanel';
-import { useAuthGate } from '../components/AuthGate';
+import { Segmented, useAuthGate } from '../components/AuthGate';
+import { Capsule, PressScale, Tag } from '../components/Capsule';
+import { Coast, COAST_SWELL, Lobe } from '../components/Coast';
+import { StateBlock } from '../components/StateBlock';
 import { AccountHubSkeleton, Bone, SkeletonScope } from '../components/Skeleton';
 import { formatMoney, moneyFromUnknown } from '../lib/media';
 import { CounterServices } from '../components/CounterServices';
 import { useBasketFloatReserve } from '../components/BasketFloat';
-import {
-  ELEVATION,
-  GUTTER,
-  MART,
-  martFromTenant,
-  ON_BRAND,
-  RADIUS,
-  SPACE,
-  TYPE,
-} from '../theme/mart';
+import { FONT, GUTTER, MART, martFromTenant, RADIUS, SPACE, TILE, TYPE, ZONE } from '../theme/mart';
 import { MainTabParamList, RootStackParamList } from '../navigation/types';
 import type { ShopperLedgerLine } from '../api/account';
 
@@ -51,15 +39,16 @@ function formatDate(iso?: string) {
   });
 }
 
-function statusTone(status?: string): { bg: string; fg: string } {
+/** The flat colour an order's status sits on. Ink is written on all three. */
+function statusTone(status?: string): string {
   const s = (status ?? '').toUpperCase();
   if (s.includes('READY') || s.includes('PAID') || s.includes('COMPLETE')) {
-    return { bg: MART.successSurface, fg: MART.success };
+    return MART.successSurface;
   }
   if (s.includes('CANCEL') || s.includes('FAIL')) {
-    return { bg: MART.dangerSurface, fg: MART.danger };
+    return MART.dangerSurface;
   }
-  return { bg: MART.warningSurface, fg: MART.warning };
+  return MART.warningSurface;
 }
 
 function firstName(full: string) {
@@ -73,19 +62,21 @@ function formatWhen(iso?: string) {
   return date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-function ledgerKind(kind?: string): { label: string; icon: React.ComponentProps<typeof Ionicons>['name'] } {
+type IconName = React.ComponentProps<typeof Ionicons>['name'];
+
+function ledgerKind(kind?: string): { label: string; icon: IconName; zone: string; shape: number } {
   const k = (kind ?? '').toLowerCase();
-  if (k.startsWith('wallet')) return { label: 'Wallet', icon: 'wallet-outline' };
-  if (k.startsWith('credit')) return { label: 'Tab', icon: 'receipt-outline' };
-  if (k.startsWith('loyalty')) return { label: 'Points', icon: 'sparkles-outline' };
-  return { label: 'Till', icon: 'storefront-outline' };
+  if (k.startsWith('wallet')) return { label: 'Wallet', icon: 'wallet', zone: ZONE.sun, shape: 0 };
+  if (k.startsWith('credit')) return { label: 'Tab', icon: 'receipt', zone: ZONE.lilac, shape: 1 };
+  if (k.startsWith('loyalty')) return { label: 'Points', icon: 'sparkles', zone: ZONE.pond, shape: 2 };
+  return { label: 'Shop', icon: 'storefront', zone: ZONE.leaf, shape: 3 };
 }
 
 function humanizeLedger(kind?: string, memo?: string): string {
   const raw = `${memo || ''} ${kind || ''}`.toUpperCase();
-  if (/DEBIT_SALE|SALE/.test(raw) && /WALLET|DEBIT/.test(raw)) return 'Paid at the till';
+  if (/DEBIT_SALE|SALE/.test(raw) && /WALLET|DEBIT/.test(raw)) return 'Paid at the shop';
   if (/CREDIT_MPESA|MPESA_STK/.test(raw)) return 'M-Pesa into wallet';
-  if (/COUNTER_TOPUP|TOPUP/.test(raw)) return 'Cash at the till';
+  if (/COUNTER_TOPUP|TOPUP/.test(raw)) return 'Cash at the shop';
   if (/OVERPAY|CHANGE/.test(raw)) return 'Change to wallet';
   if (/REFUND/.test(raw)) return 'Refund';
   if (/CREDIT_/.test(raw) && /DEBT|SALE/.test(raw)) return 'Put on the tab';
@@ -93,7 +84,7 @@ function humanizeLedger(kind?: string, memo?: string): string {
     const pts = (memo ?? '').split(':')[1];
     return pts ? `${pts} loyalty points` : 'Loyalty';
   }
-  const cleaned = (memo || kind || 'Till movement')
+  const cleaned = (memo || kind || 'Shop movement')
     .replace(/^(wallet|credit|loyalty)_/i, '')
     .replace(/[_-]+/g, ' ')
     .trim()
@@ -101,30 +92,30 @@ function humanizeLedger(kind?: string, memo?: string): string {
   return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 }
 
-function LedgerRow({ currency, line }: { currency: string; line: ShopperLedgerLine }) {
+function LedgerRow({ currency, line, first }: { currency: string; line: ShopperLedgerLine; first: boolean }) {
   const kind = ledgerKind(line.kind);
   const debit = moneyFromUnknown(line.debit);
   const credit = moneyFromUnknown(line.credit);
   return (
-    <View style={styles.ledgerRow}>
-      <View style={styles.ledgerIcon}>
+    <View style={[styles.row, !first && styles.rule]}>
+      <Lobe color={kind.zone} size={40} shape={kind.shape}>
         <Ionicons name={kind.icon} size={18} color={MART.ink} />
-      </View>
-      <View style={styles.orderCopy}>
-        <Text style={styles.orderId}>{humanizeLedger(line.kind, line.memo)}</Text>
-        <Text style={styles.orderMeta}>
+      </Lobe>
+      <View style={styles.rowCopy}>
+        <Text numberOfLines={2} style={styles.rowTitle}>
+          {humanizeLedger(line.kind, line.memo)}
+        </Text>
+        <Text style={styles.rowMeta}>
           {kind.label}
           {formatWhen(line.occurredAt) ? ` · ${formatWhen(line.occurredAt)}` : ''}
         </Text>
       </View>
-      <View style={styles.orderRight}>
+      <View style={styles.rowRight}>
         {credit > 0 ? (
-          <Text style={styles.ledgerCredit}>+{formatMoney(currency, credit)}</Text>
+          <Text style={[styles.rowMoney, { color: MART.success }]}>+{formatMoney(currency, credit)}</Text>
         ) : null}
-        {debit > 0 ? (
-          <Text style={styles.ledgerDebit}>−{formatMoney(currency, debit)}</Text>
-        ) : null}
-        {credit <= 0 && debit <= 0 ? <Text style={styles.orderMeta}>—</Text> : null}
+        {debit > 0 ? <Text style={styles.rowMoney}>−{formatMoney(currency, debit)}</Text> : null}
+        {credit <= 0 && debit <= 0 ? <Text style={styles.rowMeta}>—</Text> : null}
       </View>
     </View>
   );
@@ -138,36 +129,62 @@ function humanizeStatus(status?: string): string {
     .replace(/\b\w/g, (ch) => ch.toUpperCase());
 }
 
+/** One balance: a small zone lobe, what it is, and the amount set heavy. The wallet takes the wide tile. */
 function Book({
   label,
   value,
   hint,
+  icon,
+  zone,
+  shape,
   warn,
-  last,
+  wide,
   onPress,
 }: {
   label: string;
   value: string;
   hint: string;
+  icon: IconName;
+  zone: string;
+  shape: number;
   warn?: boolean;
-  last?: boolean;
+  wide?: boolean;
   onPress: () => void;
 }) {
   return (
-    <Pressable
+    <PressScale
       onPress={onPress}
-      style={[styles.book, !last && styles.bookRule]}
+      style={[styles.book, wide && styles.bookWide]}
       accessibilityRole="button"
-      accessibilityLabel={`${label} ${value}`}
+      accessibilityLabel={`${label} ${value}. ${hint}`}
     >
-      <View style={styles.bookCopy}>
+      <View style={styles.bookHead}>
+        <Lobe color={zone} size={wide ? 44 : 36} shape={shape}>
+          <Ionicons name={icon} size={wide ? 20 : 17} color={MART.ink} />
+        </Lobe>
         <Text style={styles.bookLabel}>{label}</Text>
-        <Text style={styles.bookHint}>{hint}</Text>
       </View>
-      <Text style={[styles.bookValue, warn && { color: MART.danger }]}>{value}</Text>
-    </Pressable>
+      <View style={wide ? styles.bookWideValue : undefined}>
+        <Text
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.7}
+          style={[wide ? styles.bookValueWide : styles.bookValue, warn && { color: MART.danger }]}
+        >
+          {value}
+        </Text>
+        <Text numberOfLines={1} style={[styles.bookHint, wide && styles.bookHintWide]}>
+          {hint}
+        </Text>
+      </View>
+    </PressScale>
   );
 }
+
+const FEEDS = [
+  { value: 'wallet', label: 'Credits' },
+  { value: 'purchases', label: 'Purchases' },
+] as const;
 
 export function AccountScreen() {
   const tenant = useTenant();
@@ -190,6 +207,8 @@ export function AccountScreen() {
   const pickupOrders = hub?.pickupOrders ?? [];
   const ledger = hub?.recentLedgerLines ?? [];
   const [feed, setFeed] = useState<'wallet' | 'purchases'>('wallet');
+  // The lobe behind the greeting is as tall as the greeting turns out to be.
+  const [landHeight, setLandHeight] = useState(insets.top + 132);
   const hour = new Date().getHours();
   const hello = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
 
@@ -200,190 +219,219 @@ export function AccountScreen() {
 
   if (tokenLoading) {
     return (
-      <View style={[styles.shell, { paddingTop: 16 + insets.top }]}>
+      <View style={[styles.shell, styles.loading, { paddingTop: 16 + insets.top }]}>
         <AccountHubSkeleton />
       </View>
     );
   }
 
+  const on = mart.onPrimary;
+  const localOnly = (localOrders ?? []).filter((order) => !pickupOrders.some((p) => p.id === order.orderId));
+  const movements = hub?.ledgerLinesTotal ?? ledger.length;
+
   return (
     <ScrollView
       style={styles.shell}
-      contentContainerStyle={[
-        styles.content,
-        { paddingTop: 8 + insets.top, paddingBottom: SPACE.xxxl + basketReserve },
-      ]}
+      contentContainerStyle={{ paddingBottom: SPACE.xxxl + basketReserve }}
       refreshControl={
-        <RefreshControl refreshing={hubLoading && signedIn} onRefresh={handleRefresh} tintColor={mart.primary} />
+        <RefreshControl
+          refreshing={hubLoading && signedIn}
+          onRefresh={handleRefresh}
+          tintColor={on.primary}
+          colors={[mart.primary]}
+        />
       }
     >
-      <View style={styles.top}>
-        <View style={styles.helloBlock}>
-          <Text style={styles.hello}>{signedIn ? `${hello}, ${firstName(displayName)}` : hello}</Text>
-          <Text style={styles.helloSub} numberOfLines={1}>
-            {signedIn ? email || mart.displayName : mart.displayName}
-          </Text>
-        </View>
-        <View style={[styles.avatar, { backgroundColor: mart.primary }]}>
-          <Text style={styles.avatarText}>
-            {(signedIn ? displayName : mart.displayName).slice(0, 1).toUpperCase()}
-          </Text>
+      <View>
+        {/* Land above the top edge too, so pulling down never shows water over the coast. */}
+        <View style={[styles.overland, { backgroundColor: mart.primary }]} />
+        <Coast color={mart.primary} height={landHeight} />
+        <StatusBar style={mart.onPrimary.primary === MART.ink ? 'dark' : 'light'} />
+        <View
+          style={[styles.top, { paddingTop: insets.top + SPACE.lg }]}
+          onLayout={(event) => setLandHeight(event.nativeEvent.layout.height)}
+        >
+          <View style={styles.helloBlock}>
+            <Text accessibilityRole="header" style={[styles.hello, { color: on.primary }]}>
+              {signedIn ? `${hello}, ${firstName(displayName)}` : hello}
+            </Text>
+            <Text style={[styles.helloSub, { color: on.secondary }]} numberOfLines={1}>
+              {signedIn ? email || mart.displayName : mart.displayName}
+            </Text>
+          </View>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>
+              {(signedIn ? displayName : mart.displayName).slice(0, 1).toUpperCase()}
+            </Text>
+          </View>
         </View>
       </View>
 
-      <View style={styles.books} accessibilityRole="summary">
-        <Book
-          label="Wallet"
-          value={signedIn ? formatMoney(currency, wallet) : '—'}
-          hint="Store credit"
-          onPress={() => setFeed('wallet')}
-        />
-        <Book
-          label="Tab"
-          value={signedIn ? formatMoney(currency, owed) : '—'}
-          hint={owed > 0 ? 'Owed at the till' : 'Clear'}
-          warn={owed > 0}
-          onPress={() => setFeed('wallet')}
-        />
-        <Book
-          label="Points"
-          value={signedIn ? points.toLocaleString() : '—'}
-          hint={signedIn ? formatMoney(currency, points * kesPerPt) : 'Loyalty'}
-          last
-          onPress={() => setFeed('purchases')}
-        />
-      </View>
+      <View style={styles.body}>
+        <View style={styles.books} accessibilityRole="summary">
+          <Book
+            wide
+            label="Wallet"
+            icon="wallet"
+            zone={ZONE.sun}
+            shape={0}
+            value={signedIn ? formatMoney(currency, wallet) : '—'}
+            hint="Store credit"
+            onPress={() => setFeed('wallet')}
+          />
+          <View style={styles.bookPair}>
+            <Book
+              label="Tab"
+              icon="receipt"
+              zone={ZONE.lilac}
+              shape={1}
+              value={signedIn ? formatMoney(currency, owed) : '—'}
+              hint={owed > 0 ? 'Owed at the shop' : 'Nothing owed'}
+              warn={owed > 0}
+              onPress={() => setFeed('wallet')}
+            />
+            <Book
+              label="Points"
+              icon="sparkles"
+              zone={ZONE.pond}
+              shape={2}
+              value={signedIn ? points.toLocaleString() : '—'}
+              hint={signedIn ? `Worth ${formatMoney(currency, points * kesPerPt)}` : 'Loyalty'}
+              onPress={() => setFeed('purchases')}
+            />
+          </View>
+        </View>
 
-      <View style={styles.services}>
-        <CounterServices
-          flush
-          airtimeAvailable={Boolean(airtime?.available)}
-          primary={mart.primary}
-          accent={mart.accent}
-          onAirtime={() => navigation.navigate('Airtime')}
-          onTokens={() => navigation.navigate('Kplc')}
-        />
+        <View style={styles.services}>
+          <CounterServices
+            flush
+            airtimeAvailable={Boolean(airtime?.available)}
+            onAirtime={() => navigation.navigate('Airtime')}
+            onTokens={() => navigation.navigate('Kplc')}
+          />
+        </View>
       </View>
 
       {signedIn ? (
         <>
           {hubError ? (
-            <Text style={styles.error}>Couldn’t load your store card. Pull down to retry.</Text>
+            <View style={styles.errorBox} accessibilityRole="alert">
+              <Ionicons name="cloud-offline" size={20} color={MART.danger} />
+              <Text style={styles.error}>We couldn’t load your account. Pull down to try again.</Text>
+            </View>
           ) : null}
 
           <View style={styles.historyHead}>
-            <Text style={styles.historyTitle}>History</Text>
+            <Text accessibilityRole="header" style={styles.historyTitle}>
+              History
+            </Text>
             <Text style={styles.historyHint}>Wallet, tab, and what you bought</Text>
           </View>
 
-          <View style={styles.feedSeg} accessibilityRole="tablist">
-            <Pressable
-              onPress={() => setFeed('wallet')}
-              style={[styles.feedBtn, feed === 'wallet' && styles.feedBtnOn]}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: feed === 'wallet' }}
-            >
-              <Text style={[styles.feedBtnText, feed === 'wallet' && styles.feedBtnTextOn]}>
-                Credits
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setFeed('purchases')}
-              style={[styles.feedBtn, feed === 'purchases' && styles.feedBtnOn]}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: feed === 'purchases' }}
-            >
-              <Text style={[styles.feedBtnText, feed === 'purchases' && styles.feedBtnTextOn]}>
-                Purchases
-              </Text>
-            </Pressable>
+          <View style={styles.feedSeg}>
+            <Segmented options={FEEDS} value={feed} onChange={setFeed} label="History" />
           </View>
 
           {feed === 'wallet' ? (
             hubLoading && ledger.length === 0 ? (
               <SkeletonScope label="Loading wallet history" style={styles.orderSkel}>
-                <Bone h={72} />
-                <Bone h={72} />
-                <Bone h={72} />
+                <Bone h={72} r={RADIUS.lg} />
+                <Bone h={72} r={RADIUS.lg} />
+                <Bone h={72} r={RADIUS.lg} />
               </SkeletonScope>
             ) : !hub?.linkedStorefrontProfile ? (
-              <View style={styles.tillEmpty}>
-                <Ionicons name="link-outline" size={22} color={mart.primary} />
-                <Text style={styles.tillEmptyTitle}>Ask the till to link this email</Text>
-                <Text style={styles.empty}>
-                  Once they tether {email || 'your account'}, wallet, tab, and till slips show up here.
-                </Text>
-              </View>
+              <StateBlock
+                tone="note"
+                icon="link"
+                title="Ask the shop to link this email"
+                body={`Once they link ${email || 'your account'}, your wallet, tab and receipts show up here.`}
+                style={styles.state}
+              />
             ) : ledger.length === 0 ? (
-              <Text style={styles.empty}>No wallet or tab lines yet. The next till sale leaves the first one.</Text>
+              <StateBlock
+                tone="note"
+                icon="wallet"
+                title="No wallet or tab activity yet"
+                body="Your next purchase at the shop shows up here."
+                style={styles.state}
+              />
             ) : (
               <>
                 <Text style={styles.ledgerHint}>
-                  {(hub.ledgerLinesTotal ?? ledger.length).toLocaleString()} movement
-                  {(hub.ledgerLinesTotal ?? ledger.length) === 1 ? '' : 's'}
+                  {movements.toLocaleString()} movement
+                  {movements === 1 ? '' : 's'}
                   {hub.ledgerTruncated ? ' · latest shown' : ''}
                 </Text>
-                {ledger.map((line, index) => (
-                  <LedgerRow key={`${line.occurredAt}-${index}-${line.kind}`} currency={currency} line={line} />
-                ))}
+                <View style={styles.list}>
+                  {ledger.map((line, index) => (
+                    <LedgerRow
+                      key={`${line.occurredAt}-${index}-${line.kind}`}
+                      currency={currency}
+                      line={line}
+                      first={index === 0}
+                    />
+                  ))}
+                </View>
               </>
             )
           ) : hubLoading && pickupOrders.length === 0 && !(localOrders?.length) ? (
             <SkeletonScope label="Loading purchases" style={styles.orderSkel}>
-              <Bone h={64} />
-              <Bone h={64} />
+              <Bone h={64} r={RADIUS.lg} />
+              <Bone h={64} r={RADIUS.lg} />
             </SkeletonScope>
           ) : pickupOrders.length === 0 && !(localOrders?.length) ? (
-            <Text style={styles.empty}>No app orders yet. Basket checkout lands here.</Text>
+            <StateBlock
+              tone="note"
+              icon="bag-handle"
+              title="No orders yet"
+              body="Orders you place from your basket show up here."
+              style={styles.state}
+            />
           ) : (
-            <>
-              {pickupOrders.map((order) => {
-                const tone = statusTone(order.status);
-                return (
-                  <Pressable
-                    key={order.id}
-                    onPress={() => navigation.navigate('OrderDetail', { orderId: order.id })}
-                    style={styles.orderRow}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Order ${order.id.slice(-8)}`}
-                  >
-                    <View style={styles.orderCopy}>
-                      <Text style={styles.orderId}>#{order.id.slice(-8).toUpperCase()}</Text>
-                      <Text style={styles.orderMeta}>
-                        {formatDate(order.createdAt)}
-                        {order.catalogBranchName ? ` · ${order.catalogBranchName}` : ''}
-                      </Text>
-                    </View>
-                    <View style={styles.orderRight}>
-                      <Text style={styles.orderTotal}>
-                        {formatMoney(order.currency || currency, moneyFromUnknown(order.grandTotal))}
-                      </Text>
-                      <View style={[styles.statusPill, { backgroundColor: tone.bg }]}>
-                        <Text style={[styles.statusText, { color: tone.fg }]}>
-                          {humanizeStatus(order.status)}
-                        </Text>
-                      </View>
-                    </View>
-                  </Pressable>
-                );
-              })}
-              {(localOrders ?? [])
-                .filter((order) => !pickupOrders.some((p) => p.id === order.orderId))
-                .map((order) => (
-                  <Pressable
-                    key={order.orderId}
-                    onPress={() => navigation.navigate('OrderDetail', { orderId: order.orderId })}
-                    style={styles.orderRow}
-                    accessibilityRole="button"
-                  >
-                    <View style={styles.orderCopy}>
-                      <Text style={styles.orderId}>#{order.orderId.slice(-8).toUpperCase()}</Text>
-                      <Text style={styles.orderMeta}>{formatDate(order.createdAt)} · this phone</Text>
-                    </View>
-                    <Text style={styles.orderTotal}>{formatMoney(order.currency, order.grandTotal)}</Text>
-                  </Pressable>
-                ))}
-            </>
+            <View style={styles.list}>
+              {pickupOrders.map((order, index) => (
+                <PressScale
+                  key={order.id}
+                  to={0.985}
+                  onPress={() => navigation.navigate('OrderDetail', { orderId: order.id })}
+                  style={[styles.row, index > 0 && styles.rule]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Order ${order.id.slice(-8)}`}
+                >
+                  <View style={styles.rowCopy}>
+                    <Text style={styles.rowTitle}>#{order.id.slice(-8).toUpperCase()}</Text>
+                    <Text style={styles.rowMeta}>
+                      {formatDate(order.createdAt)}
+                      {order.catalogBranchName ? ` · ${order.catalogBranchName}` : ''}
+                    </Text>
+                  </View>
+                  <View style={styles.rowRight}>
+                    <Text style={styles.rowMoney}>
+                      {formatMoney(order.currency || currency, moneyFromUnknown(order.grandTotal))}
+                    </Text>
+                    <Tag label={humanizeStatus(order.status)} color={statusTone(order.status)} style={styles.status} />
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={MART.inkQuiet} />
+                </PressScale>
+              ))}
+              {localOnly.map((order, index) => (
+                <PressScale
+                  key={order.orderId}
+                  to={0.985}
+                  onPress={() => navigation.navigate('OrderDetail', { orderId: order.orderId })}
+                  style={[styles.row, (index > 0 || pickupOrders.length > 0) && styles.rule]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Order ${order.orderId.slice(-8)}`}
+                >
+                  <View style={styles.rowCopy}>
+                    <Text style={styles.rowTitle}>#{order.orderId.slice(-8).toUpperCase()}</Text>
+                    <Text style={styles.rowMeta}>{formatDate(order.createdAt)} · this phone</Text>
+                  </View>
+                  <Text style={styles.rowMoney}>{formatMoney(order.currency, order.grandTotal)}</Text>
+                  <Ionicons name="chevron-forward" size={18} color={MART.inkQuiet} />
+                </PressScale>
+              ))}
+            </View>
           )}
 
           <View style={styles.signOutWrap}>
@@ -398,16 +446,19 @@ export function AccountScreen() {
         </>
       ) : (
         <View style={styles.gateWrap}>
-          <Text style={styles.historyTitle}>Your store card</Text>
-          <Text style={styles.empty}>
+          <Text accessibilityRole="header" style={styles.historyTitle}>
+            Your account
+          </Text>
+          <Text style={styles.gateBody}>
             Join with your phone, or sign in with the same email as the website.
           </Text>
-          <Pressable
+          <Capsule
+            label="Sign in or join"
+            chip="arrow-forward"
+            fill={mart.primary}
             onPress={() => void openAuth('pass')}
-            style={[styles.primary, { backgroundColor: mart.primary }]}
-          >
-            <Text style={styles.primaryText}>Come in</Text>
-          </Pressable>
+            style={styles.gateAction}
+          />
         </View>
       )}
     </ScrollView>
@@ -419,15 +470,22 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: MART.paper,
   },
-  content: {
-    paddingHorizontal: GUTTER,
+  loading: {
+    paddingHorizontal: SPACE.xs,
+  },
+  overland: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: -600,
+    height: 600,
   },
   top: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: SPACE.xl,
-    gap: SPACE.md,
+    gap: SPACE.lg,
+    paddingHorizontal: GUTTER,
+    paddingBottom: SPACE.lg,
   },
   helloBlock: {
     flex: 1,
@@ -435,69 +493,101 @@ const styles = StyleSheet.create({
   },
   hello: {
     ...TYPE.display,
-    color: MART.ink,
   },
   helloSub: {
     ...TYPE.meta,
-    marginTop: SPACE.xxs,
-    color: MART.inkQuiet,
+    marginTop: SPACE.sm,
   },
   avatar: {
-    width: 42,
-    height: 42,
-    borderRadius: RADIUS.sm,
+    width: 52,
+    height: 52,
+    borderRadius: RADIUS.pill,
+    backgroundColor: MART.paper,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarText: {
-    ...TYPE.heading,
-    color: '#ffffff',
+    ...TYPE.title,
+    color: MART.ink,
+  },
+  body: {
+    paddingHorizontal: GUTTER,
+    paddingTop: COAST_SWELL + SPACE.lg,
   },
   books: {
-    borderRadius: RADIUS.md,
-    overflow: 'hidden',
-    ...ELEVATION.ruled,
+    gap: SPACE.sm,
+  },
+  bookPair: {
+    flexDirection: 'row',
+    gap: SPACE.sm,
   },
   book: {
+    ...TILE,
+    flex: 1,
+    gap: SPACE.md,
+  },
+  bookWide: {
+    flex: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: SPACE.md,
-    paddingHorizontal: SPACE.lg,
-    paddingVertical: SPACE.md,
-    minHeight: 64,
+    minHeight: 88,
   },
-  bookRule: {
-    borderBottomWidth: 1,
-    borderBottomColor: MART.border,
-  },
-  bookCopy: {
-    flex: 1,
-    minWidth: 0,
+  bookHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACE.sm,
   },
   bookLabel: {
-    ...TYPE.shelf,
-    textTransform: 'uppercase',
-    letterSpacing: 0.7,
-    color: MART.inkQuiet,
+    ...TYPE.label,
+    color: MART.ink,
+  },
+  bookWideValue: {
+    flexShrink: 1,
+    alignItems: 'flex-end',
   },
   bookValue: {
-    ...TYPE.heading,
-    fontVariant: ['tabular-nums'],
-    textAlign: 'right',
+    ...TYPE.price,
+    fontSize: 20,
+    lineHeight: 25,
+    color: MART.ink,
+  },
+  bookValueWide: {
+    ...TYPE.price,
+    fontSize: 28,
+    lineHeight: 32,
+    letterSpacing: -1,
     color: MART.ink,
   },
   bookHint: {
     ...TYPE.meta,
     marginTop: SPACE.xxs,
-    color: MART.inkMuted,
+    color: MART.inkQuiet,
+  },
+  bookHintWide: {
+    textAlign: 'right',
   },
   services: {
-    marginTop: SPACE.xl,
+    marginTop: SPACE.sm,
+  },
+  errorBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACE.md,
+    marginHorizontal: GUTTER,
+    marginTop: SPACE.lg,
+    padding: SPACE.lg,
+    borderRadius: RADIUS.lg,
+    backgroundColor: MART.dangerSurface,
+  },
+  error: {
+    ...TYPE.label,
+    flex: 1,
+    color: MART.ink,
   },
   historyHead: {
-    marginTop: SPACE.xxl,
-    marginBottom: SPACE.md,
+    marginTop: SPACE.xxl + SPACE.xs,
+    paddingHorizontal: GUTTER,
   },
   historyTitle: {
     ...TYPE.title,
@@ -509,147 +599,79 @@ const styles = StyleSheet.create({
     color: MART.inkQuiet,
   },
   feedSeg: {
-    marginTop: SPACE.sm,
+    marginTop: SPACE.md,
     marginBottom: SPACE.md,
-    flexDirection: 'row',
-    padding: 3,
-    backgroundColor: MART.paperSunken,
-    borderRadius: RADIUS.md,
-  },
-  feedBtn: {
-    flex: 1,
-    minHeight: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: RADIUS.sm,
-  },
-  feedBtnOn: {
-    backgroundColor: MART.paperElevated,
-  },
-  feedBtnText: {
-    ...TYPE.label,
-    fontWeight: '700',
-    color: MART.inkMuted,
-  },
-  feedBtnTextOn: {
-    color: MART.ink,
+    paddingHorizontal: GUTTER,
   },
   ledgerHint: {
     ...TYPE.meta,
     marginBottom: SPACE.sm,
+    paddingHorizontal: GUTTER + SPACE.xs,
     color: MART.inkQuiet,
   },
-  ledgerRow: {
+  list: {
+    marginHorizontal: GUTTER,
+    paddingHorizontal: SPACE.lg,
+    borderRadius: RADIUS.lg,
+    backgroundColor: MART.paperElevated,
+  },
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACE.md,
-    padding: SPACE.md,
-    marginBottom: SPACE.sm,
-    borderRadius: RADIUS.md,
     minHeight: 68,
-    ...ELEVATION.ruled,
+    paddingVertical: SPACE.md,
   },
-  ledgerIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: RADIUS.sm,
-    backgroundColor: MART.paper,
-    alignItems: 'center',
-    justifyContent: 'center',
+  rule: {
+    borderTopWidth: 1,
+    borderTopColor: MART.border,
   },
-  ledgerCredit: {
-    ...TYPE.label,
-    fontWeight: '700',
-    color: MART.success,
-  },
-  ledgerDebit: {
-    ...TYPE.label,
-    fontWeight: '700',
-    color: MART.ink,
-  },
-  tillEmpty: {
-    paddingVertical: SPACE.xl,
-    alignItems: 'flex-start',
-    gap: SPACE.sm,
-  },
-  tillEmptyTitle: {
-    ...TYPE.heading,
-    color: MART.ink,
-  },
-  empty: {
-    ...TYPE.body,
-    marginTop: SPACE.sm,
-    color: MART.inkQuiet,
-  },
-  orderSkel: {
-    marginTop: SPACE.sm,
-    gap: SPACE.sm,
-  },
-  orderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: SPACE.md,
-    marginBottom: SPACE.sm,
-    borderRadius: RADIUS.md,
-    minHeight: 64,
-    ...ELEVATION.ruled,
-  },
-  orderCopy: {
+  rowCopy: {
     flex: 1,
     minWidth: 0,
-    paddingRight: SPACE.sm,
   },
-  orderId: {
+  rowTitle: {
     ...TYPE.label,
-    fontSize: 14,
-    fontWeight: '700',
     color: MART.ink,
   },
-  orderMeta: {
+  rowMeta: {
     ...TYPE.meta,
     marginTop: SPACE.xxs,
     color: MART.inkQuiet,
   },
-  orderRight: {
+  rowRight: {
     alignItems: 'flex-end',
     gap: SPACE.xs,
   },
-  orderTotal: {
+  rowMoney: {
     ...TYPE.label,
-    fontSize: 14,
-    fontWeight: '700',
+    fontFamily: FONT.bold,
     color: MART.ink,
   },
-  statusPill: {
-    paddingHorizontal: SPACE.sm,
-    paddingVertical: 3,
-    borderRadius: RADIUS.md,
+  status: {
+    alignSelf: 'flex-end',
   },
-  statusText: {
-    ...TYPE.meta,
-    fontWeight: '700',
+  state: {
+    paddingTop: SPACE.lg,
   },
-  error: {
-    ...TYPE.meta,
-    marginTop: SPACE.md,
-    color: MART.danger,
+  orderSkel: {
+    paddingHorizontal: GUTTER,
+    gap: SPACE.sm,
   },
   signOutWrap: {
-    marginTop: SPACE.xl,
+    marginTop: SPACE.xxxl,
+    paddingHorizontal: GUTTER,
   },
   gateWrap: {
+    marginTop: SPACE.xxl + SPACE.xs,
+    paddingHorizontal: GUTTER,
+  },
+  gateBody: {
+    ...TYPE.body,
+    marginTop: SPACE.sm,
+    color: MART.inkMuted,
+  },
+  gateAction: {
     marginTop: SPACE.xl,
-    gap: SPACE.md,
-  },
-  primary: {
-    minHeight: 52,
-    borderRadius: RADIUS.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  primaryText: {
-    ...TYPE.heading,
-    color: ON_BRAND.primary,
   },
 });

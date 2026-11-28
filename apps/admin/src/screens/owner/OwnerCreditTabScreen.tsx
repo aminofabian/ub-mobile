@@ -4,6 +4,10 @@ import { useNavigation } from '@react-navigation/native';
 import type { ApiClient } from '@kiosk/core';
 import { Ionicons } from '@expo/vector-icons';
 import { Field, Notice, OwnerButton, SectionHead, Segmented, type NoticeTone } from '../../components/owner-ui';
+import { ActivityIndicator, Pressable } from 'react-native';
+import { VerifiedBadge } from '@kiosk/staff';
+import { readCustomerCard, setCustomerPhoneVerified } from '@kiosk/core';
+import { fetchCustomerCard } from '../../lib/credit';
 import { checkPayment, confirmPaymentWords, doubtActions, PAYMENT_CHANNELS, reminderText, type PaymentChannel } from '../../lib/credit';
 import { doubtKey, forgetDoubt, recallDoubt, rememberDoubt } from '../../lib/doubt-memory';
 import { createGate } from '../../lib/gate';
@@ -45,6 +49,11 @@ type Doubt = Extract<PaymentOutcome, { kind: 'unsettled' }>;
 export function OwnerCreditTabScreen({ api, shopName, host, customerId, name, owedCents, phone, canRecord }: Props) {
   const navigation = useNavigation();
   const balance = useLoaded(() => fetchBalance(api, customerId), 60_000);
+  /** The customer as the server holds them: their numbers, and which of them are verified. */
+  const card = useLoaded(() => fetchCustomerCard(api, customerId), 60_000);
+  const person = card.loaded.state === 'ok' ? card.loaded.value : null;
+  const [verifying, setVerifying] = useState(false);
+  const [verifyProblem, setVerifyProblem] = useState<string | null>(null);
   const memoryKey = doubtKey(host, customerId);
   const [typed, setTyped] = useState('');
   const [channel, setChannel] = useState<PaymentChannel>('cash');
@@ -169,6 +178,23 @@ export function OwnerCreditTabScreen({ api, shopName, host, customerId, name, ow
       `WhatsApp could not be opened for ${phone ?? 'a customer with no number'}. Call them instead.`
     );
 
+  const toggleVerified = async (phoneId: string, verified: boolean) => {
+    setVerifying(true);
+    setVerifyProblem(null);
+    try {
+      const updated = await setCustomerPhoneVerified(api, { customerId, phoneId, verified });
+      if (!updated) {
+        setVerifyProblem('The server did not answer with the customer, so nothing is shown as changed.');
+        return;
+      }
+      card.reload();
+    } catch (error) {
+      setVerifyProblem(error instanceof Error && error.message ? error.message : 'Could not change the verification.');
+    } finally {
+      setVerifying(false);
+    }
+  };
+
   return (
     <ScrollView
       style={styles.screen}
@@ -190,8 +216,48 @@ export function OwnerCreditTabScreen({ api, shopName, host, customerId, name, ow
           <MartText variant="meta" color={MART.inkQuiet}>
             {phone ?? 'No phone number'}
           </MartText>
+          {person?.verified ? <VerifiedBadge verified /> : null}
         </View>
       </Appear>
+
+      {canRecord && person ? (
+        <Appear delay={60} style={styles.verify}>
+          {person.phones
+            .filter((entry) => entry.phone)
+            .slice(0, 1)
+            .map((entry) => (
+              <Pressable
+                key={entry.id}
+                onPress={() => void toggleVerified(entry.id, !entry.verifiedAt)}
+                disabled={verifying}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: entry.verifiedAt !== null }}
+                accessibilityLabel={entry.verifiedAt ? 'Mark this customer as not verified' : 'Mark this customer as verified'}
+                style={({ pressed }) => [styles.verifyRow, pressed && { opacity: 0.75 }]}
+              >
+                <Ionicons
+                  name={entry.verifiedAt ? 'checkbox' : 'square-outline'}
+                  size={20}
+                  color={entry.verifiedAt ? MART.success : MART.inkQuiet}
+                />
+                <View style={{ flex: 1, gap: 1 }}>
+                  <MartText variant="label">Mark as verified</MartText>
+                  <MartText variant="meta" color={MART.inkQuiet}>
+                    {entry.verifiedAt
+                      ? 'A number on this customer has been checked.'
+                      : 'Check the customer is who they say they are, then mark them.'}
+                  </MartText>
+                </View>
+                {verifying ? <ActivityIndicator color={MART.inkQuiet} /> : null}
+              </Pressable>
+            ))}
+          {verifyProblem ? (
+            <MartText variant="meta" color={MART.danger}>
+              {verifyProblem}
+            </MartText>
+          ) : null}
+        </Appear>
+      ) : null}
 
       <Appear delay={70} style={styles.owed}>
         <View style={styles.owedHead}>
@@ -296,6 +362,17 @@ export function OwnerCreditTabScreen({ api, shopName, host, customerId, name, ow
 }
 
 const styles = StyleSheet.create({
+  verify: { gap: 6 },
+  verifyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACE.sm,
+    padding: SPACE.sm,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: MART.border,
+    backgroundColor: MART.paperElevated,
+  },
   screen: {
     flex: 1,
     backgroundColor: MART.paper,

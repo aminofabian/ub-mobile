@@ -150,3 +150,20 @@ test('an unsupported method fails instead of being treated as sent', async () =>
   await assert.rejects(replayItem(server.api, queued({ method: 'PUT' })), /Cannot replay/);
   assert.equal(server.calls.length, 0);
 });
+
+test('what the server answered is handed back, so the caller can see what the sale came to', async () => {
+  const { api } = createFakeServer();
+  const answer = await replayItem(api, queued());
+  assert.deepEqual(answer, { saleNumber: 1 });
+});
+
+test('what the app knows about a queued sale is never sent with it', async () => {
+  const { api, calls } = createFakeServer();
+  const item = queued({
+    label: '2 x Bread',
+    facts: { rungBy: 'Amina', mpesaTyped: true, pricesAsOf: 1_700_000_000_000 },
+  });
+  await replayItem(api, item);
+  assert.deepEqual(calls[0]?.body, item.body);
+  assert.equal(JSON.stringify(calls[0]).includes('Amina'), false);
+});

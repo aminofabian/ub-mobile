@@ -31,9 +31,9 @@ type Access =
   | { kind: 'missing' };
 
 /**
- * Reads one QR code, for the screens that pair a phone or join a shop. It asks for the camera itself
- * (the barcode scanner beside it does not), and it loads the camera module only when it is shown, so an
- * app that never shows it does not need the module to start.
+ * Reads one QR code, for the screens that pair a phone or join a shop. It asks for the camera itself, as the
+ * barcode scanner beside it does, and it loads the camera module only when it is shown, so an app that never
+ * shows it does not need the module to start.
  */
 export function QrScanner({ onScanned, onCancel }: QrScannerProps) {
   const [access, setAccess] = useState<Access>({ kind: 'checking' });
